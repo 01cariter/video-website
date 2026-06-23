@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Snackd — Minimal</title>
+<style>
+  :root{
+    --bg:#fbfbfd; --ink:#15161c; --muted:#6b7180; --line:#e8eaf0;
+    --brand:#4f46e5; --brand-soft:#eef0ff; --study:#0ea5e9; --play:#f43f5e;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}
+  .container{max-width:1080px;margin:0 auto;padding:0 24px}
+
+  nav{display:flex;align-items:center;justify-content:space-between;padding:24px 0}
+  .logo{font-weight:800;font-size:22px;letter-spacing:-.5px}
+  .logo i{color:var(--brand);font-style:normal}
+  .navlinks{display:flex;gap:30px;align-items:center}
+  .navlinks a{text-decoration:none;color:var(--muted);font-size:15px;font-weight:500}
+  .navlinks a:hover{color:var(--ink)}
+  .btn{background:var(--ink);color:#fff;border:none;border-radius:10px;padding:11px 22px;font-family:inherit;
+    font-weight:600;font-size:15px;cursor:pointer;transition:.2s}
+  .btn:hover{opacity:.88;transform:translateY(-1px)}
+  .btn.brand{background:var(--brand)}
+  .btn.line{background:#fff;color:var(--ink);border:1px solid var(--line)}
+
+  .hero{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center;padding:60px 0 40px}
+  .tag{display:inline-block;background:var(--brand-soft);color:var(--brand);font-size:13px;font-weight:600;
+    padding:6px 14px;border-radius:999px;margin-bottom:22px}
+  h1{font-size:clamp(36px,5.5vw,58px);line-height:1.05;font-weight:800;letter-spacing:-1.5px}
+  .hero p{color:var(--muted);font-size:18px;margin:20px 0 28px;max-width:440px}
+  .cta{display:flex;gap:12px;flex-wrap:wrap}
+  .trust{display:flex;gap:22px;margin-top:26px;color:var(--muted);font-size:14px}
+  .trust b{color:var(--ink)}
+
+  /* phone mock */
+  .phone{justify-self:center;width:260px;height:520px;background:#fff;border:1px solid var(--line);
+    border-radius:34px;box-shadow:0 30px 60px -30px rgba(20,22,40,.25);padding:14px;position:relative}
+  .screen{height:100%;border-radius:24px;background:var(--brand-soft);overflow:hidden;display:flex;flex-direction:column}
+  .scr-top{padding:16px;display:flex;gap:8px}
+  .seg{flex:1;text-align:center;font-size:13px;font-weight:600;padding:8px;border-radius:10px;color:var(--muted);background:#fff;cursor:pointer}
+  .seg.on{background:var(--brand);color:#fff}
+  .card-area{flex:1;padding:0 16px 16px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+  .vid{border-radius:14px;padding:14px;color:#fff;font-weight:700;font-size:14px;min-height:84px;display:flex;flex-direction:column;justify-content:flex-end}
+  .vid small{font-weight:500;opacity:.85;font-size:12px}
+
+  section{padding:54px 0}
+  .center{text-align:center}
+  h2{font-size:clamp(26px,4vw,40px);font-weight:800;letter-spacing:-1px}
+  .lead{color:var(--muted);font-size:17px;max-width:520px;margin:12px auto 0}
+
+  .modes{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:40px}
+  .mode{border:1px solid var(--line);border-radius:20px;padding:30px;background:#fff}
+  .mode .ic{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;font-size:22px;margin-bottom:16px}
+  .mode.study .ic{background:#e0f2fe;color:var(--study)}
+  .mode.play .ic{background:#ffe4e9;color:var(--play)}
+  .mode h3{font-size:21px;margin-bottom:8px}
+  .mode p{color:var(--muted);font-size:15px;margin-bottom:16px}
+  .mode ul{list-style:none;display:flex;flex-direction:column;gap:9px}
+  .mode li{font-size:14px;color:var(--ink);display:flex;gap:9px;align-items:center}
+  .mode li::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.4}
+
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:40px}
+  .step{padding:8px}
+  .step b{display:block;font-size:14px;color:var(--brand);font-weight:700;margin-bottom:10px}
+  .step h4{font-size:18px;margin-bottom:6px}
+  .step p{color:var(--muted);font-size:15px}
+
+  .band{background:var(--ink);color:#fff;border-radius:24px;padding:54px 32px;text-align:center;margin:20px 0}
+  .band p{color:#b9bdcc;margin:12px auto 26px;max-width:420px}
+  .band .btn{background:#fff;color:var(--ink)}
+  footer{border-top:1px solid var(--line);padding:26px 0;color:var(--muted);font-size:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  footer a{color:var(--brand);text-decoration:none}
+  @media(max-width:780px){.hero{grid-template-columns:1fr;text-align:center}.hero p{margin-inline:auto}.cta,.trust{justify-content:center}.modes,.steps{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <div class="logo">Snack<i>d</i></div>
+      <div class="navlinks">
+        <a href="#modes">Modes</a>
+        <a href="#how">How it works</a>
+        <a href="index.html">← Gallery</a>
+        <button class="btn brand">Try free</button>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <div>
+        <span class="tag">AI shorts for curious teens</span>
+        <h1>Big ideas, in tiny videos.</h1>
+        <p>Snackd turns your study list and your downtime into one clean feed of 60-second AI shorts. Learn, then unwind — without leaving the app.</p>
+        <div class="cta">
+          <button class="btn brand">Get started — it's free</button>
+          <button class="btn line">Watch demo</button>
+        </div>
+        <div class="trust">
+          <span><b>900K+</b> students</span>
+          <span><b>4.9★</b> rating</span>
+          <span><b>No ads</b> while you study</span>
+        </div>
+      </div>
+
+      <div class="phone">
+        <div class="screen">
+          <div class="scr-top">
+            <div class="seg on" id="mStudy" onclick="setMode('study')">Study</div>
+            <div class="seg" id="mPlay" onclick="setMode('play')">Play</div>
+          </div>
+          <div class="card-area" id="cards"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="modes">
+      <div class="center">
+        <h2>Two modes. One quiet, clean feed.</h2>
+        <p class="lead">Snackd keeps focus and fun in separate lanes, so studying never feels like doomscrolling.</p>
+      </div>
+      <div class="modes">
+        <div class="mode study">
+          <div class="ic">📘</div>
+          <h3>Study mode</h3>
+          <p>Distraction-free shorts aligned to what you're actually learning.</p>
+          <ul>
+            <li>Synced to your subjects & exams</li>
+            <li>Quick recap quizzes after each clip</li>
+            <li>Zero ads, zero noise</li>
+          </ul>
+        </div>
+        <div class="mode play">
+          <div class="ic">🎬</div>
+          <h3>Play mode</h3>
+          <p>The reward feed — light, fun shorts for your brain breaks.</p>
+          <ul>
+            <li>Comedy, gaming, music & trends</li>
+            <li>Daily time-limit you control</li>
+            <li>Auto-pauses to nudge you back</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="center">
+        <h2>How Snackd works</h2>
+        <p class="lead">Three steps. No setup headaches.</p>
+      </div>
+      <div class="steps">
+        <div class="step"><b>01</b><h4>Pick your topics</h4><p>Tell Snackd your subjects and interests in 20 seconds.</p></div>
+        <div class="step"><b>02</b><h4>AI builds your feed</h4><p>It scripts and renders fresh shorts tuned to your level.</p></div>
+        <div class="step"><b>03</b><h4>Swipe & switch</h4><p>Toggle Study or Play anytime. Snackd keeps the balance.</p></div>
+      </div>
+    </section>
+
+    <section class="band">
+      <h2>Make scrolling worth it.</h2>
+      <p>Start with a free feed today — switch between learning and chilling whenever you like.</p>
+      <button class="btn">Download Snackd</button>
+    </section>
+
+    <footer>
+      <span>© 2026 Snackd · Minimal style example</span>
+      <a href="index.html">Back to gallery →</a>
+    </footer>
+  </div>
+
+<script>
+  const study=[
+    {t:'Photosynthesis, fast',s:'Biology · 0:58',bg:'#0ea5e9'},
+    {t:'Solving for x',s:'Algebra · 1:02',bg:'#4f46e5'},
+    {t:'The Cold War, simply',s:'History · 0:55',bg:'#0891b2'},
+  ];
+  const play=[
+    {t:'Top 5 game glitches',s:'Gaming · 0:47',bg:'#f43f5e'},
+    {t:'Lo-fi beat breakdown',s:'Music · 0:51',bg:'#fb7185'},
+    {t:'Cats vs cucumbers',s:'Fun · 0:33',bg:'#f97316'},
+  ];
+  function setMode(m){
+    document.getElementById('mStudy').classList.toggle('on',m==='study');
+    document.getElementById('mPlay').classList.toggle('on',m==='play');
+    const list=m==='study'?study:play;
+    document.getElementById('cards').innerHTML=list.map(c=>`
+      <div class="vid" style="background:${c.bg}">${c.t}<small>${c.s}</small></div>`).join('');
+  }
+  setMode('study');
+</script>
+</body>
+</html>

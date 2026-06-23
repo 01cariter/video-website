@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Snackd — App (from sketch)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#211f1c; --muted:#6f6a62;
+    --orange:#cf4f2a; --orange-d:#a83c1d;
+    --cream:#f3efe7; --panel:#fbf9f4; --line:#e5dfd3;
+    --field:#ffffff; --bar:rgba(243,239,231,.88); --hover:#efe9dd;
+    --study:#3f7d92; --study-bg:#e6eef1;
+    --play:#cf4f2a; --play-bg:#f3e7e1;
+  }
+  [data-theme="dark"]{
+    --ink:#ece8e1; --muted:#9b958b;
+    --orange:#e0623a; --orange-d:#cf4f2a;
+    --cream:#16140f; --panel:#1d1b16; --line:#2c2a23;
+    --field:#24221c; --bar:rgba(22,20,15,.9); --hover:#24221c;
+    --study:#5b9aae; --study-bg:#1a2e34;
+    --play:#e0623a; --play-bg:#33231a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--ink);background:var(--cream);-webkit-font-smoothing:antialiased;transition:background .25s,color .25s}
+  ::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
+
+  .app{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
+
+  /* ===== SIDEBAR ===== */
+  .side{background:var(--panel);border-right:2px solid var(--line);padding:22px 16px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column}
+  .logo{display:flex;align-items:center;gap:11px;font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:23px;letter-spacing:-.01em;padding:0 6px 26px}
+  .logo .mark{width:30px;height:30px;border-radius:9px;background:var(--orange);position:relative;flex:0 0 auto;transform:rotate(-4deg)}
+  .logo .mark::after{content:'S';position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-family:'Fraunces',serif;font-weight:900;font-size:17px;transform:rotate(4deg)}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav a{display:flex;align-items:center;gap:13px;padding:11px 13px;border-radius:9px;text-decoration:none;color:var(--ink);font-weight:600;font-size:15px;cursor:pointer;transition:.15s}
+  .nav a .ic{width:24px;height:24px;display:grid;place-items:center}
+  .nav a .ic svg,.create .ic svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .create .ic{display:grid;place-items:center;width:22px;height:22px}
+  .search .sic{width:18px;height:18px;flex:0 0 auto;fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .vcard small .hic{width:13px;height:13px;fill:currentColor;stroke:none;vertical-align:-2px}
+  .actions .a svg{width:30px;height:30px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .hint svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px}
+  .nav a:hover{background:var(--hover)}
+  .nav a.active{background:var(--play-bg);color:var(--orange-d)}
+  .create{margin-top:16px;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--orange);color:#fff;border:none;
+    font-family:inherit;font-weight:600;font-size:14.5px;letter-spacing:.2px;padding:12px;border-radius:8px;cursor:pointer;transition:.18s}
+  .create:hover{background:var(--orange-d)}
+  .create .ic svg{stroke-width:2.2}
+  .side .me{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:var(--hover)}
+  .side .me .av{width:36px;height:36px;border-radius:50%;background:var(--study);flex:0 0 auto}
+  .side .me b{font-size:14px;display:block}.side .me small{color:var(--muted);font-size:12px;font-weight:500}
+
+  /* ===== MAIN ===== */
+  .main{min-width:0}
+  .topbar{position:sticky;top:0;z-index:20;background:var(--bar);backdrop-filter:blur(8px);
+    display:flex;align-items:center;gap:14px;padding:16px 28px;border-bottom:2px solid var(--line)}
+  .search{display:flex;align-items:center;gap:10px;background:var(--field);border:2px solid var(--line);border-radius:999px;padding:11px 20px;flex:1;min-width:0}
+  .search input{color:var(--ink)}
+  .themeBtn{flex:0 0 auto;width:44px;height:44px;border-radius:50%;border:2px solid var(--line);background:var(--field);color:var(--ink);cursor:pointer;display:grid;place-items:center;transition:.18s}
+  .themeBtn:hover{border-color:var(--orange);color:var(--orange-d)}
+  .themeBtn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .themeBtn .moon{display:none}
+  [data-theme="dark"] .themeBtn .sun{display:none}
+  [data-theme="dark"] .themeBtn .moon{display:block}
+  .search input{border:none;outline:none;font-family:inherit;font-weight:500;font-size:15px;width:100%;background:transparent}
+
+  .feedwrap{padding:24px 28px 60px}
+  .feedwrap h1{font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-.02em;margin-bottom:5px}
+  .feedwrap .sub{color:var(--muted);font-weight:500;font-size:15px;margin-bottom:24px}
+
+  /* masonry-ish grid matching the sketch */
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:170px;gap:18px}
+  .vcard{border-radius:13px;overflow:hidden;position:relative;cursor:pointer;color:#fff;background-size:cover;background-position:center;
+    display:flex;flex-direction:column;justify-content:flex-end;padding:15px;border:1px solid rgba(0,0,0,.06);transition:.2s ease}
+  .vcard:hover{transform:translateY(-2px);box-shadow:0 12px 26px -18px rgba(0,0,0,.5)}
+  .vcard.big{grid-column:span 2;grid-row:span 2}
+  .vcard.tall{grid-row:span 2}
+  .vcard::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 45%,rgba(0,0,0,.55))}
+  .vcard .badge{position:absolute;top:11px;left:11px;z-index:2;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.9px;padding:4px 8px 4px 7px;border-radius:5px;color:#fff;background:rgba(20,18,15,.5);backdrop-filter:blur(5px);border-left:3px solid #fff}
+  .vcard .badge.study{border-left-color:var(--study)}
+  .vcard .badge.play{border-left-color:var(--orange)}
+  .vcard .badge.sport{border-left-color:#3f9d6a}
+  .vcard .dur{position:absolute;top:11px;right:11px;z-index:2;font-size:11px;font-weight:600;padding:3px 8px;border-radius:5px;background:rgba(20,18,15,.5);backdrop-filter:blur(5px)}
+  .vcard .play-ic{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:3;width:46px;height:46px;border-radius:50%;
+    background:rgba(255,255,255,.9);display:grid;place-items:center;opacity:0;transition:.18s}
+  .vcard:hover .play-ic{opacity:1}
+  .vcard .play-ic::after{content:'';border-left:14px solid var(--ink);border-top:9px solid transparent;border-bottom:9px solid transparent;margin-left:4px}
+  .vcard b{position:relative;z-index:2;font-family:'Fraunces',Georgia,serif;font-size:16px;font-weight:600;line-height:1.18;letter-spacing:-.005em}
+  .vcard small{position:relative;z-index:2;font-weight:500;opacity:.92;font-size:12px;margin-top:4px;display:flex;align-items:center;gap:6px}
+
+  /* ===== PLAYER OVERLAY (keep swiping) ===== */
+  .player{position:fixed;inset:0;z-index:100;background:#15151c;display:none}
+  .player.show{display:block}
+  .reels{height:100vh;overflow-y:scroll;scroll-snap-type:y mandatory}
+  .reels::-webkit-scrollbar{display:none}
+  .reel{height:100vh;scroll-snap-align:start;display:flex;align-items:center;justify-content:center;position:relative}
+  .stage{width:min(440px,94vw);height:min(86vh,820px);border-radius:18px;position:relative;overflow:hidden;color:#fff;background-size:cover;background-position:center;
+    display:flex;flex-direction:column;justify-content:flex-end;padding:26px}
+  .stage::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 50%,rgba(0,0,0,.6))}
+  .stage .badge{position:absolute;top:18px;left:18px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.9px;padding:5px 11px 5px 9px;border-radius:6px;color:#fff;background:rgba(20,18,15,.5);backdrop-filter:blur(5px);border-left:3px solid #fff}
+  .stage .badge.study{border-left-color:var(--study)}
+  .stage .badge.play{border-left-color:var(--orange)}
+  .stage .badge.sport{border-left-color:#3f9d6a}
+  .stage h2{position:relative;font-family:'Fraunces',Georgia,serif;font-size:27px;font-weight:600;line-height:1.14;letter-spacing:-.01em}
+  .stage p{position:relative;font-weight:500;opacity:.9;margin-top:8px}
+  .stage .creator{position:relative;display:flex;align-items:center;gap:10px;margin-top:16px;font-weight:600}
+  .stage .creator .av{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.7)}
+  .progress{position:absolute;left:26px;right:26px;bottom:18px;height:4px;background:rgba(255,255,255,.25);border-radius:4px;overflow:hidden}
+  .progress i{position:absolute;inset:0;width:40%;background:#fff;border-radius:4px;animation:load 4s linear infinite}
+  @keyframes load{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+  .actions{position:absolute;right:max(16px,calc(50vw - 250px));bottom:90px;display:flex;flex-direction:column;gap:22px;text-align:center;color:#fff;z-index:5}
+  .actions .a{cursor:pointer;font-size:30px;line-height:1}.actions .a span{display:block;font-size:12px;font-weight:800;margin-top:4px}
+  .closeP{position:fixed;top:22px;left:22px;z-index:10;background:rgba(255,255,255,.15);color:#fff;border:none;width:44px;height:44px;border-radius:50%;cursor:pointer;backdrop-filter:blur(6px);display:grid;place-items:center}
+  .closeP svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round}
+  .hint{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:10;color:rgba(255,255,255,.7);font-weight:800;font-size:13px;animation:bob 1.6s infinite}
+  @keyframes bob{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,-8px)}}
+  .pswitch{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:6px;background:rgba(255,255,255,.12);padding:5px;border-radius:999px;backdrop-filter:blur(6px)}
+  .pswitch button{border:none;background:transparent;color:rgba(255,255,255,.7);font-family:inherit;font-weight:600;font-size:14px;padding:8px 20px;border-radius:999px;cursor:pointer}
+  .pswitch button.on{background:#fff;color:var(--ink)}
+
+  @media(max-width:900px){
+    .app{grid-template-columns:74px 1fr}
+    .side{padding:18px 10px}.logo span:last-child,.nav a span:last-child,.create span,.side .me .txt{display:none}
+    .nav a{justify-content:center}.create{padding:13px 0}
+    .grid{grid-template-columns:repeat(2,1fr)}.vcard.big{grid-column:span 2}
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <!-- SIDEBAR -->
+    <aside class="side">
+      <div class="logo"><span class="mark"></span><span>Snackd</span></div>
+      <nav class="nav">
+        <a class="active" onclick="filter('all',this)"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg></span><span>Home</span></a>
+        <a onclick="filter('study',this)"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12v15.5H5.5A1.5 1.5 0 0 1 4 18Z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H12v15.5h6.5A1.5 1.5 0 0 0 20 18Z"/></svg></span><span>Study</span></a>
+        <a onclick="filter('play',this)"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3Z" fill="currentColor" stroke="none"/></svg></span><span>Entertainment</span></a>
+        <a onclick="filter('all',this)"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg></span><span>Mine</span></a>
+        <a onclick="filter('all',this)"><span class="ic"><svg viewBox="0 0 24 24"><path d="M6 4h12v16l-6-4-6 4Z"/></svg></span><span>Following</span></a>
+      </nav>
+      <button class="create"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><span>Create</span></button>
+      <div class="me"><span class="av"></span><span class="txt"><b>Alex</b><small>Lvl 7 · Streak 12</small></span></div>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main">
+      <div class="topbar">
+        <div class="search"><svg class="sic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input placeholder="Search shorts, topics, creators…"></div>
+        <button class="themeBtn" id="themeBtn" onclick="toggleTheme()" title="Toggle light / dark" aria-label="Toggle theme">
+          <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"/></svg>
+          <svg class="moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 7 7 0 1 0 20 14.5Z"/></svg>
+        </button>
+      </div>
+
+      <div class="feedwrap">
+        <h1 id="feedH">Your feed</h1>
+        <p class="sub" id="feedS">Tap any short to start — then just keep swiping.</p>
+        <div class="grid" id="grid"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- PLAYER OVERLAY -->
+  <div class="player" id="player">
+    <button class="closeP" onclick="closePlayer()"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <div class="pswitch">
+      <button class="on" id="pAll">Mixed</button>
+      <button id="pStudy">Study</button>
+      <button id="pPlay">Fun</button>
+    </div>
+    <div class="reels" id="reels"></div>
+    <div class="hint"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg> Swipe up for more</div>
+  </div>
+
+<script>
+  //theme change
+  (function(){
+    const saved=localStorage.getItem('snackd-theme');
+    const prefersDark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if(saved==='dark'||(!saved&&prefersDark))document.documentElement.setAttribute('data-theme','dark');
+  })();
+  function toggleTheme(){
+    const isDark=document.documentElement.getAttribute('data-theme')==='dark';
+    if(isDark){document.documentElement.removeAttribute('data-theme');localStorage.setItem('snackd-theme','light');}
+    else{document.documentElement.setAttribute('data-theme','dark');localStorage.setItem('snackd-theme','dark');}
+  }
+
+  // pallets
+  const palettes={
+    study:[['#3f6b78','#2e5562'],['#4a7a6a','#37604f'],['#52708f','#3c5470'],['#5f7d78','#445b56']],
+    play:[['#a8542f','#7e3c20'],['#b06a3a','#8a4e25'],['#a85f4f','#7e4135'],['#b07f3f','#85591f']]
+  };
+  function grad(kind,i){const p=palettes[kind][i%palettes[kind].length];return `linear-gradient(160deg,${p[0]},${p[1]})`;}
+  // real Unsplash photo for each short, sized via CDN params; gradient stays as fallback
+  function ux(id,w){return `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w||640}&q=70`;}
+  function bg(it,i,w){
+    return `url('${ux(it.img,w)}'),${grad(it.k,i)}`;
+  }
+
+  const items=[
+    {k:'study',t:'Fractions in 60s',c:'@mathmood',d:'0:58',size:'big', img:'1509228468518-180dd4864904'},
+    {k:'play',t:'Tiny comedy skit',c:'@giggle',d:'0:33',size:'tall', img:'1543007630-9710e4a00a20'},
+    {k:'study',t:'How DNA copies',c:'@biobites',d:'0:55',size:'', img:'1532094349884-543bc11b234d'},
+    {k:'play',t:'Cozy game picks',c:'@chillplay',d:'0:42',size:'', img:'1542751371-adc38448a05e'},
+    {k:'play',t:'Lo-fi to study to',c:'@loops',d:'0:51',size:'', img:'1511671782779-c97d3d27a1d4'},
+    {k:'study',t:'The Silk Road',c:'@histshorts',d:'0:57',size:'tall', img:'1509316785289-025f5b846b35'},
+    {k:'play',t:'Dogs being dogs',c:'@goodboys',d:'0:29',size:'', img:'1543466835-00a7907e9de1'},
+    {k:'study',t:'Essay hooks that work',c:'@writewell',d:'0:50',size:'', img:'1455390582262-044cdead277a'},
+    {k:'play',t:'Oddly satisfying',c:'@asmrly',d:'0:38',size:'', img:'1530026405186-ed1f139313f8'},
+    {k:'study',t:'Balancing equations',c:'@chemfast',d:'1:02',size:'big', img:'1576086213369-97a306d36557'},
+    {k:'play',t:'Would you rather?',c:'@playtime',d:'0:36',size:'', img:'1496957961599-e35b69ef5d7c'},
+    {k:'study',t:'Why the sky is blue',c:'@physfun',d:'0:48',size:'', img:'1601297183305-6df142704ea2'},
+    {k:'play',t:'Best buzzer beaters',c:'@hoopdaily',d:'0:44',size:'tall', img:'1546519638-68e109498ffc', lab:'SPORTS'},
+    {k:'play',t:'Top 10 goals this week',c:'@footyfix',d:'0:39',size:'', img:'1517649763962-0c623066013b', lab:'SPORTS'},
+    {k:'play',t:'Skate tricks 101',c:'@skatelab',d:'0:35',size:'', img:'1547036967-23d11aacaee0', lab:'SPORTS'},
+    {k:'study',t:'The science of running',c:'@runsmart',d:'0:53',size:'', img:'1552674605-db6ffd4facb5', lab:'SPORTS'},
+  ];
+
+  // grid
+  let counters;
+  function renderGrid(mode){
+    counters={study:0,play:0};
+    const list=mode==='all'?items:items.filter(x=>x.k===mode);
+    document.getElementById('grid').innerHTML=list.map((it)=>{
+      const idx=counters[it.k]++;
+      const cls=mode==='all'?(it.size||''):(idx===0?'big':(idx%4===1?'tall':''));
+      const label=it.lab||(it.k==='study'?'STUDY':'FUN');
+      const bcls=it.lab==='SPORTS'?'sport':it.k;
+      return `<div class="vcard ${cls}" style="background-image:${bg(it,idx,800)}" onclick='openPlayer("${it.k}")'>
+        <span class="badge ${bcls}">${label}</span>
+        <span class="dur">${it.d}</span>
+        <span class="play-ic"></span>
+        <b>${it.t}</b>
+        <small>${it.c} · <svg class="hic" viewBox="0 0 24 24"><path d="M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.4-7 10-7 10Z"/></svg> ${(idx+3)*7}k</small>
+      </div>`;
+    }).join('');
+  }
+  let currentMode='all';
+  function filter(mode,el){
+    currentMode=mode;
+    document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));
+    if(el && el.tagName==='A') el.classList.add('active');
+    document.getElementById('feedH').textContent = mode==='study'?'Study feed':mode==='play'?'Entertainment feed':'Your feed';
+    document.getElementById('feedS').textContent = mode==='study'?'Quick lessons that actually stick.':mode==='play'?'Light, fun shorts for your break.':'Tap any short to start — then just keep swiping.';
+    renderGrid(mode);
+  }
+  renderGrid('all');
+
+  // ---- player (endless swipe feed) ----
+  function reelHTML(it,i){
+    return `<section class="reel">
+      <div class="stage" style="background-image:${bg(it,i,900)}">
+        <span class="badge ${it.lab==='SPORTS'?'sport':it.k}">${it.lab||(it.k==='study'?'STUDY':'FUN')}</span>
+        <div class="actions">
+          <div class="a"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.4-7 10-7 10Z"/></svg><span>${(i+5)*9}k</span></div>
+          <div class="a"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4Z"/></svg><span>${(i+2)*3}h</span></div>
+          <div class="a"><svg viewBox="0 0 24 24"><path d="M6 4h12v16l-6-4-6 4Z"/></svg><span>Save</span></div>
+          <div class="a"><svg viewBox="0 0 24 24"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 15V4M8 8l4-4 4 4"/></svg><span>Share</span></div>
+        </div>
+        <h2>${it.t}</h2>
+        <p>${it.k==='study'?'A 60-second lesson, made simple.':'Made to make you smile.'}</p>
+        <div class="creator"><span class="av"></span>${it.c} · Follow</div>
+        <div class="progress"><i></i></div>
+      </div>
+    </section>`;
+  }
+  function buildReels(mode){
+    let pool=mode==='all'?items:items.filter(x=>x.k===mode);
+    // repeat the pool so the feed feels endless
+    let seq=[];for(let r=0;r<4;r++){seq=seq.concat(pool);}
+    document.getElementById('reels').innerHTML=seq.map((it,i)=>reelHTML(it,i)).join('');
+    document.getElementById('reels').scrollTop=0;
+  }
+  function openPlayer(startKind){
+    setPMode(currentMode);
+    document.getElementById('player').classList.add('show');
+    document.body.style.overflow='hidden';
+  }
+  function closePlayer(){document.getElementById('player').classList.remove('show');document.body.style.overflow='';}
+  function setPMode(mode){
+    document.getElementById('pAll').classList.toggle('on',mode==='all');
+    document.getElementById('pStudy').classList.toggle('on',mode==='study');
+    document.getElementById('pPlay').classList.toggle('on',mode==='play');
+    buildReels(mode);
+  }
+  document.getElementById('pAll').onclick=()=>setPMode('all');
+  document.getElementById('pStudy').onclick=()=>setPMode('study');
+  document.getElementById('pPlay').onclick=()=>setPMode('play');
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closePlayer()});
+</script>
+</body>
+</html>

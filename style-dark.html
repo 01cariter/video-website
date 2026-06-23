@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Snackd — Dark Immersive</title>
+<style>
+  :root{
+    --bg:#05060a; --panel:#0d1018; --line:#1b2030;
+    --txt:#e8ecf5; --muted:#7c8499; --neon:#9d7bff; --neon2:#22e0c9; --hot:#ff3d77;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:'Space Grotesk','Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--txt);overflow-x:hidden}
+  .grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(700px 400px at 70% 0%, rgba(157,123,255,.18), transparent 60%),
+      radial-gradient(600px 400px at 10% 80%, rgba(34,224,201,.12), transparent 60%),
+      linear-gradient(transparent 95%, rgba(255,255,255,.04) 95%) 0 0/100% 28px,
+      linear-gradient(90deg, transparent 95%, rgba(255,255,255,.04) 95%) 0 0/28px 100%;
+  }
+  .container{max-width:1140px;margin:0 auto;padding:0 24px;position:relative;z-index:1}
+
+  nav{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
+  .logo{font-weight:800;font-size:23px;letter-spacing:1px;display:flex;align-items:center;gap:8px}
+  .logo .d{width:11px;height:11px;border-radius:50%;background:var(--neon);box-shadow:0 0 16px var(--neon)}
+  .navlinks{display:flex;gap:28px;align-items:center}
+  .navlinks a{color:var(--muted);text-decoration:none;font-size:14px;font-weight:500;letter-spacing:.3px}
+  .navlinks a:hover{color:#fff}
+  .btn{cursor:pointer;font-family:inherit;font-weight:700;border:none;border-radius:10px;padding:12px 24px;font-size:14px;
+    color:#05060a;background:linear-gradient(90deg,var(--neon2),var(--neon));box-shadow:0 0 30px -6px var(--neon);transition:.2s}
+  .btn:hover{transform:translateY(-2px);box-shadow:0 0 40px -4px var(--neon)}
+  .btn.ghost{background:transparent;color:var(--txt);border:1px solid var(--line);box-shadow:none}
+
+  .hero{padding:64px 0 36px;display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center}
+  .kicker{display:inline-flex;gap:10px;align-items:center;font-size:12px;letter-spacing:2px;text-transform:uppercase;
+    color:var(--neon2);border:1px solid var(--line);padding:7px 14px;border-radius:999px;margin-bottom:24px}
+  .live{width:7px;height:7px;border-radius:50%;background:var(--hot);box-shadow:0 0 10px var(--hot);animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  h1{font-size:clamp(40px,7vw,72px);line-height:1;font-weight:700;letter-spacing:-1px}
+  h1 .glow{color:var(--neon);text-shadow:0 0 30px rgba(157,123,255,.6)}
+  .hero p{color:var(--muted);font-size:18px;margin:22px 0 28px;max-width:460px}
+  .cta{display:flex;gap:14px;flex-wrap:wrap}
+
+  /* player mock */
+  .player{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:24px;padding:18px;
+    box-shadow:0 0 60px -20px var(--neon)}
+  .ptabs{display:flex;gap:8px;margin-bottom:14px}
+  .ptab{flex:1;text-align:center;font-size:13px;font-weight:700;letter-spacing:.5px;padding:10px;border-radius:10px;
+    cursor:pointer;color:var(--muted);border:1px solid var(--line);transition:.2s}
+  .ptab.on{color:#05060a;background:linear-gradient(90deg,var(--neon2),var(--neon));border-color:transparent}
+  .screen{aspect-ratio:9/14;max-height:420px;border-radius:16px;position:relative;overflow:hidden;display:flex;
+    flex-direction:column;justify-content:flex-end;padding:18px;transition:background .4s}
+  .screen .top{position:absolute;top:14px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:center}
+  .chip{font-size:11px;font-weight:700;letter-spacing:1px;padding:5px 10px;border-radius:999px;background:rgba(0,0,0,.45);backdrop-filter:blur(6px)}
+  .screen h3{font-size:20px;font-weight:700;position:relative}
+  .screen p{color:rgba(255,255,255,.8);font-size:13px;position:relative;margin:6px 0 0}
+  .bar{height:4px;border-radius:4px;background:rgba(255,255,255,.25);margin-top:14px;position:relative;overflow:hidden}
+  .bar i{position:absolute;inset:0;width:42%;background:#fff;border-radius:4px;animation:load 3s linear infinite}
+  @keyframes load{from{transform:translateX(-100%)}to{transform:translateX(240%)}}
+  .side{position:absolute;right:14px;bottom:90px;display:flex;flex-direction:column;gap:16px;font-size:22px;text-align:center}
+  .side span{display:block;font-size:11px;color:rgba(255,255,255,.7);margin-top:2px}
+
+  section{padding:56px 0}
+  .head2{text-align:center;margin-bottom:40px}
+  h2{font-size:clamp(28px,5vw,46px);font-weight:700;letter-spacing:-.5px}
+  .head2 p{color:var(--muted);margin-top:12px;font-size:16px}
+
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:26px;position:relative;overflow:hidden;transition:.25s}
+  .tile:hover{border-color:var(--neon);transform:translateY(-5px)}
+  .tile::after{content:'';position:absolute;top:-40px;right:-40px;width:120px;height:120px;border-radius:50%;background:var(--neon);opacity:.12;filter:blur(20px)}
+  .tile .ic{font-size:30px;margin-bottom:14px}
+  .tile h3{font-size:19px;margin-bottom:8px}
+  .tile p{color:var(--muted);font-size:15px;line-height:1.55}
+
+  .ticker{display:flex;gap:14px;overflow:hidden;mask:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+  .track{display:flex;gap:14px;animation:scroll 22s linear infinite}
+  @keyframes scroll{to{transform:translateX(-50%)}}
+  .pin{flex:0 0 auto;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:10px 18px;font-size:14px;color:var(--muted);white-space:nowrap}
+  .pin b{color:var(--neon2)}
+
+  .cta-band{text-align:center;border:1px solid var(--line);border-radius:24px;padding:56px 28px;background:
+    radial-gradient(500px 200px at 50% 0%, rgba(157,123,255,.2), transparent 70%),var(--panel)}
+  .cta-band p{color:var(--muted);margin:14px auto 26px;max-width:430px}
+  footer{border-top:1px solid var(--line);padding:28px 0;color:var(--muted);font-size:14px;text-align:center}
+  footer a{color:var(--neon2);text-decoration:none}
+  @media(max-width:800px){.hero{grid-template-columns:1fr}.navlinks .l{display:none}}
+</style>
+</head>
+<body>
+  <div class="grid-bg"></div>
+  <div class="container">
+    <nav>
+      <div class="logo"><span class="d"></span> SNACKD</div>
+      <div class="navlinks">
+        <a class="l" href="#feat">Features</a>
+        <a class="l" href="#live">Trending</a>
+        <a href="index.html">← Gallery</a>
+        <button class="btn">Launch app</button>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <div>
+        <span class="kicker"><span class="live"></span> Now streaming AI shorts</span>
+        <h1>Your feed,<br><span class="glow">leveled up.</span></h1>
+        <p>Snackd drops AI-generated shorts on repeat — grind through <b>Study</b> quests, then jump to <b>Play</b> when you need to respawn your focus.</p>
+        <div class="cta">
+          <button class="btn">Enter the feed</button>
+          <button class="btn ghost">▶ Watch trailer</button>
+        </div>
+      </div>
+
+      <div class="player">
+        <div class="ptabs">
+          <div class="ptab on" id="tStudy" onclick="setMode('study')">📚 STUDY</div>
+          <div class="ptab" id="tPlay" onclick="setMode('play')">🎮 PLAY</div>
+        </div>
+        <div class="screen" id="screen">
+          <div class="top">
+            <span class="chip" id="chip">LESSON · 0:58</span>
+            <span class="chip">AI ⚡</span>
+          </div>
+          <div class="side">
+            ❤️<span>24k</span>
+            💬<span>1.2k</span>
+            🔖<span>save</span>
+          </div>
+          <h3 id="vt">Quadratics in 60s</h3>
+          <p id="vp">Math · adapts to your level</p>
+          <div class="bar"><i></i></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="feat">
+      <div class="head2">
+        <h2>Engineered for your attention span</h2>
+        <p>Fast, smart, and impossible to put down — in a good way.</p>
+      </div>
+      <div class="grid3">
+        <div class="tile"><div class="ic">🧠</div><h3>Adaptive AI</h3><p>The feed learns what trips you up and re-teaches it from a new angle.</p></div>
+        <div class="tile"><div class="ic">🎮</div><h3>Two channels</h3><p>Flip between Study and Play instantly. Different feed, same flow state.</p></div>
+        <div class="tile"><div class="ic">🏆</div><h3>Quests & ranks</h3><p>Earn XP, climb leaderboards, and flex your streak with friends.</p></div>
+        <div class="tile"><div class="ic">⚡</div><h3>Always fresh</h3><p>New AI shorts rendered daily, so the feed never goes stale.</p></div>
+        <div class="tile"><div class="ic">🔕</div><h3>Focus shield</h3><p>Study mode mutes notifications and hides Play until you're done.</p></div>
+        <div class="tile"><div class="ic">🌙</div><h3>Built dark</h3><p>Easy on the eyes for those late-night cram-then-chill sessions.</p></div>
+      </div>
+    </section>
+
+    <section id="live">
+      <div class="head2"><h2>Trending on Snackd right now</h2></div>
+      <div class="ticker">
+        <div class="track" id="track"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="cta-band">
+        <h2>Press start on smarter scrolling.</h2>
+        <p>Free to play. Switch between learning and unwinding whenever you want.</p>
+        <button class="btn">Download Snackd</button>
+      </div>
+    </section>
+  </div>
+
+  <footer>SNACKD © 2026 · Dark Immersive style example · <a href="index.html">back to gallery</a></footer>
+
+<script>
+  const modes={
+    study:{chip:'LESSON · 0:58',vt:'Quadratics in 60s',vp:'Math · adapts to your level',
+      bg:'linear-gradient(160deg,#1a103a,#3b2a8c)'},
+    play:{chip:'CLIP · 0:34',vt:'Insane clutch montage',vp:'Gaming · for your break',
+      bg:'linear-gradient(160deg,#3a0f2a,#7a1b46)'}
+  };
+  function setMode(m){
+    document.getElementById('tStudy').classList.toggle('on',m==='study');
+    document.getElementById('tPlay').classList.toggle('on',m==='play');
+    const d=modes[m];
+    document.getElementById('screen').style.background=d.bg;
+    document.getElementById('chip').textContent=d.chip;
+    document.getElementById('vt').textContent=d.vt;
+    document.getElementById('vp').textContent=d.vp;
+  }
+  setMode('study');
+
+  const trends=['🔥 <b>Calculus speedrun</b> · 482k','🎮 <b>Boss fight tips</b> · 311k','🧬 <b>Genetics ELI5</b> · 256k',
+    '🎵 <b>Beat theory</b> · 198k','🌍 <b>Map mysteries</b> · 174k','😂 <b>AI fails</b> · 401k','✍️ <b>Essay hacks</b> · 122k'];
+  document.getElementById('track').innerHTML=[...trends,...trends].map(t=>`<div class="pin">${t}</div>`).join('');
+</script>
+</body>
+</html>
