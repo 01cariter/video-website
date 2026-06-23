@@ -46,7 +46,7 @@
   .hint svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px}
   .nav a:hover{background:var(--hover)}
   .nav a.active{background:var(--play-bg);color:var(--orange-d)}
-  .create{margin-top:16px;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--orange);color:#fff;border:none;
+  .create{margin-top:16px;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--orange);color:#fff;border:none;text-decoration:none;
     font-family:inherit;font-weight:600;font-size:14.5px;letter-spacing:.2px;padding:12px;border-radius:8px;cursor:pointer;transition:.18s}
   .create:hover{background:var(--orange-d)}
   .create .ic svg{stroke-width:2.2}
@@ -122,69 +122,7 @@
   .pswitch button{border:none;background:transparent;color:rgba(255,255,255,.7);font-family:inherit;font-weight:600;font-size:14px;padding:8px 20px;border-radius:999px;cursor:pointer}
   .pswitch button.on{background:#fff;color:var(--ink)}
 
-  /* ===== CREATE STUDIO OVERLAY ===== */
-  .studio{position:fixed;inset:0;z-index:120;background:var(--cream);display:none;overflow-y:auto}
-  .studio.show{display:block;animation:fade .2s ease}
-  @keyframes fade{from{opacity:0}to{opacity:1}}
-  .studio .shead{position:sticky;top:0;z-index:5;background:var(--bar);backdrop-filter:blur(8px);border-bottom:2px solid var(--line);
-    display:flex;align-items:center;justify-content:space-between;padding:16px 28px}
-  .studio .shead .stitle{display:flex;align-items:center;gap:11px;font-family:'Fraunces',Georgia,serif;font-size:21px;font-weight:600}
-  .studio .shead .stitle .mark{width:28px;height:28px;border-radius:8px;background:var(--orange);position:relative;transform:rotate(-4deg)}
-  .studio .shead .stitle .mark::after{content:'S';position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-family:'Fraunces',serif;font-weight:900;font-size:16px;transform:rotate(4deg)}
-  .studio .closeS{width:42px;height:42px;border-radius:50%;border:2px solid var(--line);background:var(--field);color:var(--ink);cursor:pointer;display:grid;place-items:center;transition:.18s}
-  .studio .closeS:hover{border-color:var(--orange);color:var(--orange-d)}
-  .studio .closeS svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round}
-
-  .studio .swrap{max-width:920px;margin:0 auto;padding:40px 28px 80px}
-
-  /* composer */
-  .composer{background:var(--panel);border:2px solid var(--line);border-radius:18px;padding:18px 18px 14px;box-shadow:0 18px 40px -28px rgba(0,0,0,.35)}
-  .composer .row1{display:flex;gap:14px;align-items:flex-start}
-  .composer .thumb{width:54px;height:54px;flex:0 0 auto;border-radius:12px;border:2px dashed var(--line);background:var(--field);display:grid;place-items:center;color:var(--muted);cursor:pointer;transition:.18s}
-  .composer .thumb:hover{border-color:var(--orange);color:var(--orange-d)}
-  .composer .thumb svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-  .composer textarea{flex:1;min-height:54px;border:none;outline:none;resize:none;background:transparent;color:var(--ink);
-    font-family:inherit;font-size:16px;line-height:1.5;padding-top:4px}
-  .composer textarea::placeholder{color:var(--muted)}
-  .composer .row2{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
-  .chip{display:inline-flex;align-items:center;gap:6px;border:2px solid var(--line);background:var(--field);color:var(--ink);
-    font-family:inherit;font-weight:600;font-size:13px;padding:7px 13px;border-radius:999px;cursor:pointer;transition:.15s}
-  .chip:hover{border-color:var(--orange);color:var(--orange-d)}
-  .chip.on{background:var(--play-bg);border-color:transparent;color:var(--orange-d)}
-  .chip svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-  .composer .go{margin-left:auto;width:42px;height:42px;border-radius:50%;border:none;background:var(--orange);color:#fff;cursor:pointer;display:grid;place-items:center;transition:.18s}
-  .composer .go:hover{background:var(--orange-d)}
-  .composer .go svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
-
-  /* section labels */
-  .studio .slabel{font-family:'Fraunces',Georgia,serif;font-size:19px;font-weight:600;margin:38px 0 16px}
-
-  /* quick start templates */
-  .qstart{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-  .qcard{position:relative;border-radius:14px;overflow:hidden;aspect-ratio:16/10;color:#fff;cursor:pointer;border:1px solid rgba(0,0,0,.06);
-    background-size:cover;background-position:center;display:flex;align-items:flex-end;padding:14px;transition:.2s ease}
-  .qcard:hover{transform:translateY(-2px);box-shadow:0 12px 26px -18px rgba(0,0,0,.55)}
-  .qcard::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 40%,rgba(0,0,0,.6))}
-  .qcard b{position:relative;z-index:2;font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:15px;line-height:1.2;display:flex;align-items:center;gap:6px}
-  .qcard b svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round}
-
-  /* recent projects */
-  .recent{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
-  .rcard{cursor:pointer}
-  .rcard .thumb2{aspect-ratio:1/1;border-radius:13px;border:2px solid var(--line);background:var(--field);background-size:cover;background-position:center;
-    display:grid;place-items:center;color:var(--muted);transition:.18s;overflow:hidden}
-  .rcard.new .thumb2{border-style:dashed}
-  .rcard:hover .thumb2{border-color:var(--orange);color:var(--orange-d)}
-  .rcard .thumb2 svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-  .rcard .quad{display:grid;grid-template-columns:1fr 1fr;width:100%;height:100%}
-  .rcard .quad span{background-size:cover;background-position:center}
-  .rcard .rname{font-weight:600;font-size:14px;margin-top:9px}
-  .rcard .rmeta{color:var(--muted);font-size:12px;font-weight:500;margin-top:2px}
-
   @media(max-width:900px){
-    .qstart{grid-template-columns:repeat(2,1fr)}
-    .recent{grid-template-columns:repeat(2,1fr)}
-    .studio .swrap{padding:28px 18px 60px}
     .app{grid-template-columns:74px 1fr}
     .side{padding:18px 10px}.logo span:last-child,.nav a span:last-child,.create span,.side .me .txt{display:none}
     .nav a{justify-content:center}.create{padding:13px 0}
@@ -204,7 +142,7 @@
         <a onclick="filter('all',this)"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg></span><span>Mine</span></a>
         <a onclick="filter('all',this)"><span class="ic"><svg viewBox="0 0 24 24"><path d="M6 4h12v16l-6-4-6 4Z"/></svg></span><span>Following</span></a>
       </nav>
-      <button class="create"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><span>Create</span></button>
+      <a class="create" href="create.html"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><span>Create</span></a>
       <div class="me"><span class="av"></span><span class="txt"><b>Alex</b><small>Lvl 7 · Streak 12</small></span></div>
     </aside>
 
@@ -236,39 +174,6 @@
     </div>
     <div class="reels" id="reels"></div>
     <div class="hint"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg> Swipe up for more</div>
-  </div>
-
-  <!-- CREATE STUDIO OVERLAY -->
-  <div class="studio" id="studio">
-    <div class="shead">
-      <div class="stitle"><span class="mark"></span><span>Create studio</span></div>
-      <button class="closeS" onclick="closeStudio()" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
-    </div>
-
-    <div class="swrap">
-      <!-- composer -->
-      <div class="composer">
-        <div class="row1">
-          <div class="thumb" title="Add a reference image"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div>
-          <textarea id="prompt" placeholder="Describe the short you want to make — a topic, a style, or @mention a creator to remix…"></textarea>
-        </div>
-        <div class="row2">
-          <button class="chip on" data-chip><svg viewBox="0 0 24 24"><path d="M12 3l2.1 4.8L19 9l-3.6 3.3L16.4 18 12 15.4 7.6 18l1-5.7L5 9l4.9-1.2Z"/></svg> Auto</button>
-          <button class="chip" data-chip><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/></svg> Storyboard</button>
-          <button class="chip" data-chip><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg> Inspiration</button>
-          <button class="chip" data-chip><svg viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12v15.5H5.5A1.5 1.5 0 0 1 4 18Z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H12v15.5h6.5A1.5 1.5 0 0 0 20 18Z"/></svg> Lesson</button>
-          <button class="go" id="goBtn" onclick="generate()" title="Generate"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
-        </div>
-      </div>
-
-      <!-- quick start -->
-      <div class="slabel">Quick start</div>
-      <div class="qstart" id="qstart"></div>
-
-      <!-- recent projects -->
-      <div class="slabel">Recent projects</div>
-      <div class="recent" id="recent"></div>
-    </div>
   </div>
 
 <script>
@@ -385,75 +290,7 @@
   document.getElementById('pAll').onclick=()=>setPMode('all');
   document.getElementById('pStudy').onclick=()=>setPMode('study');
   document.getElementById('pPlay').onclick=()=>setPMode('play');
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closePlayer();closeStudio();}});
-
-  // ---- create studio ----
-  const templates=[
-    {t:'60-second explainer',k:'study',img:'1509228468518-180dd4864904'},
-    {t:'Comedy skit',k:'play',img:'1543007630-9710e4a00a20'},
-    {t:'Sports highlight reel',k:'play',img:'1546519638-68e109498ffc'},
-    {t:'Lo-fi study loop',k:'study',img:'1511671782779-c97d3d27a1d4'},
-    {t:'Oddly satisfying',k:'play',img:'1530026405186-ed1f139313f8'},
-    {t:'History deep-dive',k:'study',img:'1509316785289-025f5b846b35'},
-  ];
-  const projects=[
-    {n:'Untitled draft',meta:'Empty · just now',imgs:[]},
-    {n:'Photosynthesis short',meta:'Storyboard · 2h ago',imgs:['1532094349884-543bc11b234d','1601297183305-6df142704ea2','1455390582262-044cdead277a','1576086213369-97a306d36557']},
-    {n:'Skate tricks 101',meta:'Storyboard · 1d ago',imgs:['1547036967-23d11aacaee0','1517649763962-0c623066013b']},
-  ];
-
-  function renderStudio(){
-    document.getElementById('qstart').innerHTML=templates.map(t=>
-      `<div class="qcard" style="background-image:${bg({img:t.img,k:t.k},0,640)}" onclick="useTemplate('${t.t.replace(/'/g,"")}')">
-        <b><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>${t.t}</b>
-      </div>`).join('');
-
-    document.getElementById('recent').innerHTML=
-      `<div class="rcard new" onclick="newProject()">
-        <div class="thumb2"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div>
-        <div class="rname">New project</div>
-        <div class="rmeta">Start from scratch</div>
-      </div>`+
-      projects.map(p=>{
-        let inner;
-        if(!p.imgs.length){
-          inner=`<div class="thumb2"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 14l4-4 4 4 4-4 4 4"/></svg></div>`;
-        }else if(p.imgs.length>=4){
-          inner=`<div class="thumb2"><div class="quad">${p.imgs.slice(0,4).map(im=>`<span style="background-image:url('${ux(im,300)}')"></span>`).join('')}</div></div>`;
-        }else{
-          inner=`<div class="thumb2" style="background-image:url('${ux(p.imgs[0],400)}')"></div>`;
-        }
-        return `<div class="rcard" onclick="openProject('${p.n.replace(/'/g,"")}')">${inner}<div class="rname">${p.n}</div><div class="rmeta">${p.meta}</div></div>`;
-      }).join('');
-  }
-
-  function openStudio(){renderStudio();document.getElementById('studio').classList.add('show');document.body.style.overflow='hidden';setTimeout(()=>document.getElementById('prompt').focus(),60);}
-  function closeStudio(){document.getElementById('studio').classList.remove('show');document.body.style.overflow='';}
-  document.querySelector('.create').addEventListener('click',openStudio);
-
-  // mode chips (single-select)
-  document.querySelectorAll('[data-chip]').forEach(c=>c.addEventListener('click',()=>{
-    document.querySelectorAll('[data-chip]').forEach(x=>x.classList.remove('on'));
-    c.classList.add('on');
-  }));
-
-  function useTemplate(name){const ta=document.getElementById('prompt');ta.value=`Make a "${name}" short about `;ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);}
-  function newProject(){const ta=document.getElementById('prompt');ta.value='';ta.focus();}
-  function openProject(n){const ta=document.getElementById('prompt');ta.value=`Continue editing: ${n}`;ta.focus();}
-
-  function generate(){
-    const ta=document.getElementById('prompt');
-    if(!ta.value.trim()){ta.focus();ta.placeholder='Tell me what to make first…';return;}
-    const btn=document.getElementById('goBtn');
-    btn.disabled=true;btn.style.opacity='.6';
-    btn.innerHTML='<svg viewBox="0 0 24 24" style="animation:spin .8s linear infinite"><path d="M12 3a9 9 0 1 0 9 9"/></svg>';
-    if(!document.getElementById('spinKf')){const s=document.createElement('style');s.id='spinKf';s.textContent='@keyframes spin{to{transform:rotate(360deg)}}';document.head.appendChild(s);}
-    setTimeout(()=>{
-      btn.disabled=false;btn.style.opacity='1';
-      btn.innerHTML='<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
-      closeStudio();openPlayer('all');
-    },1400);
-  }
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closePlayer()});
 </script>
 </body>
 </html>
