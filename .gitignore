@@ -10,5 +10,22 @@ Thumbs.db
 # Logs
 *.log
 
-# Dependencies (if any added later)
+# Dependencies
 node_modules/
+
+# Next.js
+.next/
+out/
+build/
+next-env.d.ts
+
+# Legacy static-site build output (pre-Next.js)
+dist/
+
+# Env
+.env
+.env*.local
+
+# Vercel
+.vercel
+.env*
