@@ -17,7 +17,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { nodeTypes, makeSceneNode } from './nodes';
+import { nodeTypes, makeSceneNode, makeImageNode } from './nodes';
 
 const MODELS = [
   { id: 'runway-gen3', name: 'Runway Gen-3' },
@@ -26,9 +26,23 @@ const MODELS = [
   { id: 'pika-2', name: 'Pika 2.0' },
   { id: 'sora', name: 'Sora' },
 ];
+const IMAGE_MODELS = [
+  { id: 'imagen-4-fast', name: 'Imagen 4 Fast' },
+  { id: 'flux-pro', name: 'FLUX Pro' },
+  { id: 'seedream', name: 'Seedream' },
+];
 const RATIOS = ['16:9', '9:16', '1:1'];
 const DURATIONS = ['5s', '10s'];
 const MODES = ['文生视频', '首尾帧'];
+const IMAGE_STYLES = [
+  { id: 'cinematic', name: '电影感' },
+  { id: 'photoreal', name: '写实照片' },
+  { id: 'anime', name: '动漫' },
+  { id: '3d', name: '3D 渲染' },
+  { id: 'watercolor', name: '水彩' },
+  { id: 'cyberpunk', name: '赛博朋克' },
+  { id: 'none', name: '无风格' },
+];
 
 const QUICK_ACTIONS = [
   { action: 'prompt', label: 'Prompt 生成', hint: '把想法改写成可用的生成提示词' },
@@ -40,19 +54,27 @@ const QUICK_ACTIONS = [
 
 // ===========================================================================
 
-function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, initialPrompt, initialModel, aiReady }) {
+function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, initialPrompt, initialModel, initialKind, aiReady }) {
   const { screenToFlowPosition, fitView } = useReactFlow();
 
   const seeded = useMemo(() => {
     if (initialNodes?.length) return initialNodes;
     // First visit: seed one node from the prompt passed by the studio.
+    if (initialKind === 'image') {
+      return [makeImageNode({
+        position: { x: 80, y: 120 },
+        title: 'Image 1',
+        prompt: initialPrompt || '',
+        model: IMAGE_MODELS.some((m) => m.id === initialModel) ? initialModel : IMAGE_MODELS[0].id,
+      })];
+    }
     return [makeSceneNode({
       position: { x: 80, y: 120 },
       title: 'Scene 1',
       prompt: initialPrompt || '',
       model: MODELS.some((m) => m.id === initialModel) ? initialModel : MODELS[0].id,
     })];
-  }, [initialNodes, initialPrompt, initialModel]);
+  }, [initialNodes, initialPrompt, initialModel, initialKind]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(seeded);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges || []);
@@ -75,7 +97,19 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
   const [messages, setMessages] = useState(initialMessages || []);
   const [chatInput, setChatInput] = useState('');
   const [agentBusy, setAgentBusy] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const chatScrollRef = useRef(null);
+  const addMenuRef = useRef(null);
+
+  // Close the "add node" menu on outside click.
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const onDown = (e) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target)) setAddMenuOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [addMenuOpen]);
 
   useEffect(() => {
     chatScrollRef.current?.scrollTo({ top: 9e9, behavior: 'smooth' });
@@ -111,15 +145,22 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
     setSelectedId(sel?.[0]?.id || null);
   }, []);
 
-  const addNode = useCallback(() => {
-    const count = nodes.length + 1;
-    const n = makeSceneNode({
-      title: `Scene ${count}`,
-      position: screenToFlowPosition({ x: window.innerWidth / 2 - 150, y: window.innerHeight / 2 - 100 }),
-    });
-    setNodes((ns) => [...ns, n]);
-    setSelectedId(n.id);
-  }, [nodes.length, screenToFlowPosition, setNodes]);
+  const addNode = useCallback(
+    (kind = 'video') => {
+      const count = nodes.length + 1;
+      const position = screenToFlowPosition({
+        x: window.innerWidth / 2 - 150,
+        y: window.innerHeight / 2 - 100,
+      });
+      const n = kind === 'image'
+        ? makeImageNode({ title: `Image ${count}`, position })
+        : makeSceneNode({ title: `Scene ${count}`, position });
+      setNodes((ns) => [...ns, n]);
+      setSelectedId(n.id);
+      setAddMenuOpen(false);
+    },
+    [nodes.length, screenToFlowPosition, setNodes],
+  );
 
   const organize = useCallback(() => {
     const COLS = 3;
@@ -142,13 +183,23 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
       const prompt = (overrides.prompt ?? node.data.prompt ?? '').trim();
       if (!prompt) return;
 
-      const cfg = {
-        prompt,
-        model: overrides.model ?? node.data.model,
-        mode: overrides.mode ?? node.data.mode,
-        ratio: overrides.ratio ?? node.data.ratio,
-        duration: overrides.duration ?? node.data.duration,
-      };
+      const isImage = node.type === 'image';
+      const cfg = isImage
+        ? {
+            kind: 'image',
+            prompt,
+            model: overrides.model ?? node.data.model,
+            ratio: overrides.ratio ?? node.data.ratio,
+            style: overrides.style ?? node.data.style,
+          }
+        : {
+            kind: 'video',
+            prompt,
+            model: overrides.model ?? node.data.model,
+            mode: overrides.mode ?? node.data.mode,
+            ratio: overrides.ratio ?? node.data.ratio,
+            duration: overrides.duration ?? node.data.duration,
+          };
       patch(id, { ...cfg, status: 'running', caption: '' });
 
       try {
@@ -159,7 +210,7 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
         });
         const json = await res.json();
         const r = json.result || {};
-        patch(id, { status: 'done', poster: r.poster, caption: r.caption });
+        patch(id, { status: 'done', poster: r.poster, caption: r.caption || '' });
       } catch {
         patch(id, { status: 'done', caption: 'Generation failed — please retry.' });
       }
@@ -271,10 +322,37 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
         </Panel>
 
         <Panel position="top-right" className="flow-tools">
-          <button className="flow-add" onClick={addNode}>
-            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-            添加节点
-          </button>
+          <div className="flow-add-wrap" ref={addMenuRef}>
+            <button className="flow-add" onClick={() => setAddMenuOpen((o) => !o)}>
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+              添加节点
+            </button>
+            {addMenuOpen && (
+              <div className="flow-add-menu">
+                <button onClick={() => addNode('video')}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="3" y="5" width="18" height="14" rx="3" />
+                    <path d="M10 9l5 3-5 3z" />
+                  </svg>
+                  <span>
+                    <b>视频场景</b>
+                    <small>文生视频 / 关键帧</small>
+                  </span>
+                </button>
+                <button onClick={() => addNode('image')}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="3" y="3" width="18" height="18" rx="3" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <path d="M21 15l-5-5L5 21" />
+                  </svg>
+                  <span>
+                    <b>图片生成</b>
+                    <small>文生图 · AI Gateway</small>
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
         </Panel>
       </ReactFlow>
 
@@ -282,32 +360,62 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
       {selected && (
         <form className="genbar" onSubmit={submitDraft}>
           <div className="genbar-top">
-            <span className="genbar-label">{selected.data.title}</span>
+            <span className="genbar-label">
+              <span className={`genbar-tag ${selected.type === 'image' ? 'img' : 'vid'}`}>
+                {selected.type === 'image' ? '图片' : '视频'}
+              </span>
+              {selected.data.title}
+            </span>
             <div className="genbar-selects">
-              <select
-                value={selected.data.mode}
-                onChange={(e) => patch(selected.id, { mode: e.target.value })}
-              >
-                {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <select
-                value={selected.data.model}
-                onChange={(e) => patch(selected.id, { model: e.target.value })}
-              >
-                {MODELS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-              <select
-                value={selected.data.ratio}
-                onChange={(e) => patch(selected.id, { ratio: e.target.value })}
-              >
-                {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
-              <select
-                value={selected.data.duration}
-                onChange={(e) => patch(selected.id, { duration: e.target.value })}
-              >
-                {DURATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
+              {selected.type === 'image' ? (
+                <>
+                  <select
+                    value={selected.data.style}
+                    onChange={(e) => patch(selected.id, { style: e.target.value })}
+                  >
+                    {IMAGE_STYLES.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <select
+                    value={selected.data.model}
+                    onChange={(e) => patch(selected.id, { model: e.target.value })}
+                  >
+                    {IMAGE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                  <select
+                    value={selected.data.ratio}
+                    onChange={(e) => patch(selected.id, { ratio: e.target.value })}
+                  >
+                    {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </>
+              ) : (
+                <>
+                  <select
+                    value={selected.data.mode}
+                    onChange={(e) => patch(selected.id, { mode: e.target.value })}
+                  >
+                    {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <select
+                    value={selected.data.model}
+                    onChange={(e) => patch(selected.id, { model: e.target.value })}
+                  >
+                    {MODELS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                  <select
+                    value={selected.data.ratio}
+                    onChange={(e) => patch(selected.id, { ratio: e.target.value })}
+                  >
+                    {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                  <select
+                    value={selected.data.duration}
+                    onChange={(e) => patch(selected.id, { duration: e.target.value })}
+                  >
+                    {DURATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </>
+              )}
             </div>
           </div>
           <div className="genbar-row">
@@ -318,7 +426,9 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
                 setDraftPrompt(e.target.value);
                 patch(selected.id, { prompt: e.target.value });
               }}
-              placeholder="描述这一镜的画面：主体、动作、镜头、光线、氛围…"
+              placeholder={selected.type === 'image'
+                ? '描述要生成的图片：主体、场景、风格、光线、细节…'
+                : '描述这一镜的画面：主体、动作、镜头、光线、氛围…'}
               rows={1}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitDraft(e);

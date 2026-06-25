@@ -14,6 +14,7 @@ export default async function FlowPage({ searchParams }) {
   const sp = await searchParams;
   const initialPrompt = typeof sp?.prompt === 'string' ? sp.prompt : '';
   const initialModel = typeof sp?.model === 'string' ? sp.model : '';
+  const initialKind = sp?.kind === 'image' ? 'image' : 'video';
   const pid = sp?.project ? Number(sp.project) : null;
 
   const canvas = pid ? await getCanvas(user.id, pid) : await getOrCreateCanvas(user.id);
@@ -30,6 +31,7 @@ export default async function FlowPage({ searchParams }) {
       initialMessages={messages}
       initialPrompt={initialPrompt}
       initialModel={initialModel}
+      initialKind={initialKind}
       aiReady={aiConfigured()}
     />
   );

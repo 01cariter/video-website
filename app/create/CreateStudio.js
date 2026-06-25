@@ -14,13 +14,20 @@ const TEMPLATES = [
   { t: 'History deep-dive', k: 'study' },
 ];
 
-// AI models the user can choose to generate with.
+// Video models the user can choose to generate with.
 export const MODELS = [
   { id: 'runway-gen3', name: 'Runway Gen-3', tag: 'Cinematic' },
   { id: 'luma-dream', name: 'Luma Dream Machine', tag: 'Fast' },
   { id: 'kling-1.5', name: 'Kling 1.5', tag: 'Realistic' },
   { id: 'pika-2', name: 'Pika 2.0', tag: 'Stylized' },
   { id: 'sora', name: 'Sora', tag: 'High-fidelity' },
+];
+
+// Image (text-to-image) models, served through the AI Gateway.
+export const IMAGE_MODELS = [
+  { id: 'imagen-4-fast', name: 'Imagen 4 Fast', tag: 'Fast' },
+  { id: 'flux-pro', name: 'FLUX Pro', tag: 'Detailed' },
+  { id: 'seedream', name: 'Seedream', tag: 'Stylized' },
 ];
 
 function timeAgo(iso) {
@@ -35,7 +42,9 @@ function timeAgo(iso) {
 export default function CreateStudio({ projects }) {
   const router = useRouter();
   const [prompt, setPrompt] = useState('');
+  const [kind, setKind] = useState('video'); // 'video' | 'image'
   const [model, setModel] = useState(MODELS[0].id);
+  const [imageModel, setImageModel] = useState(IMAGE_MODELS[0].id);
   const [going, setGoing] = useState(false);
   const taRef = useRef(null);
 
@@ -56,15 +65,25 @@ export default function CreateStudio({ projects }) {
     taRef.current?.focus();
   }
 
-  // Hand the prompt + chosen model to the AI workflow canvas (next page).
+  // Hand the prompt + chosen model/kind to the AI canvas (next page).
   function generate() {
     if (!prompt.trim()) {
       taRef.current?.focus();
       return;
     }
     setGoing(true);
-    const qs = new URLSearchParams({ prompt: prompt.trim(), model });
+    const qs = new URLSearchParams({
+      prompt: prompt.trim(),
+      kind,
+      model: kind === 'image' ? imageModel : model,
+    });
     router.push(`/create/flow?${qs.toString()}`);
+  }
+
+  // Open an existing project's canvas.
+  function openProject(id) {
+    setGoing(true);
+    router.push(`/create/flow?project=${id}`);
   }
 
   function onKeyDown(e) {
@@ -121,17 +140,52 @@ export default function CreateStudio({ projects }) {
             />
           </div>
           <div className="row2">
+            <div className="kind-toggle" role="group" aria-label="生成类型">
+              <button
+                type="button"
+                className={kind === 'video' ? 'active' : ''}
+                onClick={() => setKind('video')}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="5" width="18" height="14" rx="3" />
+                  <path d="M10 9l5 3-5 3z" />
+                </svg>
+                视频
+              </button>
+              <button
+                type="button"
+                className={kind === 'image' ? 'active' : ''}
+                onClick={() => setKind('image')}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="3" width="18" height="18" rx="3" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="M21 15l-5-5L5 21" />
+                </svg>
+                图片
+              </button>
+            </div>
             <label className="model-select" title="Choose an AI model">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 3l2.1 4.8L19 9l-3.6 3.3L16.4 18 12 15.4 7.6 18l1-5.7L5 9l4.9-1.2Z" />
               </svg>
-              <select value={model} onChange={(e) => setModel(e.target.value)}>
-                {MODELS.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} · {m.tag}
-                  </option>
-                ))}
-              </select>
+              {kind === 'image' ? (
+                <select value={imageModel} onChange={(e) => setImageModel(e.target.value)}>
+                  {IMAGE_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} · {m.tag}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <select value={model} onChange={(e) => setModel(e.target.value)}>
+                  {MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} · {m.tag}
+                    </option>
+                  ))}
+                </select>
+              )}
               <svg className="caret" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M6 9l6 6 6-6" />
               </svg>
@@ -211,7 +265,7 @@ export default function CreateStudio({ projects }) {
             }
             const metaStatus = p.status === 'draft' ? 'Empty' : 'In progress';
             return (
-              <div className="rcard" key={p.id} onClick={() => setPrompt(`Continue editing: ${p.name}`)}>
+              <div className="rcard" key={p.id} onClick={() => openProject(p.id)} role="button" tabIndex={0}>
                 {inner}
                 <div className="rname">{p.name}</div>
                 <div className="rmeta">
