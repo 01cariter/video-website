@@ -7,5 +7,7 @@ export default auth.middleware({
 });
 
 export const config = {
-  matcher: ['/create/:path*', '/create'],
+  // `/auth/complete` must be matched so Neon Auth can exchange the OAuth
+  // verifier token (returned by Google/Microsoft) for a session cookie.
+  matcher: ['/create/:path*', '/create', '/auth/complete'],
 };

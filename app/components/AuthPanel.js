@@ -49,9 +49,18 @@ export default function AuthPanel({ mode = 'login' }) {
     setError('');
     setLoading(true);
     try {
-      // Neon Auth redirects to the provider, then back to callbackURL.
-      const callbackURL = `${window.location.origin}${next}`;
-      const { error: err } = await authClient.signIn.social({ provider, callbackURL });
+      // Neon Auth redirects to the provider, then back to callbackURL. We must
+      // land on a route the middleware runs on (see proxy.js + /auth/complete)
+      // so the one-time verifier token can be exchanged for a session cookie.
+      // The real destination travels along as `?next=`.
+      const origin = window.location.origin;
+      const callbackURL = `${origin}/auth/complete?next=${encodeURIComponent(next)}`;
+      const { error: err } = await authClient.signIn.social({
+        provider,
+        callbackURL,
+        newUserCallbackURL: callbackURL,
+        errorCallbackURL: `${origin}/login?error=oauth`,
+      });
       if (err) {
         setError(err.message || `Could not sign in with ${provider}.`);
         setLoading(false);
