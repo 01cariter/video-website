@@ -69,16 +69,25 @@ npm start
 - `npm run db:setup` — apply `db/schema.sql`, then seed mock creators + videos
 - `npm run db:seed` — re-seed business content only (schema must already exist)
 
-Schema (`db/schema.sql`): `profiles`, `creators`, `videos`, `video_likes`,
-`projects`. Business tables reference the Neon Auth user id via a `TEXT`
-`user_id` column.
+Schema (`db/schema.sql`): `profiles`, `media`, `videos`, `video_likes`,
+`video_saves`, `follows`, `comments`, `projects`. Business tables reference the
+Neon Auth user id via a `TEXT` `user_id` column.
+
+- **`media`** — self-hosted images & videos (no Unsplash). Served from a URL /
+  `data:` URI or inline bytes via `GET /api/media/:id`. Uploads go through
+  `POST /api/media` (multipart `file` or JSON `{ url, kind, mime, width, height }`).
+- **Creators are real users** — every video's `author_id` references a
+  `profiles` row (a Neon Auth user). Seeded demo authors use synthetic
+  `seed_*` ids.
 
 ## Features
 
 - Bite-sized video feed (study / play / sports categories)
-- Vertical full-screen swipe player
+- Click-to-preview with **motion** shared-element animation; the player fits
+  each clip's original dimensions
 - Search bar and category filters
-- Likes persisted per signed-in user
+- **Follow** creators, **like**, **save** (favourite) and **comment** — all
+  persisted per signed-in user
 - **Create studio** page — composer, templates, recent projects
 - Light / dark theme toggle
-- Real Unsplash imagery, SVG icons (no emoji)
+- Self-hosted media (SVG posters by default), SVG icons (no emoji)

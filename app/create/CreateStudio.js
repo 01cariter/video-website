@@ -3,15 +3,15 @@
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ux, bg } from '../components/media';
+import { bg } from '../components/media';
 
 const TEMPLATES = [
-  { t: '60-second explainer', k: 'study', img: '1509228468518-180dd4864904' },
-  { t: 'Comedy skit', k: 'play', img: '1543007630-9710e4a00a20' },
-  { t: 'Sports highlight reel', k: 'play', img: '1546519638-68e109498ffc' },
-  { t: 'Lo-fi study loop', k: 'study', img: '1511671782779-c97d3d27a1d4' },
-  { t: 'Oddly satisfying', k: 'play', img: '1530026405186-ed1f139313f8' },
-  { t: 'History deep-dive', k: 'study', img: '1509316785289-025f5b846b35' },
+  { t: '60-second explainer', k: 'study' },
+  { t: 'Comedy skit', k: 'play' },
+  { t: 'Sports highlight reel', k: 'play' },
+  { t: 'Lo-fi study loop', k: 'study' },
+  { t: 'Oddly satisfying', k: 'play' },
+  { t: 'History deep-dive', k: 'study' },
 ];
 
 // AI models the user can choose to generate with.
@@ -153,11 +153,11 @@ export default function CreateStudio({ projects }) {
         {/* quick start */}
         <div className="slabel">Quick start</div>
         <div className="qstart">
-          {TEMPLATES.map((t) => (
+          {TEMPLATES.map((t, ti) => (
             <div
               key={t.t}
               className="qcard"
-              style={{ backgroundImage: bg(t.img, t.k, 0, 640) }}
+              style={{ backgroundImage: bg(null, t.k, ti) }}
               onClick={() => applyTemplate(t.t)}
             >
               <b>
@@ -184,7 +184,8 @@ export default function CreateStudio({ projects }) {
           </div>
 
           {projects.map((p) => {
-            const imgs = p.image_ids || [];
+            const imgs = p.media_ids || [];
+            const src = (id) => `url('/api/media/${id}')`;
             let inner;
             if (!imgs.length) {
               inner = (
@@ -200,13 +201,13 @@ export default function CreateStudio({ projects }) {
                 <div className="thumb2">
                   <div className="quad">
                     {imgs.slice(0, 4).map((im) => (
-                      <span key={im} style={{ backgroundImage: `url('${ux(im, 300)}')` }} />
+                      <span key={im} style={{ backgroundImage: src(im) }} />
                     ))}
                   </div>
                 </div>
               );
             } else {
-              inner = <div className="thumb2" style={{ backgroundImage: `url('${ux(imgs[0], 400)}')` }} />;
+              inner = <div className="thumb2" style={{ backgroundImage: src(imgs[0]) }} />;
             }
             const metaStatus = p.status === 'draft' ? 'Empty' : 'In progress';
             return (
