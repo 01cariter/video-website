@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ReactFlow,
@@ -10,245 +10,409 @@ import {
   Controls,
   MiniMap,
   Panel,
-  Handle,
-  Position,
   addEdge,
   useNodesState,
   useEdgesState,
+  useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
+import { nodeTypes, makeSceneNode } from './nodes';
+
 const MODELS = [
-  { id: 'runway-gen3', name: 'Runway Gen-3', tag: 'Cinematic' },
-  { id: 'luma-dream', name: 'Luma Dream Machine', tag: 'Fast' },
-  { id: 'kling-1.5', name: 'Kling 1.5', tag: 'Realistic' },
-  { id: 'pika-2', name: 'Pika 2.0', tag: 'Stylized' },
-  { id: 'sora', name: 'Sora', tag: 'High-fidelity' },
+  { id: 'runway-gen3', name: 'Runway Gen-3' },
+  { id: 'luma-dream', name: 'Luma Dream Machine' },
+  { id: 'kling-1.5', name: 'Kling 1.5' },
+  { id: 'pika-2', name: 'Pika 2.0' },
+  { id: 'sora', name: 'Sora' },
+];
+const RATIOS = ['16:9', '9:16', '1:1'];
+const DURATIONS = ['5s', '10s'];
+const MODES = ['文生视频', '首尾帧'];
+
+const QUICK_ACTIONS = [
+  { action: 'prompt', label: 'Prompt 生成', hint: '把想法改写成可用的生成提示词' },
+  { action: 'brainstorm', label: '头脑风暴', hint: '给出多个创意方向' },
+  { action: 'styles', label: '生成不同风格', hint: '产出 4 种风格变体节点' },
+  { action: 'organize', label: '整理节点', hint: '自动排版画布' },
+  { action: 'pipeline', label: '一句话 → 分镜', hint: '一句话到剧本到多分镜全流程' },
 ];
 
-// ---------------------------------------------------------------------------
-// Custom nodes
-// ---------------------------------------------------------------------------
+// ===========================================================================
 
-function NodeShell({ kind, title, children }) {
-  return (
-    <div className={`flnode flode-${kind}`}>
-      <div className="flode-head">
-        <span className={`flode-icon ${kind}`}>{ICONS[kind]}</span>
-        <span className="flode-title">{title}</span>
-      </div>
-      <div className="flode-body">{children}</div>
-    </div>
-  );
-}
+function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, initialPrompt, initialModel, aiReady }) {
+  const { screenToFlowPosition, fitView } = useReactFlow();
 
-function PromptNode({ data }) {
-  return (
-    <NodeShell kind="prompt" title="Prompt">
-      <textarea
-        className="flode-ta"
-        value={data.prompt}
-        onChange={(e) => data.onPrompt?.(e.target.value)}
-        placeholder="Describe your short…"
-        rows={4}
-      />
-      <Handle type="source" position={Position.Right} />
-    </NodeShell>
-  );
-}
+  const seeded = useMemo(() => {
+    if (initialNodes?.length) return initialNodes;
+    // First visit: seed one node from the prompt passed by the studio.
+    return [makeSceneNode({
+      position: { x: 80, y: 120 },
+      title: 'Scene 1',
+      prompt: initialPrompt || '',
+      model: MODELS.some((m) => m.id === initialModel) ? initialModel : MODELS[0].id,
+    })];
+  }, [initialNodes, initialPrompt, initialModel]);
 
-function ModelNode({ data }) {
-  return (
-    <NodeShell kind="model" title="AI model">
-      <select className="flode-select" value={data.model} onChange={(e) => data.onModel?.(e.target.value)}>
-        {MODELS.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.name} · {m.tag}
-          </option>
-        ))}
-      </select>
-      <div className="flode-meta">Diffusion · text-to-video</div>
-      <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
-    </NodeShell>
-  );
-}
+  const [nodes, setNodes, onNodesChange] = useNodesState(seeded);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges || []);
+  const [selectedId, setSelectedId] = useState(seeded[0]?.id || null);
+  const [canvasName, setCanvasName] = useState(name || '未命名项目');
 
-function GenerateNode({ data }) {
-  const { status } = data;
-  return (
-    <NodeShell kind="generate" title="Generate">
-      <div className={`flode-status ${status}`}>
-        <span className="dot" />
-        {status === 'running' ? 'Generating…' : status === 'done' ? 'Completed' : 'Ready'}
-      </div>
-      <button className="flode-run" onClick={data.onRun} disabled={status === 'running'}>
-        {status === 'running' ? 'Working…' : status === 'done' ? 'Run again' : 'Run workflow'}
-      </button>
-      <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
-    </NodeShell>
-  );
-}
+  // bottom generation panel inputs (mirror the selected node)
+  const selected = useMemo(() => nodes.find((n) => n.id === selectedId) || null, [nodes, selectedId]);
+  const [draftPrompt, setDraftPrompt] = useState(selected?.data?.prompt || '');
 
-function OutputNode({ data }) {
-  const { status, takes } = data;
-  return (
-    <NodeShell kind="output" title="Output">
-      <div className="flode-grid">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className={`flode-cell ${status === 'running' ? 'skel' : ''}`}>
-            {status === 'done' && takes?.[i] ? (
-              <img src={takes[i]} alt={`Take ${i + 1}`} />
-            ) : status === 'running' ? null : (
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            )}
-          </div>
-        ))}
-      </div>
-      <Handle type="target" position={Position.Left} />
-    </NodeShell>
-  );
-}
+  // Sync the bottom-panel draft when the selection changes (adjust state during
+  // render — React's recommended pattern instead of an effect).
+  const [prevSel, setPrevSel] = useState(selectedId);
+  if (selectedId !== prevSel) {
+    setPrevSel(selectedId);
+    setDraftPrompt(selected?.data?.prompt || '');
+  }
 
-const ICONS = {
-  prompt: (
-    <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7" /></svg>
-  ),
-  model: (
-    <svg viewBox="0 0 24 24"><path d="M12 3l2.1 4.8L19 9l-3.6 3.3L16.4 18 12 15.4 7.6 18l1-5.7L5 9l4.9-1.2Z" /></svg>
-  ),
-  generate: (
-    <svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z" /></svg>
-  ),
-  output: (
-    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M10 9l5 3-5 3z" /></svg>
-  ),
-};
+  // agent panel
+  const [messages, setMessages] = useState(initialMessages || []);
+  const [chatInput, setChatInput] = useState('');
+  const [agentBusy, setAgentBusy] = useState(false);
+  const chatScrollRef = useRef(null);
 
-const RESULT_POOL = [
-  'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=500&q=70',
-  'https://images.unsplash.com/photo-1492619375914-88005aa9e8fb?auto=format&fit=crop&w=500&q=70',
-  'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=500&q=70',
-  'https://images.unsplash.com/photo-1535016120720-40c646be5580?auto=format&fit=crop&w=500&q=70',
-  'https://images.unsplash.com/photo-1478720568477-152d9b164e26?auto=format&fit=crop&w=500&q=70',
-  'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=500&q=70',
-];
-
-// ---------------------------------------------------------------------------
-// Canvas
-// ---------------------------------------------------------------------------
-
-function Flow({ prompt: initialPrompt, model: initialModel }) {
-  const nodeTypes = useMemo(
-    () => ({ prompt: PromptNode, model: ModelNode, generate: GenerateNode, output: OutputNode }),
-    [],
-  );
-
-  const startModel = MODELS.some((m) => m.id === initialModel) ? initialModel : MODELS[0].id;
-
-  const [nodes, setNodes, onNodesChange] = useNodesState([
-    {
-      id: 'prompt',
-      type: 'prompt',
-      position: { x: 0, y: 80 },
-      data: { prompt: initialPrompt || '' },
-    },
-    {
-      id: 'model',
-      type: 'model',
-      position: { x: 320, y: 96 },
-      data: { model: startModel },
-    },
-    {
-      id: 'generate',
-      type: 'generate',
-      position: { x: 640, y: 110 },
-      data: { status: 'idle' },
-    },
-    {
-      id: 'output',
-      type: 'output',
-      position: { x: 940, y: 60 },
-      data: { status: 'idle', takes: [] },
-    },
-  ]);
-
-  const [edges, setEdges, onEdgesChange] = useEdgesState([
-    { id: 'e1', source: 'prompt', target: 'model', animated: true },
-    { id: 'e2', source: 'model', target: 'generate', animated: true },
-    { id: 'e3', source: 'generate', target: 'output', animated: true },
-  ]);
+  useEffect(() => {
+    chatScrollRef.current?.scrollTo({ top: 9e9, behavior: 'smooth' });
+  }, [messages]);
 
   const patch = useCallback(
     (id, data) => setNodes((ns) => ns.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...data } } : n))),
     [setNodes],
   );
 
-  const onConnect = useCallback((params) => setEdges((eds) => addEdge({ ...params, animated: true }, eds)), [setEdges]);
+  // ---- persistence (debounced autosave) ----------------------------------
+  const saveTimer = useRef(null);
+  useEffect(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      // strip transient callbacks; node data is plain JSON already
+      fetch('/api/canvas', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ projectId, nodes, edges, name: canvasName }),
+      }).catch(() => {});
+    }, 800);
+    return () => saveTimer.current && clearTimeout(saveTimer.current);
+  }, [nodes, edges, canvasName, projectId]);
 
-  const run = useCallback(() => {
-    patch('generate', { status: 'running' });
-    patch('output', { status: 'running', takes: [] });
-    setTimeout(() => {
-      const takes = [...RESULT_POOL].sort(() => Math.random() - 0.5).slice(0, 4);
-      patch('generate', { status: 'done' });
-      patch('output', { status: 'done', takes });
-    }, 1600);
-  }, [patch]);
+  // ---- canvas interactions -----------------------------------------------
+  const onConnect = useCallback(
+    (params) => setEdges((eds) => addEdge({ ...params, animated: true }, eds)),
+    [setEdges],
+  );
 
-  // Inject live callbacks into node data (kept out of state to avoid loops).
-  const nodesWithHandlers = useMemo(
-    () =>
-      nodes.map((n) => {
-        if (n.id === 'prompt') return { ...n, data: { ...n.data, onPrompt: (v) => patch('prompt', { prompt: v }) } };
-        if (n.id === 'model') return { ...n, data: { ...n.data, onModel: (v) => patch('model', { model: v }) } };
-        if (n.id === 'generate') return { ...n, data: { ...n.data, onRun: run } };
-        return n;
-      }),
-    [nodes, patch, run],
+  const onSelectionChange = useCallback(({ nodes: sel }) => {
+    setSelectedId(sel?.[0]?.id || null);
+  }, []);
+
+  const addNode = useCallback(() => {
+    const count = nodes.length + 1;
+    const n = makeSceneNode({
+      title: `Scene ${count}`,
+      position: screenToFlowPosition({ x: window.innerWidth / 2 - 150, y: window.innerHeight / 2 - 100 }),
+    });
+    setNodes((ns) => [...ns, n]);
+    setSelectedId(n.id);
+  }, [nodes.length, screenToFlowPosition, setNodes]);
+
+  const organize = useCallback(() => {
+    const COLS = 3;
+    const W = 320;
+    const H = 300;
+    setNodes((ns) =>
+      ns.map((n, i) => ({
+        ...n,
+        position: { x: 80 + (i % COLS) * W, y: 80 + Math.floor(i / COLS) * H },
+      })),
+    );
+    setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 60);
+  }, [setNodes, fitView]);
+
+  // ---- node generation ----------------------------------------------------
+  const generate = useCallback(
+    async (id, overrides = {}) => {
+      const node = nodes.find((n) => n.id === id);
+      if (!node) return;
+      const prompt = (overrides.prompt ?? node.data.prompt ?? '').trim();
+      if (!prompt) return;
+
+      const cfg = {
+        prompt,
+        model: overrides.model ?? node.data.model,
+        mode: overrides.mode ?? node.data.mode,
+        ratio: overrides.ratio ?? node.data.ratio,
+        duration: overrides.duration ?? node.data.duration,
+      };
+      patch(id, { ...cfg, status: 'running', caption: '' });
+
+      try {
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(cfg),
+        });
+        const json = await res.json();
+        const r = json.result || {};
+        patch(id, { status: 'done', poster: r.poster, caption: r.caption });
+      } catch {
+        patch(id, { status: 'done', caption: 'Generation failed — please retry.' });
+      }
+    },
+    [nodes, patch],
+  );
+
+  const submitDraft = useCallback(
+    (e) => {
+      e?.preventDefault?.();
+      if (!selected) return;
+      generate(selected.id, { prompt: draftPrompt });
+    },
+    [selected, draftPrompt, generate],
+  );
+
+  // ---- agent --------------------------------------------------------------
+  const canvasSummary = useMemo(() => {
+    const titles = nodes.map((n) => n.data?.title).filter(Boolean).slice(0, 8);
+    return `${nodes.length} nodes: ${titles.join(', ')}`;
+  }, [nodes]);
+
+  const runAgent = useCallback(
+    async (action, input) => {
+      if (action === 'organize') {
+        organize();
+        setMessages((m) => [...m, { id: `local_${Date.now()}`, role: 'assistant', content: '已重新排版画布节点。' }]);
+        return;
+      }
+      const text = (input ?? chatInput).trim();
+      if (!text && action === 'chat') return;
+      setAgentBusy(true);
+      if (text) setMessages((m) => [...m, { id: `u_${Date.now()}`, role: 'user', content: text }]);
+      setChatInput('');
+
+      try {
+        const res = await fetch('/api/agent', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ projectId, action, input: text, context: { summary: canvasSummary } }),
+        });
+        const json = await res.json();
+        if (json.message) setMessages((m) => [...m, json.message]);
+
+        // styles → spawn one node per style; pipeline → one node per scene
+        const spawn = json.styles || json.scenes;
+        if (Array.isArray(spawn) && spawn.length) {
+          const base = nodes.length;
+          const created = spawn.map((s, i) =>
+            makeSceneNode({
+              title: s.label || s.title || `Shot ${base + i + 1}`,
+              prompt: s.prompt || '',
+              duration: s.duration || '5s',
+              position: { x: 80 + ((base + i) % 3) * 320, y: 80 + Math.floor((base + i) / 3) * 300 },
+            }),
+          );
+          setNodes((ns) => [...ns, ...created]);
+          setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 80);
+        }
+
+        // prompt action → write enhanced prompt into the selected node
+        if (action === 'prompt' && json.message?.content && selected) {
+          patch(selected.id, { prompt: json.message.content });
+          setDraftPrompt(json.message.content);
+        }
+      } catch {
+        setMessages((m) => [...m, { id: `e_${Date.now()}`, role: 'assistant', content: '请求失败，请稍后再试。' }]);
+      } finally {
+        setAgentBusy(false);
+      }
+    },
+    [chatInput, projectId, canvasSummary, nodes, selected, organize, patch, setNodes, fitView],
   );
 
   return (
-    <ReactFlow
-      nodes={nodesWithHandlers}
-      edges={edges}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onConnect={onConnect}
-      nodeTypes={nodeTypes}
-      fitView
-      fitViewOptions={{ padding: 0.2 }}
-      proOptions={{ hideAttribution: true }}
-      defaultEdgeOptions={{ animated: true }}
-      minZoom={0.3}
-    >
-      <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} />
-      <Controls showInteractive={false} />
-      <MiniMap pannable zoomable nodeStrokeWidth={3} />
-      <Panel position="top-left" className="flow-panel">
-        <Link className="flow-back" href="/create">
-          <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" /></svg>
-          Studio
-        </Link>
-        <span className="flow-divider" />
-        <span className="flow-name">AI workflow</span>
-      </Panel>
-    </ReactFlow>
+    <>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onSelectionChange={onSelectionChange}
+        nodeTypes={nodeTypes}
+        fitView
+        fitViewOptions={{ padding: 0.25 }}
+        proOptions={{ hideAttribution: true }}
+        defaultEdgeOptions={{ animated: true }}
+        minZoom={0.2}
+        maxZoom={1.8}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} />
+        <Controls showInteractive={false} />
+        <MiniMap pannable zoomable nodeStrokeWidth={3} />
+
+        <Panel position="top-left" className="flow-panel">
+          <Link className="flow-back" href="/create">
+            <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" /></svg>
+            Studio
+          </Link>
+          <span className="flow-divider" />
+          <input
+            className="flow-name-input"
+            value={canvasName}
+            onChange={(e) => setCanvasName(e.target.value)}
+            spellCheck={false}
+          />
+          {!aiReady && <span className="flow-demo" title="未配置 AI Gateway，使用本地降级">demo</span>}
+        </Panel>
+
+        <Panel position="top-right" className="flow-tools">
+          <button className="flow-add" onClick={addNode}>
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+            添加节点
+          </button>
+        </Panel>
+      </ReactFlow>
+
+      {/* ---- bottom generation panel (figure 2) ---- */}
+      {selected && (
+        <form className="genbar" onSubmit={submitDraft}>
+          <div className="genbar-top">
+            <span className="genbar-label">{selected.data.title}</span>
+            <div className="genbar-selects">
+              <select
+                value={selected.data.mode}
+                onChange={(e) => patch(selected.id, { mode: e.target.value })}
+              >
+                {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <select
+                value={selected.data.model}
+                onChange={(e) => patch(selected.id, { model: e.target.value })}
+              >
+                {MODELS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+              <select
+                value={selected.data.ratio}
+                onChange={(e) => patch(selected.id, { ratio: e.target.value })}
+              >
+                {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+              <select
+                value={selected.data.duration}
+                onChange={(e) => patch(selected.id, { duration: e.target.value })}
+              >
+                {DURATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="genbar-row">
+            <textarea
+              className="genbar-input"
+              value={draftPrompt}
+              onChange={(e) => {
+                setDraftPrompt(e.target.value);
+                patch(selected.id, { prompt: e.target.value });
+              }}
+              placeholder="描述这一镜的画面：主体、动作、镜头、光线、氛围…"
+              rows={1}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitDraft(e);
+              }}
+            />
+            <button
+              type="submit"
+              className="genbar-go"
+              disabled={selected.data.status === 'running' || !draftPrompt.trim()}
+            >
+              {selected.data.status === 'running' ? (
+                <span className="scn-spin small" />
+              ) : (
+                <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+              )}
+              生成
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* ---- right agent panel ---- */}
+      <aside className="agent">
+        <div className="agent-head">
+          <span className="agent-dot" />
+          <b>AI Agent</b>
+          <small>{aiReady ? 'Vercel AI Gateway' : 'demo mode'}</small>
+        </div>
+
+        <div className="agent-actions">
+          {QUICK_ACTIONS.map((q) => (
+            <button
+              key={q.action}
+              title={q.hint}
+              disabled={agentBusy}
+              onClick={() => runAgent(q.action, chatInput || draftPrompt || canvasName)}
+            >
+              {q.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="agent-log" ref={chatScrollRef}>
+          {messages.length === 0 && (
+            <div className="agent-empty">
+              告诉我你的想法，我可以帮你润色 Prompt、头脑风暴、生成风格变体，或把一句话扩展成完整分镜并落到画布上。
+            </div>
+          )}
+          {messages.map((m) => (
+            <div key={m.id} className={`agent-msg ${m.role}`}>
+              {m.content}
+            </div>
+          ))}
+          {agentBusy && (
+            <div className="agent-msg assistant pending">
+              <span className="scn-spin small" /> 思考中…
+            </div>
+          )}
+        </div>
+
+        <form
+          className="agent-input"
+          onSubmit={(e) => {
+            e.preventDefault();
+            runAgent('chat');
+          }}
+        >
+          <textarea
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            placeholder="和 Agent 对话…（一句话生成分镜、问问题、要灵感）"
+            rows={2}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                runAgent('chat');
+              }
+            }}
+          />
+          <button type="submit" disabled={agentBusy || !chatInput.trim()}>
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          </button>
+        </form>
+      </aside>
+    </>
   );
 }
 
-export default function FlowCanvas({ prompt, model }) {
-  const [mounted] = useState(true); // ensures client-only render
+export default function FlowCanvas(props) {
   return (
-    <div className="flow-screen">
-      {mounted && (
-        <ReactFlowProvider>
-          <Flow prompt={prompt} model={model} />
-        </ReactFlowProvider>
-      )}
+    <div className="flow-screen has-agent">
+      <ReactFlowProvider>
+        <Flow {...props} />
+      </ReactFlowProvider>
     </div>
   );
 }

@@ -9,13 +9,15 @@
     "start": "next start -p 3000",
     "lint": "eslint .",
     "db:setup": "node db/setup.mjs",
-    "db:seed": "node db/seed.mjs"
+    "db:seed": "node db/seed.mjs",
+    "db:canvas": "node db/migrate-canvas.mjs"
   },
   "dependencies": {
     "@neondatabase/auth": "^0.4.2-beta",
     "@neondatabase/neon-js": "^0.6.2-beta",
     "@neondatabase/serverless": "^0.9.5",
     "@xyflow/react": "^12.11.1",
+    "ai": "^6.0.209",
     "next": "^16.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
