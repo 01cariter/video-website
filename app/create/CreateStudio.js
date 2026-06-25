@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ux, bg } from '../components/media';
 
 const TEMPLATES = [
@@ -13,22 +14,13 @@ const TEMPLATES = [
   { t: 'History deep-dive', k: 'study', img: '1509316785289-025f5b846b35' },
 ];
 
-const CHIPS = [
-  { id: 'auto', label: 'Auto', path: 'M12 3l2.1 4.8L19 9l-3.6 3.3L16.4 18 12 15.4 7.6 18l1-5.7L5 9l4.9-1.2Z' },
-  { id: 'storyboard', label: 'Storyboard', path: 'M4 6h16M4 12h10M4 18h7' },
-  { id: 'inspiration', label: 'Inspiration', path: null },
-  { id: 'lesson', label: 'Lesson', path: null },
-];
-
-const RESULT_POOL = [
-  '1536440136628-849c177e76a1',
-  '1492619375914-88005aa9e8fb',
-  '1518709268805-4e9042af9f23',
-  '1535016120720-40c646be5580',
-  '1478720568477-152d9b164e26',
-  '1550745165-9bc0b252726f',
-  '1492551557933-34265f7af79e',
-  '1579546929518-9e396f3cc809',
+// AI models the user can choose to generate with.
+export const MODELS = [
+  { id: 'runway-gen3', name: 'Runway Gen-3', tag: 'Cinematic' },
+  { id: 'luma-dream', name: 'Luma Dream Machine', tag: 'Fast' },
+  { id: 'kling-1.5', name: 'Kling 1.5', tag: 'Realistic' },
+  { id: 'pika-2', name: 'Pika 2.0', tag: 'Stylized' },
+  { id: 'sora', name: 'Sora', tag: 'High-fidelity' },
 ];
 
 function timeAgo(iso) {
@@ -41,10 +33,10 @@ function timeAgo(iso) {
 }
 
 export default function CreateStudio({ projects }) {
+  const router = useRouter();
   const [prompt, setPrompt] = useState('');
-  const [chip, setChip] = useState('auto');
-  const [results, setResults] = useState(null); // null | 'loading' | string[]
-  const [generating, setGenerating] = useState(false);
+  const [model, setModel] = useState(MODELS[0].id);
+  const [going, setGoing] = useState(false);
   const taRef = useRef(null);
 
   function toggleTheme() {
@@ -64,18 +56,22 @@ export default function CreateStudio({ projects }) {
     taRef.current?.focus();
   }
 
+  // Hand the prompt + chosen model to the AI workflow canvas (next page).
   function generate() {
     if (!prompt.trim()) {
       taRef.current?.focus();
       return;
     }
-    setGenerating(true);
-    setResults('loading');
-    setTimeout(() => {
-      const pool = [...RESULT_POOL].sort(() => Math.random() - 0.5).slice(0, 4);
-      setResults(pool);
-      setGenerating(false);
-    }, 1500);
+    setGoing(true);
+    const qs = new URLSearchParams({ prompt: prompt.trim(), model });
+    router.push(`/create/flow?${qs.toString()}`);
+  }
+
+  function onKeyDown(e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      generate();
+    }
   }
 
   return (
@@ -106,7 +102,7 @@ export default function CreateStudio({ projects }) {
 
       <div className="swrap">
         <h1 className="lead-h">What should we make?</h1>
-        <p className="leadsub">Describe a short, pick a template, or pick up where you left off.</p>
+        <p className="leadsub">Describe a short, choose an AI model, then open the workflow.</p>
 
         {/* composer */}
         <div className="composer">
@@ -120,36 +116,28 @@ export default function CreateStudio({ projects }) {
               ref={taRef}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={onKeyDown}
               placeholder="Describe the short you want to make — a topic, a style, or @mention a creator to remix…"
             />
           </div>
           <div className="row2">
-            {CHIPS.map((c) => (
-              <button
-                key={c.id}
-                className={`chip ${chip === c.id ? 'on' : ''}`}
-                onClick={() => setChip(c.id)}
-              >
-                {c.id === 'inspiration' ? (
-                  <svg viewBox="0 0 24 24">
-                    <circle cx="11" cy="11" r="7" />
-                    <path d="m20 20-3.2-3.2" />
-                  </svg>
-                ) : c.id === 'lesson' ? (
-                  <svg viewBox="0 0 24 24">
-                    <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12v15.5H5.5A1.5 1.5 0 0 1 4 18Z" />
-                    <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H12v15.5h6.5A1.5 1.5 0 0 0 20 18Z" />
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 24 24">
-                    <path d={c.path} />
-                  </svg>
-                )}{' '}
-                {c.label}
-              </button>
-            ))}
-            <button className="go" onClick={generate} disabled={generating} title="Generate">
-              {generating ? (
+            <label className="model-select" title="Choose an AI model">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3l2.1 4.8L19 9l-3.6 3.3L16.4 18 12 15.4 7.6 18l1-5.7L5 9l4.9-1.2Z" />
+              </svg>
+              <select value={model} onChange={(e) => setModel(e.target.value)}>
+                {MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} · {m.tag}
+                  </option>
+                ))}
+              </select>
+              <svg className="caret" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </label>
+            <button className="go" onClick={generate} disabled={going} title="Open workflow (⌘↵)">
+              {going ? (
                 <svg viewBox="0 0 24 24" style={{ animation: 'spin .8s linear infinite' }}>
                   <path d="M12 3a9 9 0 1 0 9 9" />
                 </svg>
@@ -161,28 +149,6 @@ export default function CreateStudio({ projects }) {
             </button>
           </div>
         </div>
-
-        {/* results gallery */}
-        {results && (
-          <div className="results show">
-            <div className="rcap">
-              <span className="dot" />
-              <span>{results === 'loading' ? 'Generating 4 takes…' : '4 takes ready — tap one to refine'}</span>
-            </div>
-            <div className="grid4">
-              {results === 'loading'
-                ? [0, 1, 2, 3].map((i) => <div className="rimg skel" key={i} />)
-                : results.map((id) => (
-                    <div
-                      className="rimg"
-                      key={id}
-                      style={{ backgroundImage: `url('${ux(id, 500)}')` }}
-                      title="Use this take"
-                    />
-                  ))}
-            </div>
-          </div>
-        )}
 
         {/* quick start */}
         <div className="slabel">Quick start</div>
@@ -242,7 +208,7 @@ export default function CreateStudio({ projects }) {
             } else {
               inner = <div className="thumb2" style={{ backgroundImage: `url('${ux(imgs[0], 400)}')` }} />;
             }
-            const metaStatus = p.status === 'draft' ? 'Empty' : 'Storyboard';
+            const metaStatus = p.status === 'draft' ? 'Empty' : 'In progress';
             return (
               <div className="rcard" key={p.id} onClick={() => setPrompt(`Continue editing: ${p.name}`)}>
                 {inner}
