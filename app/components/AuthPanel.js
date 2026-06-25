@@ -16,17 +16,6 @@ function GoogleIcon() {
   );
 }
 
-function MicrosoftIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-      <path fill="#F25022" d="M1 1h10.4v10.4H1z" />
-      <path fill="#7FBA00" d="M12.6 1H23v10.4H12.6z" />
-      <path fill="#00A4EF" d="M1 12.6h10.4V23H1z" />
-      <path fill="#FFB900" d="M12.6 12.6H23V23H12.6z" />
-    </svg>
-  );
-}
-
 export default function AuthPanel({ mode = 'login' }) {
   const isLogin = mode === 'login';
   const router = useRouter();
@@ -120,10 +109,6 @@ export default function AuthPanel({ mode = 'login' }) {
           <button type="button" className="social-btn" onClick={() => startSocial('google')} disabled={loading}>
             <GoogleIcon />
             <span>Continue with Google</span>
-          </button>
-          <button type="button" className="social-btn" onClick={() => startSocial('microsoft')} disabled={loading}>
-            <MicrosoftIcon />
-            <span>Continue with Microsoft</span>
           </button>
         </div>
 
