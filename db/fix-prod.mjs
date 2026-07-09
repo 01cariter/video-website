@@ -33,7 +33,7 @@ function splitStatements(file) {
 async function runSqlFile(name) {
   const file = await readFile(join(__dirname, name), 'utf8');
   const statements = splitStatements(file);
-  for (const statement of statements) await sql(statement);
+  for (const statement of statements) await sql.unsafe(statement);
   console.log(`  ✓ ${name} applied (${statements.length} statements).`);
 }
 

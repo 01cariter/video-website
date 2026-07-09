@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'motion/react';
-import { authClient } from '@/lib/auth/client';
+import { createClient } from '@/lib/supabase/client';
 import { aspect, bg, fmtLikes, initials } from './media';
 
 const FEED_COPY = {
@@ -54,6 +54,7 @@ function timeAgo(ts) {
 
 export default function HomeFeed({ user, initialVideos }) {
   const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
   const [videos, setVideos] = useState(initialVideos);
   const [mode, setMode] = useState('all');
   const [query, setQuery] = useState('');
@@ -105,7 +106,7 @@ export default function HomeFeed({ user, initialVideos }) {
   }
 
   async function logout() {
-    await authClient.signOut();
+    await supabase.auth.signOut();
     router.refresh();
   }
 

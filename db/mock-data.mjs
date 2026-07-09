@@ -1,6 +1,6 @@
 // ============================================================================
 // Mock data — migrated from the original static feed (index.html / create.html)
-// Consumed by db/seed.mjs to populate Neon.
+// Consumed by db/seed.mjs to populate Supabase Postgres.
 //
 // v2: creators are now REAL users (profiles). Demo authors use synthetic
 // `user_id`s prefixed with `seed_`. Imagery is generated as self-hosted SVG

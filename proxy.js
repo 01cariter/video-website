@@ -1,13 +1,41 @@
-import { auth } from '@/lib/auth/server';
+import { NextResponse } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
+import { getSupabasePublishableKey, getSupabaseUrl } from '@/lib/supabase/env';
 
-// Protect routes that require a signed-in user. Unauthenticated visitors are
-// redirected to /login by Neon Auth.
-export default auth.middleware({
-  loginUrl: '/login',
-});
+export async function proxy(request) {
+  let response = NextResponse.next({ request });
+
+  const supabase = createServerClient(getSupabaseUrl(), getSupabasePublishableKey(), {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        response = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) => {
+          response.cookies.set(name, value, options);
+        });
+      },
+    },
+  });
+
+  const { data } = await supabase.auth.getUser();
+  const { pathname, search } = request.nextUrl;
+
+  if (!data.user && pathname.startsWith('/create')) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    url.search = '';
+    url.searchParams.set('next', `${pathname}${search}`);
+    return NextResponse.redirect(url);
+  }
+
+  return response;
+}
 
 export const config = {
-  // `/auth/complete` must be matched so Neon Auth can exchange the OAuth
-  // verifier token (returned by Google/Microsoft) for a session cookie.
-  matcher: ['/create/:path*', '/create', '/auth/complete'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 };

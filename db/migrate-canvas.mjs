@@ -1,5 +1,5 @@
 // ============================================================================
-// Apply the AI canvas migration (db/canvas.sql) to Neon.
+// Apply the AI canvas migration (db/canvas.sql) to Supabase Postgres.
 // Usage:  npm run db:canvas
 // ============================================================================
 import { readFile } from 'node:fs/promises';
@@ -22,7 +22,7 @@ async function main() {
     .filter(Boolean);
 
   for (const statement of statements) {
-    await sql(statement);
+    await sql.unsafe(statement);
   }
   console.log(`  ✓ Migration applied (${statements.length} statements).\n`);
 }

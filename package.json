@@ -2,7 +2,7 @@
   "name": "video-website",
   "version": "1.0.0",
   "private": true,
-  "description": "Video Website — a short-form learning/play video app. Next.js (App Router) on Vercel, Neon Postgres storage, authentication powered by Neon Auth.",
+  "description": "Video Website — a short-form learning/play video app. Next.js (App Router) on Vercel with Supabase Postgres and Supabase Auth.",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
@@ -14,13 +14,13 @@
     "db:fix-prod": "node db/fix-prod.mjs"
   },
   "dependencies": {
-    "@neondatabase/auth": "^0.4.2-beta",
-    "@neondatabase/neon-js": "^0.6.2-beta",
-    "@neondatabase/serverless": "^0.9.5",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.89.0",
     "@xyflow/react": "^12.11.1",
     "ai": "^6.0.209",
     "motion": "^12.41.0",
     "next": "^16.0.0",
+    "postgres": "^3.4.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

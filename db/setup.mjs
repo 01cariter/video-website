@@ -24,15 +24,13 @@ async function applySchema() {
     .filter(Boolean);
 
   for (const statement of statements) {
-    // Neon's HTTP client (`neon()`) has no `.query()` method; it supports
-    // tagged-template usage or plain function usage `sql(queryString)`.
-    await sql(statement);
+    await sql.unsafe(statement);
   }
   console.log(`  ✓ Schema applied (${statements.length} statements).`);
 }
 
 async function main() {
-  console.log('\n  Setting up the Video Website database on Neon…\n');
+  console.log('\n  Setting up the Video Website database on Supabase Postgres…\n');
   await applySchema();
   await seed();
 }

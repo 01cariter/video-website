@@ -44,7 +44,7 @@ export async function GET(request, { params }) {
   return NextResponse.json({ error: 'Media has no content.' }, { status: 404 });
 }
 
-// Neon may return BYTEA as a Buffer or a `\x..` hex string.
+// Postgres clients may return BYTEA as a Buffer, Uint8Array or a `\x..` hex string.
 function toBuffer(data) {
   if (Buffer.isBuffer(data)) return data;
   if (data instanceof Uint8Array) return Buffer.from(data);

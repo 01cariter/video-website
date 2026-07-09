@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { authClient } from '@/lib/auth/client';
+import { createClient } from '@/lib/supabase/client';
 
 function GoogleIcon() {
   return (
@@ -20,7 +20,9 @@ export default function AuthPanel({ mode = 'login' }) {
   const isLogin = mode === 'login';
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get('next') || '/';
+  const supabase = useMemo(() => createClient(), []);
+  const rawNext = params.get('next') || '/';
+  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/';
   const initialError = params.get('error');
 
   const [error, setError] = useState(initialError ? 'Sign-in failed. Please try again.' : '');
@@ -38,17 +40,11 @@ export default function AuthPanel({ mode = 'login' }) {
     setError('');
     setLoading(true);
     try {
-      // Neon Auth redirects to the provider, then back to callbackURL. We must
-      // land on a route the middleware runs on (see proxy.js + /auth/complete)
-      // so the one-time verifier token can be exchanged for a session cookie.
-      // The real destination travels along as `?next=`.
       const origin = window.location.origin;
-      const callbackURL = `${origin}/auth/complete?next=${encodeURIComponent(next)}`;
-      const { error: err } = await authClient.signIn.social({
+      const callbackURL = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+      const { error: err } = await supabase.auth.signInWithOAuth({
         provider,
-        callbackURL,
-        newUserCallbackURL: callbackURL,
-        errorCallbackURL: `${origin}/login?error=oauth`,
+        options: { redirectTo: callbackURL },
       });
       if (err) {
         setError(err.message || `Could not sign in with ${provider}.`);
@@ -66,19 +62,28 @@ export default function AuthPanel({ mode = 'login' }) {
     setError('');
     setLoading(true);
     try {
-      const { error: err } = isLogin
-        ? await authClient.signIn.email({
+      const origin = window.location.origin;
+      const emailRedirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+      const { data, error: err } = isLogin
+        ? await supabase.auth.signInWithPassword({
             email: form.email,
             password: form.password,
           })
-        : await authClient.signUp.email({
+        : await supabase.auth.signUp({
             email: form.email,
             password: form.password,
-            name: form.name || form.email.split('@')[0],
+            options: {
+              data: { name: form.name || form.email.split('@')[0] },
+              emailRedirectTo,
+            },
           });
 
       if (err) {
         setError(err.message || (isLogin ? 'Invalid email or password.' : 'Could not create account.'));
+        return;
+      }
+      if (!isLogin && data?.user && !data?.session) {
+        setError('Check your email to finish creating your account.');
         return;
       }
       goNext();
