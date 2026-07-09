@@ -1,9 +1,9 @@
 // ============================================================================
-// Seed the Neon database with the migrated mock data.
+// Seed the Supabase database with the migrated mock data.
 // Usage:  npm run db:seed     (assumes the schema already exists)
 //         npm run db:setup    (creates the schema first, then seeds)
 //
-// NOTE: users are managed by Neon Auth (the `neon_auth` schema). This script
+// NOTE: users are managed by Supabase Auth (the `auth` schema). This script
 // seeds business content only:
 //   • demo author profiles (synthetic `seed_*` user ids)
 //   • self-hosted SVG poster media (no Unsplash)
@@ -84,7 +84,7 @@ export async function seed() {
     i++;
   }
 
-  console.log('  ✓ Seed complete. Sign up via Neon Auth to like, save, follow & comment.\n');
+  console.log('  ✓ Seed complete. Sign up via Supabase Auth to like, save, follow & comment.\n');
 }
 
 // Run when invoked directly (node db/seed.mjs).

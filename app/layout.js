@@ -2,7 +2,7 @@ import './globals.css';
 
 export const metadata = {
   title: 'Snackd — short-form learning & play',
-  description: 'A short-form learning/play video app. Next.js on Vercel, Neon Postgres.',
+  description: 'A short-form learning/play video app. Next.js on Vercel, Supabase Postgres.',
 };
 
 // Apply the saved theme before paint to avoid a flash of the wrong theme.

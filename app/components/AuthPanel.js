@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { authClient } from '@/lib/auth/client';
+import { supabase } from '@/lib/auth/client';
 
 function GoogleIcon() {
   return (
@@ -38,23 +38,20 @@ export default function AuthPanel({ mode = 'login' }) {
     setError('');
     setLoading(true);
     try {
-      // Neon Auth redirects to the provider, then back to callbackURL. We must
-      // land on a route the middleware runs on (see proxy.js + /auth/complete)
-      // so the one-time verifier token can be exchanged for a session cookie.
-      // The real destination travels along as `?next=`.
+      // Supabase redirects to the provider, then back to our OAuth callback
+      // route, which exchanges the `code` for a session cookie and forwards
+      // the browser to `next`.
       const origin = window.location.origin;
-      const callbackURL = `${origin}/auth/complete?next=${encodeURIComponent(next)}`;
-      const { error: err } = await authClient.signIn.social({
+      const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+      const { error: err } = await supabase.auth.signInWithOAuth({
         provider,
-        callbackURL,
-        newUserCallbackURL: callbackURL,
-        errorCallbackURL: `${origin}/login?error=oauth`,
+        options: { redirectTo },
       });
       if (err) {
         setError(err.message || `Could not sign in with ${provider}.`);
         setLoading(false);
       }
-      // On success the browser is redirected by the SDK.
+      // On success the browser is redirected by Supabase.
     } catch {
       setError('Something went wrong starting social sign-in.');
       setLoading(false);
@@ -67,14 +64,14 @@ export default function AuthPanel({ mode = 'login' }) {
     setLoading(true);
     try {
       const { error: err } = isLogin
-        ? await authClient.signIn.email({
+        ? await supabase.auth.signInWithPassword({
             email: form.email,
             password: form.password,
           })
-        : await authClient.signUp.email({
+        : await supabase.auth.signUp({
             email: form.email,
             password: form.password,
-            name: form.name || form.email.split('@')[0],
+            options: { data: { name: form.name || form.email.split('@')[0] } },
           });
 
       if (err) {

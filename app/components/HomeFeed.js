@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'motion/react';
-import { authClient } from '@/lib/auth/client';
+import { supabase } from '@/lib/auth/client';
 import { aspect, bg, fmtLikes, initials } from './media';
 
 const FEED_COPY = {
@@ -105,7 +105,7 @@ export default function HomeFeed({ user, initialVideos }) {
   }
 
   async function logout() {
-    await authClient.signOut();
+    await supabase.auth.signOut();
     router.refresh();
   }
 

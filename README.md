@@ -2,48 +2,51 @@
 
 A short-form learning/play video app — a feed of bite-sized "study" and "play"
 shorts with a vertical player, search, category filters, likes, and a Create
-studio. Built with **Next.js (App Router)**, **Neon Postgres**, and
-**Neon Auth** for authentication.
+studio. Built with **Next.js (App Router)**, **Supabase Postgres**, and
+**Supabase Auth** for authentication.
 
 ## Stack
 
-- [Next.js 14](https://nextjs.org) App Router (deployable on Vercel)
-- [Neon Postgres](https://neon.com) for business data (videos, likes, projects, profiles)
-- [Neon Auth](https://neon.com/docs/auth/overview) (`@neondatabase/auth` /
-  `@neondatabase/neon-js`) for sign-up / sign-in, sessions, and social providers
+- [Next.js 16](https://nextjs.org) App Router (deployable on Vercel)
+- [Supabase Postgres](https://supabase.com) for business data (videos, likes, projects, profiles)
+- [Supabase Auth](https://supabase.com/docs/guides/auth) (`@supabase/supabase-js` /
+  `@supabase/ssr`) for sign-up / sign-in, sessions, and social providers
 
-## Authentication (Neon Auth)
+## Authentication (Supabase Auth)
 
-Auth is fully managed by Neon Auth — users, sessions and providers live in the
-managed `neon_auth` schema. This app keeps only app-specific data in a
-`profiles` table (avatar colour, level, streak), keyed by the Neon Auth user id.
+Auth is fully managed by Supabase Auth — users, sessions and OAuth providers
+live in the managed `auth` schema. This app keeps only app-specific data in a
+`profiles` table (avatar colour, level, streak), keyed by the Supabase Auth
+user id (UUID).
 
 Supported sign-in methods:
 
-- **Email + password** (`authClient.signIn.email` / `signUp.email`)
-- **Google** and **Microsoft** social sign-in (`authClient.signIn.social`)
+- **Email + password** (`supabase.auth.signInWithPassword` / `signUp`)
+- **Google** social sign-in (`supabase.auth.signInWithOAuth`)
 
-> Social providers must be enabled in the Neon Console (Project → Branch → Auth
-> → Providers). No client secrets are stored in this repo.
+> The Google provider must be enabled in the Supabase Dashboard
+> (Authentication → Providers → Google) with your own OAuth client id/secret,
+> and the redirect URL `<your-domain>/auth/callback` added to the provider's
+> allowed redirect URIs.
 
 Key files:
 
 | File | Role |
 | --- | --- |
-| `lib/auth/server.js` | Server `createNeonAuth` instance (`handler`, `middleware`, `getSession`) |
-| `lib/auth/client.js` | Browser `createAuthClient` instance |
-| `lib/user.js` | `getCurrentUser()` — merges the Neon Auth session with the `profiles` row |
-| `app/api/auth/[...path]/route.js` | Catch-all Neon Auth endpoint (sign-in/out, OAuth callbacks) |
-| `middleware.js` | Protects `/create` via `auth.middleware()` |
+| `lib/auth/server.js` | Server Supabase client (`createClient`, `getAuthUser`) |
+| `lib/auth/client.js` | Browser Supabase client |
+| `lib/user.js` | `getCurrentUser()` — merges the Supabase Auth user with the `profiles` row |
+| `app/auth/callback/route.js` | OAuth callback — exchanges the `code` for a session |
+| `proxy.js` | Refreshes the session cookie + protects `/create` |
 
 ## Environment
 
 Copy `.env.example` to `.env.local` and fill in:
 
 ```bash
-DATABASE_URL=...              # Neon Postgres connection string
-NEON_AUTH_BASE_URL=...        # Neon Console → Auth → Configuration
-NEON_AUTH_COOKIE_SECRET=...   # openssl rand -base64 32  (32+ chars)
+SUPABASE_DB_URL=...             # Supabase Postgres pooled connection string
+NEXT_PUBLIC_SUPABASE_URL=...    # Project Settings → API
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ```
 
 ## Run locally
@@ -54,8 +57,8 @@ npm run db:setup     # creates the schema + seeds creators/videos
 npm run dev          # http://localhost:3000
 ```
 
-> Likes and projects start empty — sign up through Neon Auth, then start liking
-> shorts and creating projects.
+> Likes and projects start empty — sign up through Supabase Auth, then start
+> liking shorts and creating projects.
 
 Build for production:
 
@@ -71,13 +74,13 @@ npm start
 
 Schema (`db/schema.sql`): `profiles`, `media`, `videos`, `video_likes`,
 `video_saves`, `follows`, `comments`, `projects`. Business tables reference the
-Neon Auth user id via a `TEXT` `user_id` column.
+Supabase Auth user id via a `TEXT` `user_id` column.
 
 - **`media`** — self-hosted images & videos (no Unsplash). Served from a URL /
   `data:` URI or inline bytes via `GET /api/media/:id`. Uploads go through
   `POST /api/media` (multipart `file` or JSON `{ url, kind, mime, width, height }`).
 - **Creators are real users** — every video's `author_id` references a
-  `profiles` row (a Neon Auth user). Seeded demo authors use synthetic
+  `profiles` row (a Supabase Auth user). Seeded demo authors use synthetic
   `seed_*` ids.
 
 ## Features

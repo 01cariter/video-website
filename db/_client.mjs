@@ -1,16 +1,24 @@
-// Shared Neon client for the CLI scripts (setup / seed).
+// Shared Supabase Postgres client for the CLI scripts (setup / seed).
 // Loads env from .env / .env.local so you can run `npm run db:setup` locally.
 import { config } from 'dotenv';
-import { neon } from '@neondatabase/serverless';
+import postgres from 'postgres';
 
 config({ path: '.env.local' });
+config({ path: '.env.development.local' });
 config(); // fallback to .env
 
-const url = process.env.DATABASE_URL;
+const url =
+  process.env.SUPABASE_DB_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.DATABASE_URL;
+
 if (!url) {
-  console.error('\n  ✗ DATABASE_URL is not set.');
-  console.error('    Copy .env.example to .env.local and paste your Neon connection string.\n');
+  console.error('\n  ✗ SUPABASE_DB_URL is not set.');
+  console.error('    Copy .env.example to .env.local and paste your Supabase connection string.\n');
   process.exit(1);
 }
 
-export const sql = neon(url);
+export const sql = postgres(url, {
+  prepare: false,
+  ssl: 'require',
+});

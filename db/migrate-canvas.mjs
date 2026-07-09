@@ -22,7 +22,7 @@ async function main() {
     .filter(Boolean);
 
   for (const statement of statements) {
-    await sql(statement);
+    await sql.unsafe(statement);
   }
   console.log(`  ✓ Migration applied (${statements.length} statements).\n`);
 }

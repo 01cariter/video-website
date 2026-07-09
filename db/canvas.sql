@@ -1,7 +1,7 @@
 -- ============================================================================
 -- AI Canvas migration — adds canvas state to projects + agent chat history.
 -- Run with:  npm run db:canvas
--- Idempotent (safe to re-run).
+-- Idempotent (safe to re-run). Applies to Supabase Postgres.
 -- ============================================================================
 
 -- Canvas state lives directly on the project row as JSONB (fast autosave).
@@ -13,7 +13,7 @@ ALTER TABLE projects ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DE
 CREATE TABLE IF NOT EXISTS agent_messages (
   id         SERIAL PRIMARY KEY,
   project_id INTEGER     NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  user_id    TEXT        NOT NULL,                 -- Neon Auth user id
+  user_id    TEXT        NOT NULL,                 -- Supabase Auth user id
   role       TEXT        NOT NULL,                 -- user | assistant
   content    TEXT        NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
