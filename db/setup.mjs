@@ -15,18 +15,25 @@ async function applySchema() {
   const file = await readFile(join(__dirname, 'schema.sql'), 'utf8');
 
   // Strip comments, then split into individual statements.
-  const statements = file
-    .split('\n')
-    .filter((line) => !line.trim().startsWith('--'))
-    .join('\n')
-    .split(';')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const statements = splitStatements(file);
 
   for (const statement of statements) {
     await sql.unsafe(statement);
   }
   console.log(`  ✓ Schema applied (${statements.length} statements).`);
+}
+
+function splitStatements(file) {
+  return file
+    .split('\n')
+    .map((line) => {
+      const i = line.indexOf('--');
+      return i >= 0 ? line.slice(0, i) : line;
+    })
+    .join('\n')
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 async function main() {

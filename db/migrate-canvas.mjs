@@ -15,7 +15,10 @@ async function main() {
 
   const statements = file
     .split('\n')
-    .filter((line) => !line.trim().startsWith('--'))
+    .map((line) => {
+      const i = line.indexOf('--');
+      return i >= 0 ? line.slice(0, i) : line;
+    })
     .join('\n')
     .split(';')
     .map((s) => s.trim())
