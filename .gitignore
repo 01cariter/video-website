@@ -29,3 +29,6 @@ dist/
 # Vercel
 .vercel
 .env*
+
+# Local visual brainstorming previews
+.superpowers/
