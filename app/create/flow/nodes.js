@@ -1,7 +1,8 @@
 'use client';
 
 import { memo } from 'react';
-import { Handle, Position } from '@xyflow/react';
+
+import MediaNodeFrame from './MediaNodeFrame';
 
 // ---------------------------------------------------------------------------
 // Free-form AI canvas node. Every node is a "scene / shot" card that holds a
@@ -10,55 +11,7 @@ import { Handle, Position } from '@xyflow/react';
 // ---------------------------------------------------------------------------
 
 function SceneNode({ data }) {
-  const { title, prompt, status = 'idle', poster, caption, ratio = '16:9', duration = '5s' } = data;
-  const aspect = ratio === '9:16' ? '9 / 16' : ratio === '1:1' ? '1 / 1' : '16 / 9';
-
-  return (
-    <div className={`scn scn-${status}`}>
-      <Handle type="target" position={Position.Left} />
-      <div className="scn-head">
-        <span className="scn-title">{title || 'Scene'}</span>
-        <span className={`scn-badge ${status}`}>
-          {status === 'running' ? 'Generating' : status === 'done' ? 'Ready' : 'Draft'}
-        </span>
-        {data.connected && (
-          <span className="scn-link" title="已连接上一节点：生成时参考其画面">
-            <svg viewBox="0 0 24 24"><path d="M9 12h6M10 8l-4 4 4 4M14 8l4 4-4 4" /></svg>
-          </span>
-        )}
-      </div>
-
-      <div className="scn-media" style={{ aspectRatio: aspect }}>
-        {status === 'done' && poster ? (
-          <>
-            <img src={poster} alt={title || 'result'} draggable={false} />
-            <span className="scn-play">
-              <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-            </span>
-            <span className="scn-dur">{duration}</span>
-          </>
-        ) : status === 'running' ? (
-          <div className="scn-loading">
-            <span className="scn-spin" />
-            <span className="scn-loading-txt">Generating…</span>
-          </div>
-        ) : (
-          <div className="scn-empty">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="16" rx="3" />
-              <path d="M10 9l5 3-5 3z" />
-            </svg>
-          </div>
-        )}
-      </div>
-
-      <div className="scn-body">
-        <p className="scn-prompt">{caption || prompt || 'No prompt yet — select and describe below.'}</p>
-      </div>
-
-      <Handle type="source" position={Position.Right} />
-    </div>
-  );
+  return <MediaNodeFrame kind="video" data={data} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,59 +20,7 @@ function SceneNode({ data }) {
 // ---------------------------------------------------------------------------
 
 function ImageNode({ data }) {
-  const { title, prompt, status = 'idle', poster, ratio = '1:1' } = data;
-  const aspect = ratio === '16:9' ? '16 / 9' : ratio === '9:16' ? '9 / 16' : '1 / 1';
-
-  return (
-    <div className={`scn scn-image scn-${status}`}>
-      <Handle type="target" position={Position.Left} />
-      <div className="scn-head">
-        <span className="scn-title">
-          <span className="scn-kind img" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
-              <rect x="3" y="3" width="18" height="18" rx="3" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <path d="M21 15l-5-5L5 21" />
-            </svg>
-          </span>
-          {title || 'Image'}
-        </span>
-        <span className={`scn-badge ${status}`}>
-          {status === 'running' ? 'Generating' : status === 'done' ? 'Ready' : 'Draft'}
-        </span>
-        {data.connected && (
-          <span className="scn-link" title="已连接上一节点：生成时参考其画面">
-            <svg viewBox="0 0 24 24"><path d="M9 12h6M10 8l-4 4 4 4M14 8l4 4-4 4" /></svg>
-          </span>
-        )}
-      </div>
-
-      <div className="scn-media" style={{ aspectRatio: aspect }}>
-        {status === 'done' && poster ? (
-          <img src={poster} alt={title || 'image'} draggable={false} />
-        ) : status === 'running' ? (
-          <div className="scn-loading">
-            <span className="scn-spin" />
-            <span className="scn-loading-txt">Generating…</span>
-          </div>
-        ) : (
-          <div className="scn-empty">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="3" y="3" width="18" height="18" rx="3" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <path d="M21 15l-5-5L5 21" />
-            </svg>
-          </div>
-        )}
-      </div>
-
-      <div className="scn-body">
-        <p className="scn-prompt">{prompt || 'No prompt yet — select and describe below.'}</p>
-      </div>
-
-      <Handle type="source" position={Position.Right} />
-    </div>
-  );
+  return <MediaNodeFrame kind="image" data={data} />;
 }
 
 export const nodeTypes = { scene: memo(SceneNode), image: memo(ImageNode) };
@@ -162,6 +63,7 @@ export function makeImageNode(partial = {}) {
       prompt: partial.prompt || '',
       status: 'idle',
       poster: null,
+      model: partial.model || 'imagen-4-fast',
       ratio: partial.ratio || '1:1',
       style: partial.style || 'cinematic',
       ...partial.data,
