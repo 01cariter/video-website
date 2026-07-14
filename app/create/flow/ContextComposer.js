@@ -47,7 +47,11 @@ export default function ContextComposer({
           <Link2 aria-hidden="true" />
           {incomingRefs.map((ref) => (
             <span className="reference-chip" key={ref.id} title={ref.title}>
-              {ref.poster ? <img src={ref.poster} alt="" /> : null}
+              {ref.poster ? (
+                // Reference thumbnails can be remote, signed, or data URLs.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={ref.poster} alt="" />
+              ) : null}
               <span>{ref.title}</span>
             </span>
           ))}

@@ -1,5 +1,12 @@
 const DEFAULT_HISTORY_LIMIT = 50;
 
+export function getMediaAspectRatio(ratio, kind) {
+  if (ratio === '16:9') return '16 / 9';
+  if (ratio === '9:16') return '9 / 16';
+  if (ratio === '1:1') return '1 / 1';
+  return kind === 'image' ? '1 / 1' : '16 / 9';
+}
+
 export function getSelectedNode(nodes, selectedId) {
   if (!selectedId || !Array.isArray(nodes)) return null;
   return nodes.find((node) => node.id === selectedId) || null;

@@ -5,6 +5,7 @@ import {
   appendHistory,
   createCanvasSnapshot,
   getIncomingRefs,
+  getMediaAspectRatio,
   getSelectedNode,
   persistCanvas,
   takeUndo,
@@ -34,6 +35,14 @@ test('derives compact incoming references from source nodes', () => {
     { id: 'a', poster: '/a.jpg', prompt: 'first', title: 'Source' },
   ]);
   assert.deepEqual(getIncomingRefs(nodes, edges, 'a'), []);
+});
+
+test('maps every supported image and video ratio to its canvas aspect ratio', () => {
+  assert.equal(getMediaAspectRatio('16:9', 'image'), '16 / 9');
+  assert.equal(getMediaAspectRatio('9:16', 'image'), '9 / 16');
+  assert.equal(getMediaAspectRatio('1:1', 'image'), '1 / 1');
+  assert.equal(getMediaAspectRatio(undefined, 'image'), '1 / 1');
+  assert.equal(getMediaAspectRatio(undefined, 'video'), '16 / 9');
 });
 
 test('creates snapshots isolated from later canvas mutations', () => {

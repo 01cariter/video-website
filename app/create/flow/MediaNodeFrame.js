@@ -10,11 +10,7 @@ import {
   Video,
 } from 'lucide-react';
 
-function getAspectRatio(ratio, isImage) {
-  if (ratio === '9:16') return '9 / 16';
-  if (ratio === '1:1') return '1 / 1';
-  return isImage ? '1 / 1' : '16 / 9';
-}
+import { getMediaAspectRatio } from './flow-state';
 
 export default function MediaNodeFrame({ kind, data }) {
   const isImage = kind === 'image';
@@ -39,9 +35,11 @@ export default function MediaNodeFrame({ kind, data }) {
 
       <div
         className="media-node__surface"
-        style={{ aspectRatio: getAspectRatio(data.ratio, isImage) }}
+        style={{ aspectRatio: getMediaAspectRatio(data.ratio, kind) }}
       >
         {hasResult ? (
+          // Generated media can be remote, signed, or data URLs, so next/image cannot safely optimize it.
+          // eslint-disable-next-line @next/next/no-img-element
           <img src={data.poster} alt={data.title || 'Generated media'} draggable={false} />
         ) : null}
 
