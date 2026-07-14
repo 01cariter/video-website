@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/user';
 import { getCanvas, getOrCreateCanvas, getMessages } from '@/lib/canvas';
 import { aiConfigured } from '@/lib/ai';
+import '@xyflow/react/dist/style.css';
 import FlowCanvas from './FlowCanvas';
 
 // AI canvas. Protected, like the rest of /create.

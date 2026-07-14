@@ -15,7 +15,6 @@ import {
   useEdgesState,
   useReactFlow,
 } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
 
 import { nodeTypes, makeSceneNode, makeImageNode } from './nodes';
 
