@@ -85,6 +85,21 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
   const selected = useMemo(() => nodes.find((n) => n.id === selectedId) || null, [nodes, selectedId]);
   const [draftPrompt, setDraftPrompt] = useState(selected?.data?.prompt || '');
 
+  // Nodes connected INTO the selected node — used to show the continuity chip
+  // and to feed the previous frame/images into generation.
+  const incomingRefs = useMemo(() => {
+    if (!selected) return [];
+    return edges
+      .filter((e) => e.target === selected.id)
+      .map((e) => nodes.find((n) => n.id === e.source))
+      .filter(Boolean)
+      .map((n) => ({
+        poster: n.data?.poster || null,
+        prompt: n.data?.prompt || '',
+        title: n.data?.title || n.id,
+      }));
+  }, [edges, nodes, selected]);
+
   // Sync the bottom-panel draft when the selection changes (adjust state during
   // render — React's recommended pattern instead of an effect).
   const [prevSel, setPrevSel] = useState(selectedId);
@@ -145,6 +160,19 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
     setSelectedId(sel?.[0]?.id || null);
   }, []);
 
+  // Reflect connection state onto each node's data so the card can show a
+  // "connected to previous" indicator on the canvas.
+  useEffect(() => {
+    const withIncoming = new Set(edges.map((e) => e.target));
+    setNodes((ns) =>
+      ns.map((n) => {
+        const connected = withIncoming.has(n.id);
+        if (n.data?.connected === connected) return n;
+        return { ...n, data: { ...n.data, connected } };
+      }),
+    );
+  }, [edges, setNodes]);
+
   const addNode = useCallback(
     (kind = 'video') => {
       const count = nodes.length + 1;
@@ -183,6 +211,18 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
       const prompt = (overrides.prompt ?? node.data.prompt ?? '').trim();
       if (!prompt) return;
 
+      // Collect upstream nodes connected into this one (canvas edges) so the
+      // generation can continue the previous frame/image.
+      const refs = edges
+        .filter((e) => e.target === id)
+        .map((e) => nodes.find((n) => n.id === e.source))
+        .filter(Boolean)
+        .map((n) => ({
+          poster: n.data?.poster || null,
+          prompt: n.data?.prompt || '',
+          title: n.data?.title || n.id,
+        }));
+
       const isImage = node.type === 'image';
       const cfg = isImage
         ? {
@@ -191,6 +231,7 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
             model: overrides.model ?? node.data.model,
             ratio: overrides.ratio ?? node.data.ratio,
             style: overrides.style ?? node.data.style,
+            refs,
           }
         : {
             kind: 'video',
@@ -199,6 +240,7 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
             mode: overrides.mode ?? node.data.mode,
             ratio: overrides.ratio ?? node.data.ratio,
             duration: overrides.duration ?? node.data.duration,
+            refs,
           };
       patch(id, { ...cfg, status: 'running', caption: '' });
 
@@ -215,7 +257,7 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
         patch(id, { status: 'done', caption: 'Generation failed — please retry.' });
       }
     },
-    [nodes, patch],
+    [nodes, edges, patch],
   );
 
   const submitDraft = useCallback(
@@ -322,14 +364,21 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
         </Panel>
 
         <Panel position="top-right" className="flow-tools">
-          <div className="flow-add-wrap" ref={addMenuRef}>
-            <button className="flow-add" onClick={() => setAddMenuOpen((o) => !o)}>
+          <span className="flow-hint">拖动节点右侧圆点连线，可让下一镜参考上一镜画面</span>
+        </Panel>
+      </ReactFlow>
+
+      {/* ---- bottom generation panel (figure 2) ---- */}
+      <form className="genbar" onSubmit={submitDraft}>
+        <div className="genbar-top">
+          <div className="genbar-add-wrap" ref={addMenuRef}>
+            <button type="button" className="genbar-add" onClick={() => setAddMenuOpen((o) => !o)}>
               <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
               添加节点
             </button>
             {addMenuOpen && (
-              <div className="flow-add-menu">
-                <button onClick={() => addNode('video')}>
+              <div className="genbar-add-menu">
+                <button type="button" onClick={() => addNode('video')}>
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <rect x="3" y="5" width="18" height="14" rx="3" />
                     <path d="M10 9l5 3-5 3z" />
@@ -339,7 +388,7 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
                     <small>文生视频 / 关键帧</small>
                   </span>
                 </button>
-                <button onClick={() => addNode('image')}>
+                <button type="button" onClick={() => addNode('image')}>
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <rect x="3" y="3" width="18" height="18" rx="3" />
                     <circle cx="8.5" cy="8.5" r="1.5" />
@@ -353,102 +402,118 @@ function Flow({ projectId, name, initialNodes, initialEdges, initialMessages, in
               </div>
             )}
           </div>
-        </Panel>
-      </ReactFlow>
 
-      {/* ---- bottom generation panel (figure 2) ---- */}
-      {selected && (
-        <form className="genbar" onSubmit={submitDraft}>
-          <div className="genbar-top">
-            <span className="genbar-label">
-              <span className={`genbar-tag ${selected.type === 'image' ? 'img' : 'vid'}`}>
-                {selected.type === 'image' ? '图片' : '视频'}
+          {selected ? (
+            <>
+              <span className="genbar-label">
+                <span className={`genbar-tag ${selected.type === 'image' ? 'img' : 'vid'}`}>
+                  {selected.type === 'image' ? '图片' : '视频'}
+                </span>
+                {selected.data.title}
               </span>
-              {selected.data.title}
-            </span>
-            <div className="genbar-selects">
-              {selected.type === 'image' ? (
-                <>
-                  <select
-                    value={selected.data.style}
-                    onChange={(e) => patch(selected.id, { style: e.target.value })}
-                  >
-                    {IMAGE_STYLES.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                  <select
-                    value={selected.data.model}
-                    onChange={(e) => patch(selected.id, { model: e.target.value })}
-                  >
-                    {IMAGE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
-                  <select
-                    value={selected.data.ratio}
-                    onChange={(e) => patch(selected.id, { ratio: e.target.value })}
-                  >
-                    {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                </>
-              ) : (
-                <>
-                  <select
-                    value={selected.data.mode}
-                    onChange={(e) => patch(selected.id, { mode: e.target.value })}
-                  >
-                    {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                  <select
-                    value={selected.data.model}
-                    onChange={(e) => patch(selected.id, { model: e.target.value })}
-                  >
-                    {MODELS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
-                  <select
-                    value={selected.data.ratio}
-                    onChange={(e) => patch(selected.id, { ratio: e.target.value })}
-                  >
-                    {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                  <select
-                    value={selected.data.duration}
-                    onChange={(e) => patch(selected.id, { duration: e.target.value })}
-                  >
-                    {DURATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                </>
-              )}
+              <div className="genbar-selects">
+                {selected.type === 'image' ? (
+                  <>
+                    <select
+                      value={selected.data.style}
+                      onChange={(e) => patch(selected.id, { style: e.target.value })}
+                    >
+                      {IMAGE_STYLES.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    <select
+                      value={selected.data.model}
+                      onChange={(e) => patch(selected.id, { model: e.target.value })}
+                    >
+                      {IMAGE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </select>
+                    <select
+                      value={selected.data.ratio}
+                      onChange={(e) => patch(selected.id, { ratio: e.target.value })}
+                    >
+                      {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </>
+                ) : (
+                  <>
+                    <select
+                      value={selected.data.mode}
+                      onChange={(e) => patch(selected.id, { mode: e.target.value })}
+                    >
+                      {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <select
+                      value={selected.data.model}
+                      onChange={(e) => patch(selected.id, { model: e.target.value })}
+                    >
+                      {MODELS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </select>
+                    <select
+                      value={selected.data.ratio}
+                      onChange={(e) => patch(selected.id, { ratio: e.target.value })}
+                    >
+                      {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                    <select
+                      value={selected.data.duration}
+                      onChange={(e) => patch(selected.id, { duration: e.target.value })}
+                    >
+                      {DURATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <span className="genbar-hint">选择一个节点开始编辑，或点击「添加节点」新建</span>
+          )}
+        </div>
+
+        {selected ? (
+          <>
+            {incomingRefs.length > 0 && (
+              <div className="genbar-chain">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9 12h6M10 8l-4 4 4 4M14 8l4 4-4 4" />
+                </svg>
+                已连接上一镜：{incomingRefs.map((r) => r.title).join('、')} — 生成时将参考其画面
+              </div>
+            )}
+            <div className="genbar-row">
+              <textarea
+                className="genbar-input"
+                value={draftPrompt}
+                onChange={(e) => {
+                  setDraftPrompt(e.target.value);
+                  patch(selected.id, { prompt: e.target.value });
+                }}
+                placeholder={selected.type === 'image'
+                  ? '描述要生成的图片：主体、场景、风格、光线、细节…'
+                  : '描述这一镜的画面：主体、动作、镜头、光线、氛围…'}
+                rows={1}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitDraft(e);
+                }}
+              />
+              <button
+                type="submit"
+                className="genbar-go"
+                disabled={selected.data.status === 'running' || !draftPrompt.trim()}
+              >
+                {selected.data.status === 'running' ? (
+                  <span className="scn-spin small" />
+                ) : (
+                  <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                )}
+                生成
+              </button>
             </div>
-          </div>
+          </>
+        ) : (
           <div className="genbar-row">
-            <textarea
-              className="genbar-input"
-              value={draftPrompt}
-              onChange={(e) => {
-                setDraftPrompt(e.target.value);
-                patch(selected.id, { prompt: e.target.value });
-              }}
-              placeholder={selected.type === 'image'
-                ? '描述要生成的图片：主体、场景、风格、光线、细节…'
-                : '描述这一镜的画面：主体、动作、镜头、光线、氛围…'}
-              rows={1}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitDraft(e);
-              }}
-            />
-            <button
-              type="submit"
-              className="genbar-go"
-              disabled={selected.data.status === 'running' || !draftPrompt.trim()}
-            >
-              {selected.data.status === 'running' ? (
-                <span className="scn-spin small" />
-              ) : (
-                <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-              )}
-              生成
-            </button>
+            <span className="genbar-hint">提示：把节点右侧连线拖到下一个节点，可让生成参考上一镜画面</span>
           </div>
-        </form>
-      )}
+        )}
+      </form>
 
       {/* ---- right agent panel ---- */}
       <aside className="agent">

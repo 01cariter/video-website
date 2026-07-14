@@ -280,25 +280,35 @@ button{font-family:inherit}
 .flow-demo{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--orange-d);
   background:var(--play-bg);padding:3px 7px;border-radius:6px}
 
-/* top-right tools */
+/* top-right hint */
 .flow-tools{display:flex;gap:8px}
-.flow-add{display:inline-flex;align-items:center;gap:6px;background:var(--orange);color:#fff;border:none;
+.flow-hint{font-size:11.5px;font-weight:600;color:var(--muted);background:var(--bar);border:2px solid var(--line);
+  border-radius:999px;padding:7px 13px;backdrop-filter:blur(8px);box-shadow:0 12px 30px -22px rgba(0,0,0,.5)}
+
+/* add-node menu (now lives in the bottom generation bar) */
+.genbar-add-wrap{position:relative;flex:0 0 auto}
+.genbar-add{display:inline-flex;align-items:center;gap:6px;background:var(--orange);color:#fff;border:none;
   font-family:inherit;font-weight:600;font-size:13px;padding:9px 14px;border-radius:999px;cursor:pointer;transition:.15s;
   box-shadow:0 12px 30px -22px rgba(0,0,0,.5)}
-.flow-add:hover{background:var(--orange-d)}
-.flow-add svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round}
-.flow-add-wrap{position:relative}
-.flow-add-menu{position:absolute;top:calc(100% + 8px);right:0;z-index:50;width:236px;background:var(--panel);
+.genbar-add:hover{background:var(--orange-d)}
+.genbar-add svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round}
+.genbar-add-menu{position:absolute;top:calc(100% + 8px);left:0;z-index:50;width:236px;background:var(--panel);
   border:2px solid var(--line);border-radius:14px;padding:6px;box-shadow:0 22px 50px -30px rgba(0,0,0,.55);
   display:flex;flex-direction:column;gap:4px}
-.flow-add-menu button{display:flex;align-items:center;gap:11px;width:100%;text-align:left;border:none;background:transparent;
+.genbar-add-menu button{display:flex;align-items:center;gap:11px;width:100%;text-align:left;border:none;background:transparent;
   color:var(--ink);font-family:inherit;padding:9px 10px;border-radius:10px;cursor:pointer;transition:.12s}
-.flow-add-menu button:hover{background:var(--hover)}
-.flow-add-menu svg{width:22px;height:22px;flex:0 0 auto;fill:none;stroke:var(--orange-d);stroke-width:1.9;
+.genbar-add-menu button:hover{background:var(--hover)}
+.genbar-add-menu svg{width:22px;height:22px;flex:0 0 auto;fill:none;stroke:var(--orange-d);stroke-width:1.9;
   stroke-linecap:round;stroke-linejoin:round}
-.flow-add-menu span{display:flex;flex-direction:column;gap:1px}
-.flow-add-menu b{font-size:13px;font-weight:600}
-.flow-add-menu small{font-size:11px;color:var(--muted)}
+.genbar-add-menu span{display:flex;flex-direction:column;gap:1px}
+.genbar-add-menu b{font-size:13px;font-weight:600}
+.genbar-add-menu small{font-size:11px;color:var(--muted)}
+
+/* genbar empty-state / continuity hints */
+.genbar-hint{font-size:12.5px;font-weight:600;color:var(--muted)}
+.genbar-chain{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:#2f8d59;
+  background:#e2f3e8;border-radius:10px;padding:7px 11px}
+.genbar-chain svg{width:16px;height:16px;flex:0 0 auto;fill:none;stroke:#2f8d59;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
 /* leave room for the agent panel */
 .flow-screen.has-agent .react-flow__panel.top.right{right:356px}
@@ -316,9 +326,11 @@ button{font-family:inherit}
 .scn{width:236px;background:var(--panel);border:2px solid var(--line);border-radius:15px;overflow:hidden;
   box-shadow:0 18px 40px -30px rgba(0,0,0,.55);font-family:'Inter',system-ui,sans-serif;transition:border-color .15s,box-shadow .15s}
 .react-flow__node.selected .scn{border-color:var(--orange);box-shadow:0 0 0 3px var(--play-bg),0 18px 40px -26px rgba(0,0,0,.55)}
-.scn-head{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:2px solid var(--line);background:var(--field)}
+.scn-head{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:2px solid var(--line);background:var(--field)}
 .scn-title{font-weight:600;font-size:13px}
-.scn-badge{font-size:10.5px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:999px;color:var(--muted);background:var(--hover)}
+.scn-badge{font-size:10.5px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:999px;color:var(--muted);background:var(--hover);margin-left:auto}
+.scn-link{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:6px;background:var(--play-bg);color:var(--orange-d);margin-left:6px}
+.scn-link svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .scn-badge.running{color:#c9881f;background:#fbeecf}
 .scn-badge.done{color:#2f8d59;background:#e2f3e8}
 .scn-media{position:relative;width:100%;background:var(--field);display:grid;place-items:center;overflow:hidden}

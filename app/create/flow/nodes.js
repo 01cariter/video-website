@@ -21,6 +21,11 @@ function SceneNode({ data }) {
         <span className={`scn-badge ${status}`}>
           {status === 'running' ? 'Generating' : status === 'done' ? 'Ready' : 'Draft'}
         </span>
+        {data.connected && (
+          <span className="scn-link" title="已连接上一节点：生成时参考其画面">
+            <svg viewBox="0 0 24 24"><path d="M9 12h6M10 8l-4 4 4 4M14 8l4 4-4 4" /></svg>
+          </span>
+        )}
       </div>
 
       <div className="scn-media" style={{ aspectRatio: aspect }}>
@@ -82,6 +87,11 @@ function ImageNode({ data }) {
         <span className={`scn-badge ${status}`}>
           {status === 'running' ? 'Generating' : status === 'done' ? 'Ready' : 'Draft'}
         </span>
+        {data.connected && (
+          <span className="scn-link" title="已连接上一节点：生成时参考其画面">
+            <svg viewBox="0 0 24 24"><path d="M9 12h6M10 8l-4 4 4 4M14 8l4 4-4 4" /></svg>
+          </span>
+        )}
       </div>
 
       <div className="scn-media" style={{ aspectRatio: aspect }}>
