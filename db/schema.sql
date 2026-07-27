@@ -47,6 +47,9 @@ CREATE TABLE profiles (
   level           INTEGER     NOT NULL DEFAULT 1,
   streak          INTEGER     NOT NULL DEFAULT 0,
   followers_count INTEGER     NOT NULL DEFAULT 0,
+  CONSTRAINT profiles_nonnegative_counters CHECK (
+    level >= 1 AND streak >= 0 AND followers_count >= 0
+  ),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -93,6 +96,12 @@ CREATE TABLE videos (
   saves_count     INTEGER     NOT NULL DEFAULT 0,
   comments_count  INTEGER     NOT NULL DEFAULT 0,
   views_count     INTEGER     NOT NULL DEFAULT 0,
+  CONSTRAINT videos_nonnegative_counters CHECK (
+    likes_count >= 0
+    AND saves_count >= 0
+    AND comments_count >= 0
+    AND views_count >= 0
+  ),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
