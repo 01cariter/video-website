@@ -15,9 +15,9 @@ node_modules/
 
 # Next.js
 .next/
+*.tsbuildinfo
 out/
 build/
-next-env.d.ts
 
 # Legacy static-site build output (pre-Next.js)
 dist/
@@ -29,3 +29,6 @@ dist/
 # Vercel
 .vercel
 .env*
+
+# Local code intelligence index
+.codegraph/

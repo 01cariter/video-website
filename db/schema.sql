@@ -15,6 +15,7 @@
 
 -- Drop in dependency order so the script is re-runnable.
 DROP TABLE IF EXISTS comments     CASCADE;
+DROP TABLE IF EXISTS agent_messages CASCADE;
 DROP TABLE IF EXISTS video_saves  CASCADE;
 DROP TABLE IF EXISTS video_likes  CASCADE;
 DROP TABLE IF EXISTS follows      CASCADE;
@@ -147,18 +148,3 @@ CREATE TABLE comments (
 );
 
 CREATE INDEX idx_comments_video ON comments (video_id, created_at DESC);
-
--- ----------------------------------------------------------------------------
--- projects — drafts in the "Create studio". Thumbnails reference self-hosted
--- media rows (was Unsplash photo ids).
--- ----------------------------------------------------------------------------
-CREATE TABLE projects (
-  id         SERIAL      PRIMARY KEY,
-  user_id    TEXT        NOT NULL,                  -- Supabase Auth user id
-  name       TEXT        NOT NULL,
-  status     TEXT        NOT NULL DEFAULT 'draft',  -- draft | storyboard | published
-  media_ids  INTEGER[]   NOT NULL DEFAULT '{}',     -- media ids for thumbnail
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX idx_projects_user ON projects (user_id);
