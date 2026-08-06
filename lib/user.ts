@@ -12,7 +12,6 @@ interface ProfileRow extends Record<string, unknown> {
   handle: string | null;
   avatar_color: string;
   xp: number;
-  streak: number;
   followers_count: number;
 }
 
@@ -54,22 +53,10 @@ export async function getCurrentUser(): Promise<AppUser | null> {
     VALUES (${authUser.id}, ${displayName}, ${handle}, ${randomColor()})
     ON CONFLICT (user_id) DO UPDATE SET display_name = EXCLUDED.display_name
     RETURNING handle, avatar_color, followers_count,
-      -- Same derivation the profile page uses: the stored level/streak columns
-      -- were never written to, so they always read 1 and 0.
+      -- Same derivation the profile page uses: the stored level column was
+      -- never written to, so it always read 1.
       (SELECT COALESCE(SUM(v.likes_count * 2 + v.saves_count * 3 + 10), 0)
-       FROM videos v WHERE v.author_id = ${authUser.id})::integer AS xp,
-      (
-        WITH days AS (
-          SELECT DISTINCT (v.created_at AT TIME ZONE 'UTC')::date AS day
-          FROM videos v WHERE v.author_id = ${authUser.id}
-        ), walked AS (
-          SELECT day, MAX(day) OVER () AS latest,
-                 (ROW_NUMBER() OVER (ORDER BY day DESC) - 1)::integer AS back
-          FROM days
-        )
-        SELECT COUNT(*) FROM walked
-        WHERE latest >= CURRENT_DATE - 1 AND day = latest - back
-      )::integer AS streak
+       FROM videos v WHERE v.author_id = ${authUser.id})::integer AS xp
   `;
 
   if (!profile) throw new Error('Could not load the current user profile.');
@@ -83,7 +70,6 @@ export async function getCurrentUser(): Promise<AppUser | null> {
     avatar_color: profile.avatar_color,
     xp: profile.xp,
     level: levelFromXp(profile.xp),
-    streak: profile.streak,
     followers_count: profile.followers_count,
   };
 }

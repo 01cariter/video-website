@@ -597,7 +597,7 @@ export default function HomeFeed({
                 </span>
                 <span className="txt">
                   <b>{user.display_name}</b>
-                  <small>Lvl {user.level} · Streak {user.streak}</small>
+                  <small>Lvl {user.level}</small>
                 </span>
               </Link>
               <button type="button" className="logout" onClick={logout} title="Sign out" aria-label="Sign out">

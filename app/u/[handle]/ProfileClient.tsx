@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence } from 'motion/react';
-import { ArrowLeft, Bookmark, Flame, Plus, Sparkles } from 'lucide-react';
+import { ArrowLeft, Bookmark, Plus, Sparkles } from 'lucide-react';
 import type { AppUser, Profile, SocialToggle, Video } from '@/lib/types';
 import { getSoloUrl } from '@/lib/solo';
-import { LEVEL_RULE, levelProgress, xpForLevel } from '@/lib/levels';
+import { LEVEL_RULE, levelProgress } from '@/lib/levels';
 import CreateModal from '@/app/components/CreateModal';
 import { cardSize, fmtLikes, initials } from '@/app/components/media';
 import VideoCard from '@/app/components/VideoCard';
@@ -116,23 +116,14 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
 
           <div className="pf-actions">
             {isOwner ? (
-              <>
-                <button
-                  type="button"
-                  className="pf-primary"
-                  onClick={() => setCreateOpen(true)}
-                >
-                  <Plus aria-hidden="true" />
-                  <span>Create</span>
-                </button>
-                <span
-                  className="pf-streak"
-                  title={`${profile.xp} XP — ${LEVEL_RULE}. Level ${progress.level + 1} at ${xpForLevel(progress.level + 1)} XP.`}
-                >
-                  <Flame aria-hidden="true" />
-                  Lvl {profile.level} · {profile.streak} day streak
-                </span>
-              </>
+              <button
+                type="button"
+                className="pf-primary"
+                onClick={() => setCreateOpen(true)}
+              >
+                <Plus aria-hidden="true" />
+                <span>Create</span>
+              </button>
             ) : (
               <button
                 type="button"

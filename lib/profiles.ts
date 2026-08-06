@@ -63,26 +63,10 @@ export async function getProfileByHandle({
       (SELECT COUNT(*) FROM videos v WHERE v.author_id = p.user_id)::integer AS posts_count,
       (SELECT COALESCE(SUM(v.likes_count), 0) FROM videos v WHERE v.author_id = p.user_id)::integer
         AS total_likes,
-      -- profiles.level and profiles.streak are columns nothing ever wrote to,
-      -- so every account read "Lvl 1, 0 day streak" forever. Both are derived
-      -- from what the account actually did instead.
+      -- profiles.level is a column nothing ever wrote to, so every account read
+      -- "Lvl 1" forever. XP is counted from what the account actually did.
       (SELECT COALESCE(SUM(v.likes_count * 2 + v.saves_count * 3 + 10), 0)
        FROM videos v WHERE v.author_id = p.user_id)::integer AS xp,
-      (
-        -- Days posted on, counted back from the most recent one. The run holds
-        -- while the Nth day back is exactly N days before it, and only counts
-        -- at all if that latest day is today or yesterday.
-        WITH days AS (
-          SELECT DISTINCT (v.created_at AT TIME ZONE 'UTC')::date AS day
-          FROM videos v WHERE v.author_id = p.user_id
-        ), walked AS (
-          SELECT day, MAX(day) OVER () AS latest,
-                 (ROW_NUMBER() OVER (ORDER BY day DESC) - 1)::integer AS back
-          FROM days
-        )
-        SELECT COUNT(*) FROM walked
-        WHERE latest >= CURRENT_DATE - 1 AND day = latest - back
-      )::integer AS streak,
       CASE WHEN ${viewerId}::text IS NULL THEN false ELSE EXISTS (
         SELECT 1 FROM follows f
         WHERE f.author_id = p.user_id AND f.follower_id = ${viewerId}::text

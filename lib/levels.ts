@@ -1,9 +1,9 @@
 // What a level on Snackd actually means.
 //
-// `profiles.level` and `profiles.streak` were columns nothing ever wrote to, so
-// every account showed "Lvl 1 · 0 day streak" no matter what it had done. XP is
-// counted from real rows instead — posts you published, and what other people
-// did with them — and the level falls out of the XP.
+// `profiles.level` was a column nothing ever wrote to, so every account showed
+// "Lvl 1" no matter what it had done. XP is counted from real rows instead —
+// posts you published, and what other people did with them — and the level
+// falls out of the XP.
 //
 // Client-safe: no server-only imports, so the profile can explain itself.
 

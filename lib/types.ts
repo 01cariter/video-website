@@ -11,7 +11,6 @@ export interface AppUser {
   avatar_color: string;
   xp: number;
   level: number;
-  streak: number;
   followers_count: number;
 }
 
@@ -54,7 +53,6 @@ export interface Profile {
   avatar_color: string;
   xp: number;
   level: number;
-  streak: number;
   followers_count: number;
   posts_count: number;
   total_likes: number;
