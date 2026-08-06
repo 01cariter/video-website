@@ -17,6 +17,12 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: 'Invalid video id.' }, { status: 400 });
   }
 
-  const result = await toggleSave({ userId: user.id, videoId });
-  return NextResponse.json(result);
+  try {
+    const result = await toggleSave({ userId: user.id, videoId });
+    return NextResponse.json(result);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error('[snackd] save failed', { videoId, detail });
+    return NextResponse.json({ error: 'The save could not be recorded.', detail }, { status: 500 });
+  }
 }

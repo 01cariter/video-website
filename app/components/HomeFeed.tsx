@@ -137,7 +137,19 @@ export default function HomeFeed({
       needAuth();
       return null;
     }
-    return response.ok ? (response.json() as Promise<T>) : null;
+    if (!response.ok) {
+      // The optimistic update just rolls back, which looks like nothing
+      // happened — the server's reason is the only way to tell why.
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; detail?: string };
+      console.error('[snackd] request rejected', {
+        url,
+        status: response.status,
+        error: payload.error,
+        detail: payload.detail,
+      });
+      return null;
+    }
+    return response.json() as Promise<T>;
   }
 
   async function like(video: Video) {

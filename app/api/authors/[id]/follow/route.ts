@@ -19,6 +19,12 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: 'You cannot follow yourself.' }, { status: 400 });
   }
 
-  const result = await toggleFollow({ followerId: user.id, authorId });
-  return NextResponse.json(result);
+  try {
+    const result = await toggleFollow({ followerId: user.id, authorId });
+    return NextResponse.json(result);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error('[snackd] follow failed', { authorId, detail });
+    return NextResponse.json({ error: 'The follow could not be saved.', detail }, { status: 500 });
+  }
 }

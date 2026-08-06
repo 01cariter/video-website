@@ -30,9 +30,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const payload = (await request.json().catch(() => ({}))) as { body?: unknown };
   const { body } = payload;
-  const result = await addComment({ userId: user.id, videoId, body });
-  if (!result) {
-    return NextResponse.json({ error: 'Comment cannot be empty.' }, { status: 400 });
+  try {
+    const result = await addComment({ userId: user.id, videoId, body });
+    if (!result) {
+      return NextResponse.json({ error: 'Comment cannot be empty.' }, { status: 400 });
+    }
+    return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error('[snackd] comment failed', { videoId, detail });
+    return NextResponse.json({ error: 'The comment could not be posted.', detail }, { status: 500 });
   }
-  return NextResponse.json(result, { status: 201 });
 }

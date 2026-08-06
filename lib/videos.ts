@@ -53,7 +53,7 @@ export async function getFeed({ category = null, userId = null }: FeedOptions = 
 const getCachedPublicFeedPage = unstable_cache(
   async (category: VideoCategory | null, cursor: string | null, limit: number) =>
     queryPublicFeedPage({ category, cursor, limit }),
-  ['ranked-video-feed-v2'],
+  ['ranked-video-feed-v3'],
   { revalidate: 60, tags: ['videos-feed'] },
 );
 
@@ -103,12 +103,16 @@ async function queryPublicFeedPage({
         false AS liked,
         false AS saved,
         false AS following,
+        -- Recency is a day count, not a decay against now(), so a row's score
+        -- never moves and the (score, id) cursor below stays stable mid-page.
+        -- 12 a day sits just under one like (LN(2) * 18 = 12.5): fresh wins
+        -- ties, engagement still wins, and neither buries the other.
         ROUND((
           LN(1 + v.likes_count) * 18
           + LN(1 + v.saves_count) * 16
           + LN(1 + v.comments_count) * 14
           + LN(1 + v.views_count) * 7
-          + EXTRACT(EPOCH FROM v.created_at) / 86400 * 0.045
+          + EXTRACT(EPOCH FROM v.created_at) / 86400 * 12
         ) * 1000)::double precision AS recommendation_score
       FROM videos v
       JOIN profiles p ON p.user_id = v.author_id
