@@ -20,16 +20,9 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  const { data } = await supabase.auth.getUser();
-  const { pathname, search } = request.nextUrl;
-
-  if (!data.user && pathname.startsWith('/create')) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.search = '';
-    url.searchParams.set('next', `${pathname}${search}`);
-    return NextResponse.redirect(url);
-  }
+  // Posting lives in an overlay rather than a route of its own, so there is no
+  // page left to gate — this only keeps the Supabase cookies fresh.
+  await supabase.auth.getUser();
 
   return response;
 }

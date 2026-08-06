@@ -1,26 +1,27 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import {
-  ArrowLeft,
   ChevronRight,
   ExternalLink,
   RefreshCw,
   Repeat2,
   Sparkles,
   Upload,
+  X,
 } from 'lucide-react';
-import MediaUploader from '@/app/components/MediaUploader';
-import type { AppUser } from '@/lib/types';
+import MediaUploader from './MediaUploader';
 import SoloWorkspace from './SoloWorkspace';
+import type { AppUser } from '@/lib/types';
 
 export type CreateMode = 'choose' | 'upload' | 'solo';
 
 interface CreateWorkspaceProps {
   user: AppUser;
   soloUrl: string;
-  initialMode?: CreateMode;
+  // Posting is an overlay on whatever page opened it, so dismissing always
+  // returns to that page rather than navigating anywhere.
+  onClose: () => void;
 }
 
 const MODE_TITLE: Record<CreateMode, string> = {
@@ -29,12 +30,8 @@ const MODE_TITLE: Record<CreateMode, string> = {
   solo: 'AI Studio',
 };
 
-export default function CreateWorkspace({
-  user,
-  soloUrl,
-  initialMode = 'choose',
-}: CreateWorkspaceProps) {
-  const [mode, setMode] = useState<CreateMode>(initialMode);
+export default function CreateWorkspace({ user, soloUrl, onClose }: CreateWorkspaceProps) {
+  const [mode, setMode] = useState<CreateMode>('choose');
   const [frameKey, setFrameKey] = useState(0);
 
   function reloadFrame() {
@@ -42,13 +39,13 @@ export default function CreateWorkspace({
   }
 
   return (
-    <main className="solo-shell">
+    <div className="solo-shell">
       <header className="solo-header">
         <div className="solo-header-left">
-          <Link className="back" href="/" aria-label="Back to feed" title="Back to feed">
-            <ArrowLeft aria-hidden="true" />
-            <span>Back</span>
-          </Link>
+          <button type="button" className="back" onClick={onClose} aria-label="Close" title="Close">
+            <X aria-hidden="true" />
+            <span>Close</span>
+          </button>
           <span className="solo-divider" />
           <div className="stitle">
             <span className="mark" />
@@ -129,6 +126,6 @@ export default function CreateWorkspace({
           onUpload={() => setMode('upload')}
         />
       )}
-    </main>
+    </div>
   );
 }

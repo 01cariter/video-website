@@ -1,10 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { AnimatePresence } from 'motion/react';
 import { ArrowLeft, Bookmark, Flame, Plus, Sparkles } from 'lucide-react';
 import type { AppUser, Profile, SocialToggle, Video } from '@/lib/types';
+import { getSoloUrl } from '@/lib/solo';
+import CreateModal from '@/app/components/CreateModal';
 import { fmtLikes, initials } from '@/app/components/media';
 import VideoCard from '@/app/components/VideoCard';
 
@@ -24,8 +27,16 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
   const [following, setFollowing] = useState(profile.following);
   const [followers, setFollowers] = useState(profile.followers_count);
   const [pending, setPending] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const list = tab === 'saved' ? saved : posts;
+
+  useEffect(() => {
+    document.body.style.overflow = createOpen ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [createOpen]);
 
   async function toggleFollow() {
     if (!user) {
@@ -82,10 +93,14 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
           <div className="pf-actions">
             {isOwner ? (
               <>
-                <Link className="pf-primary" href="/create">
+                <button
+                  type="button"
+                  className="pf-primary"
+                  onClick={() => setCreateOpen(true)}
+                >
                   <Plus aria-hidden="true" />
                   <span>Create</span>
-                </Link>
+                </button>
                 <span className="pf-streak">
                   <Flame aria-hidden="true" />
                   Lvl {profile.level} · {profile.streak} day streak
@@ -155,11 +170,19 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
                   : `${profile.display_name} has not posted yet.`}
             </p>
             {isOwner && tab === 'posts' && (
-              <Link href="/create">Upload your first short</Link>
+              <button type="button" onClick={() => setCreateOpen(true)}>
+                Upload your first short
+              </button>
             )}
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {createOpen && user && (
+          <CreateModal user={user} soloUrl={getSoloUrl()} onClose={() => setCreateOpen(false)} />
+        )}
+      </AnimatePresence>
     </main>
   );
 }
