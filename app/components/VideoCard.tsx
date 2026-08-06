@@ -2,7 +2,7 @@
 
 import { Heart } from 'lucide-react';
 import type { Video } from '@/lib/types';
-import { bg, fmtLikes, hasPoster } from './media';
+import { bg, fmtDate, fmtLikes, hasPoster } from './media';
 
 interface VideoCardProps {
   video: Video;
@@ -40,7 +40,10 @@ export default function VideoCard({ video, index, sizeClass, onOpen, onWarm }: V
 
       <div className="vcard-info">
         <b>{video.title}</b>
-        <span className="vcard-author">{video.author_handle}</span>
+        <span className="vcard-author">
+          <span>{video.author_handle}</span>
+          <time dateTime={video.created_at}>{fmtDate(video.created_at)}</time>
+        </span>
       </div>
     </article>
   );

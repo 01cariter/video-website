@@ -186,7 +186,7 @@ function decodeFeedCursor(cursor: string | null): FeedCursor | null {
 export async function getVideoById({ id, userId = null }: { id: number; userId?: string | null }) {
   const [row] = await sql<Video[]>`
     SELECT
-      v.id, v.title, v.description, v.category, v.label, v.size, v.duration,
+      v.id, v.title, v.description, v.category, v.label, v.size, v.duration, v.created_at,
       v.likes_count, v.saves_count, v.comments_count, v.views_count, v.author_id,
       p.handle AS author_handle,
       COALESCE(p.display_name, 'Creator') AS author_name,
@@ -266,6 +266,20 @@ export async function createVideo({
   const video = await getVideoById({ id: row.id, userId });
   if (!video) throw new Error('The post could not be loaded after creation.');
   return video;
+}
+
+// `views_count` was displayed and fed the ranking but nothing ever incremented
+// it, so every post read 0 views forever. One view is one open of the player.
+// The direct connection owns the table, so this needs no migration and no
+// counter function — unlike likes, a view has no row of its own to protect.
+export async function recordVideoView(videoId: number): Promise<number> {
+  const [row] = await sql<Array<{ views_count: number }>>`
+    UPDATE videos SET views_count = views_count + 1
+    WHERE id = ${videoId}
+    RETURNING views_count
+  `;
+  revalidateTag('videos-feed', 'max');
+  return row?.views_count ?? 0;
 }
 
 export async function toggleLike({ userId, videoId }: { userId: string; videoId: number }): Promise<SocialToggle> {

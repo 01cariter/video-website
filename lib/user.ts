@@ -3,6 +3,7 @@ import 'server-only';
 import type { User } from '@supabase/supabase-js';
 import { getAuthUser } from './supabase/server';
 import { sql } from './db';
+import { levelFromXp } from './levels';
 import type { AppUser } from './types';
 
 const AVATAR_COLORS = ['#3f7d92', '#cf4f2a', '#4a7a6a', '#52708f', '#b06a3a', '#5f7d78'];
@@ -10,7 +11,7 @@ const AVATAR_COLORS = ['#3f7d92', '#cf4f2a', '#4a7a6a', '#52708f', '#b06a3a', '#
 interface ProfileRow extends Record<string, unknown> {
   handle: string | null;
   avatar_color: string;
-  level: number;
+  xp: number;
   streak: number;
   followers_count: number;
 }
@@ -52,7 +53,23 @@ export async function getCurrentUser(): Promise<AppUser | null> {
     INSERT INTO profiles (user_id, display_name, handle, avatar_color)
     VALUES (${authUser.id}, ${displayName}, ${handle}, ${randomColor()})
     ON CONFLICT (user_id) DO UPDATE SET display_name = EXCLUDED.display_name
-    RETURNING handle, avatar_color, level, streak, followers_count
+    RETURNING handle, avatar_color, followers_count,
+      -- Same derivation the profile page uses: the stored level/streak columns
+      -- were never written to, so they always read 1 and 0.
+      (SELECT COALESCE(SUM(v.likes_count * 2 + v.saves_count * 3 + 10), 0)
+       FROM videos v WHERE v.author_id = ${authUser.id})::integer AS xp,
+      (
+        WITH days AS (
+          SELECT DISTINCT (v.created_at AT TIME ZONE 'UTC')::date AS day
+          FROM videos v WHERE v.author_id = ${authUser.id}
+        ), walked AS (
+          SELECT day, MAX(day) OVER () AS latest,
+                 (ROW_NUMBER() OVER (ORDER BY day DESC) - 1)::integer AS back
+          FROM days
+        )
+        SELECT COUNT(*) FROM walked
+        WHERE latest >= CURRENT_DATE - 1 AND day = latest - back
+      )::integer AS streak
   `;
 
   if (!profile) throw new Error('Could not load the current user profile.');
@@ -64,7 +81,8 @@ export async function getCurrentUser(): Promise<AppUser | null> {
     email: authUser.email ?? null,
     avatar_url: avatarUrlFor(authUser),
     avatar_color: profile.avatar_color,
-    level: profile.level,
+    xp: profile.xp,
+    level: levelFromXp(profile.xp),
     streak: profile.streak,
     followers_count: profile.followers_count,
   };

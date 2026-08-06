@@ -12,7 +12,7 @@ import { getSoloUrl } from '@/lib/solo';
 import type { AppUser, Comment, FeedMode, FeedPage, SocialToggle, Video } from '@/lib/types';
 import AuthModal from './AuthModal';
 import CreateModal from './CreateModal';
-import { initials, profileHref } from './media';
+import { cardSize, initials, profileHref } from './media';
 import VideoCard from './VideoCard';
 import VideoViewer from './VideoViewer';
 
@@ -68,6 +68,7 @@ export default function HomeFeed({
   const [sharedId, setSharedId] = useState<number | null>(null);
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const viewed = useRef(new Set<number>());
   const lastNavigationAt = useRef(0);
   const loadMoreTarget = useRef<HTMLDivElement>(null);
   const loadingMoreRef = useRef(false);
@@ -502,6 +503,22 @@ export default function HomeFeed({
     return () => window.removeEventListener('popstate', syncHistoryNavigation, true);
   }, [list, loadComments]);
 
+  // One open of the player is one view, counted once per video per session so
+  // paging back and forth through the feed does not inflate it.
+  useEffect(() => {
+    if (!openId || viewed.current.has(openId)) return;
+    viewed.current.add(openId);
+    const id = openId;
+    void fetch(`/api/videos/${id}/view`, { method: 'POST' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { views_count?: number } | null) => {
+        if (typeof data?.views_count === 'number') {
+          patchVideo(id, { views_count: data.views_count });
+        }
+      })
+      .catch(() => {});
+  }, [openId, patchVideo]);
+
   useEffect(() => {
     document.body.style.overflow = openId || authMode || createOpen ? 'hidden' : '';
     return () => {
@@ -661,14 +678,12 @@ export default function HomeFeed({
             ) : (
               <div className="grid">
               {list.map((video, index) => {
-                const patternIndex = index % 8;
-                const sizeClass = patternIndex === 0 ? 'big' : patternIndex === 1 ? 'tall' : '';
                 return (
                   <VideoCard
                     key={video.id}
                     video={video}
                     index={index}
-                    sizeClass={sizeClass}
+                    sizeClass={cardSize(video, index)}
                     onOpen={openPreview}
                     onWarm={(item) => void fetchComments(item.id)}
                   />

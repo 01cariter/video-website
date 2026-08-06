@@ -18,7 +18,7 @@ import {
   VolumeX,
 } from 'lucide-react';
 import type { AppUser, Comment, Video } from '@/lib/types';
-import { bg, fmtLikes, initials, profileHref } from './media';
+import { bg, fmtDate, fmtLikes, initials, profileHref } from './media';
 
 interface VideoViewerProps {
   video: Video;
@@ -255,6 +255,7 @@ export default function VideoViewer({
                   <span>{video.label || (video.category === 'study' ? 'Study' : 'Entertainment')}</span>
                   <span>{video.duration}</span>
                   <span>{fmtLikes(video.views_count)} views</span>
+                  <span>Uploaded {fmtDate(video.created_at)}</span>
                 </div>
                 <h2>{video.title}</h2>
                 <p>{video.description || 'No description yet.'}</p>

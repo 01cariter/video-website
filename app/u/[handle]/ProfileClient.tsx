@@ -7,8 +7,9 @@ import { AnimatePresence } from 'motion/react';
 import { ArrowLeft, Bookmark, Flame, Plus, Sparkles } from 'lucide-react';
 import type { AppUser, Profile, SocialToggle, Video } from '@/lib/types';
 import { getSoloUrl } from '@/lib/solo';
+import { LEVEL_RULE, levelProgress, xpForLevel } from '@/lib/levels';
 import CreateModal from '@/app/components/CreateModal';
-import { fmtLikes, initials } from '@/app/components/media';
+import { cardSize, fmtLikes, initials } from '@/app/components/media';
 import VideoCard from '@/app/components/VideoCard';
 
 interface ProfileClientProps {
@@ -30,6 +31,7 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
   const [createOpen, setCreateOpen] = useState(false);
 
   const list = tab === 'saved' ? saved : posts;
+  const progress = levelProgress(profile.xp);
 
   useEffect(() => {
     document.body.style.overflow = createOpen ? 'hidden' : '';
@@ -88,6 +90,28 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
               <li><b>{fmtLikes(followers)}</b><span>followers</span></li>
               <li><b>{fmtLikes(profile.total_likes)}</b><span>likes</span></li>
             </ul>
+
+            {/* A level meant nothing while it was a column nobody wrote to.
+                Now it is countable, so the page says what it counts. */}
+            <div className="pf-level">
+              <div className="pf-level-top">
+                <b>Level {progress.level}</b>
+                <span>{progress.into} / {progress.needed} XP</span>
+              </div>
+              <span
+                className="pf-level-bar"
+                role="progressbar"
+                aria-valuenow={progress.into}
+                aria-valuemin={0}
+                aria-valuemax={progress.needed}
+                aria-label={`Progress to level ${progress.level + 1}`}
+              >
+                <i style={{ width: `${Math.round(progress.fraction * 100)}%` }} />
+              </span>
+              <small>
+                {LEVEL_RULE}. {progress.remaining} XP to level {progress.level + 1}.
+              </small>
+            </div>
           </div>
 
           <div className="pf-actions">
@@ -101,7 +125,10 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
                   <Plus aria-hidden="true" />
                   <span>Create</span>
                 </button>
-                <span className="pf-streak">
+                <span
+                  className="pf-streak"
+                  title={`${profile.xp} XP — ${LEVEL_RULE}. Level ${progress.level + 1} at ${xpForLevel(progress.level + 1)} XP.`}
+                >
                   <Flame aria-hidden="true" />
                   Lvl {profile.level} · {profile.streak} day streak
                 </span>
@@ -145,14 +172,12 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
         {list.length > 0 ? (
           <div className="grid">
             {list.map((video, index) => {
-              const patternIndex = index % 8;
-              const sizeClass = patternIndex === 0 ? 'big' : patternIndex === 1 ? 'tall' : '';
               return (
                 <VideoCard
                   key={video.id}
                   video={video}
                   index={index}
-                  sizeClass={sizeClass}
+                  sizeClass={cardSize(video, index)}
                   onOpen={(item) => router.push(`/videos/${item.id}`)}
                   onWarm={(item) => router.prefetch(`/videos/${item.id}`)}
                 />

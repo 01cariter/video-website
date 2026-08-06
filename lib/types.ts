@@ -9,6 +9,7 @@ export interface AppUser {
   email: string | null;
   avatar_url: string | null;
   avatar_color: string;
+  xp: number;
   level: number;
   streak: number;
   followers_count: number;
@@ -22,6 +23,7 @@ export interface Video {
   label: string | null;
   size: string;
   duration: string;
+  created_at: string;
   likes_count: number;
   saves_count: number;
   comments_count: number;
@@ -50,6 +52,7 @@ export interface Profile {
   display_name: string;
   bio: string | null;
   avatar_color: string;
+  xp: number;
   level: number;
   streak: number;
   followers_count: number;

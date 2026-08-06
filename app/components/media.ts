@@ -2,7 +2,7 @@
 // Imagery is self-hosted in the `media` table. Solid colors fill clips without
 // posters so the feed remains useful without external image dependencies.
 
-import type { VideoCategory } from '@/lib/types';
+import type { Video, VideoCategory } from '@/lib/types';
 
 const placeholderColors: Record<VideoCategory, readonly string[]> = {
   study: [
@@ -56,6 +56,38 @@ export function fmtLikes(n: number) {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(/\.0$/, '')}m`;
   if (v >= 1000) return `${Math.round(v / 1000)}k`;
   return String(v);
+}
+
+// A fixed locale and UTC, so the server and the browser render the same string
+// and hydration does not trip over the reader's timezone.
+const UPLOAD_DATE = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+
+export function fmtDate(timestamp: string | null | undefined) {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? '' : UPLOAD_DATE.format(date);
+}
+
+// The grid used to shape a card from its index, so the same post changed shape
+// as the feed reordered and a portrait clip could land in a letterbox. Shape
+// follows the media's own proportions instead, and only falls back to the
+// index when a post has no measurements to go on.
+export function cardSize(video: Video, index: number) {
+  const width = video.poster_w ?? video.video_w;
+  const height = video.poster_h ?? video.video_h;
+  if (!width || !height) {
+    const pattern = index % 8;
+    return pattern === 0 ? 'big' : pattern === 1 ? 'tall' : '';
+  }
+  const ratio = width / height;
+  if (ratio <= 0.8) return 'tall';
+  if (ratio >= 1.6) return 'big';
+  return '';
 }
 
 export function initials(name: string | null | undefined) {
