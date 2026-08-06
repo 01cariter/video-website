@@ -2,20 +2,47 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ExternalLink, RefreshCw } from 'lucide-react';
+import {
+  ArrowLeft,
+  ChevronRight,
+  ExternalLink,
+  RefreshCw,
+  Repeat2,
+  Sparkles,
+  Upload,
+} from 'lucide-react';
+
+function soloHost(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return 'Solo';
+  }
+}
 import MediaUploader from '@/app/components/MediaUploader';
 import type { AppUser } from '@/lib/types';
 import SoloWorkspace from './SoloWorkspace';
 
+export type CreateMode = 'choose' | 'upload' | 'solo';
+
 interface CreateWorkspaceProps {
   user: AppUser;
   soloUrl: string;
+  initialMode?: CreateMode;
 }
 
-type CreateTab = 'upload' | 'solo';
+const MODE_TITLE: Record<CreateMode, string> = {
+  choose: 'Create',
+  upload: 'Your own upload',
+  solo: 'AI Studio',
+};
 
-export default function CreateWorkspace({ user, soloUrl }: CreateWorkspaceProps) {
-  const [tab, setTab] = useState<CreateTab>('upload');
+export default function CreateWorkspace({
+  user,
+  soloUrl,
+  initialMode = 'choose',
+}: CreateWorkspaceProps) {
+  const [mode, setMode] = useState<CreateMode>(initialMode);
   const [frameLoading, setFrameLoading] = useState(true);
   const [frameKey, setFrameKey] = useState(0);
 
@@ -35,31 +62,17 @@ export default function CreateWorkspace({ user, soloUrl }: CreateWorkspaceProps)
           <span className="solo-divider" />
           <div className="stitle">
             <span className="mark" />
-            <span>Create</span>
+            <span>{MODE_TITLE[mode]}</span>
           </div>
-          <div className="create-tabs" role="tablist" aria-label="Create mode">
-            <button
-              type="button"
-              role="tab"
-              className={tab === 'upload' ? 'on' : ''}
-              aria-selected={tab === 'upload'}
-              onClick={() => setTab('upload')}
-            >
-              Upload
+          {mode !== 'choose' && (
+            <button type="button" className="create-switch" onClick={() => setMode('choose')}>
+              <Repeat2 aria-hidden="true" />
+              <span>Switch</span>
             </button>
-            <button
-              type="button"
-              role="tab"
-              className={tab === 'solo' ? 'on' : ''}
-              aria-selected={tab === 'solo'}
-              onClick={() => setTab('solo')}
-            >
-              Solo workspace
-            </button>
-          </div>
+          )}
         </div>
 
-        {tab === 'solo' && (
+        {mode === 'solo' && (
           <div className="solo-actions">
             <button
               type="button"
@@ -84,9 +97,41 @@ export default function CreateWorkspace({ user, soloUrl }: CreateWorkspaceProps)
         )}
       </header>
 
-      {tab === 'upload' ? (
-        <MediaUploader user={user} />
-      ) : (
+      {mode === 'choose' && (
+        <section className="pick">
+          <div className="pick-inner">
+            <h1>What are you posting?</h1>
+            <p className="pick-lead">Bring your own files, or make something new with AI.</p>
+
+            <div className="pick-options">
+              <button type="button" className="pick-card" onClick={() => setMode('upload')}>
+                <span className="pick-ic own"><Upload aria-hidden="true" /></span>
+                <b>I have my own</b>
+                <small>Upload a photo or video from this device. Straight to the feed.</small>
+                <span className="pick-go">
+                  Upload files
+                  <ChevronRight aria-hidden="true" />
+                </span>
+              </button>
+
+              {/* No Solo API yet, so this is just a link out to their site. */}
+              <a className="pick-card" href={soloUrl} target="_blank" rel="noreferrer">
+                <span className="pick-ic ai"><Sparkles aria-hidden="true" /></span>
+                <b>Make it with AI</b>
+                <small>Generate it on Solo, then come back and upload the result here.</small>
+                <span className="pick-go">
+                  Open {soloHost(soloUrl)}
+                  <ExternalLink aria-hidden="true" />
+                </span>
+              </a>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {mode === 'upload' && <MediaUploader user={user} />}
+
+      {mode === 'solo' && (
         <SoloWorkspace
           soloUrl={soloUrl}
           frameKey={frameKey}

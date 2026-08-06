@@ -61,3 +61,10 @@ export function fmtLikes(n: number) {
 export function initials(name: string | null | undefined) {
   return (name || '?').trim().charAt(0).toUpperCase();
 }
+
+// Handles are stored as '@name'; profile URLs carry the bare name.
+export function profileHref(handle: string | null | undefined) {
+  if (!handle) return null;
+  const bare = handle.replace(/^@+/, '');
+  return bare ? `/u/${encodeURIComponent(bare)}` : null;
+}

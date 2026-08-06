@@ -116,11 +116,17 @@ Supabase Auth user id via a `TEXT` `user_id` column.
 - Search bar and category filters
 - **Follow** creators, **like**, **save** (favourite) and **comment** — all
   persisted per signed-in user
-- **Create → Upload** — drag-and-drop photo/video uploader. Files go from the
-  browser straight to Supabase Storage with a real progress bar, dimensions and
-  clip duration are read client-side, and a cover frame is grabbed from video
-  with a canvas so the post has a feed poster. Publishing lands on
-  `/videos/:id`.
-- **Create → Solo workspace** opens Solo in a dedicated full-height iframe
+- **Create** asks first: *"I have my own"* or *"Make it with AI"*.
+  - **I have my own** — drag-and-drop photo/video uploader. Files go from the
+    browser straight to Supabase Storage with a real progress bar, dimensions
+    and clip duration are read client-side, and a cover frame is grabbed from
+    video with a canvas so the post has a feed poster. Publishing lands on
+    `/videos/:id`.
+  - **Make it with AI** — plain outbound link to Solo. There is no Solo API
+    integration; you generate there and upload the result back here. The old
+    embedded iframe still exists at `/create?mode=solo`.
+- **Profiles** at `/u/:handle` — avatar, bio, follower/post/like counts, follow
+  button, and the creator's posts. Your own profile adds a **Saved** tab.
+  Reachable from the sidebar and from the author on any video.
 - Light / dark theme toggle
 - Self-hosted media (SVG posters by default), Lucide interface icons
