@@ -122,9 +122,10 @@ Supabase Auth user id via a `TEXT` `user_id` column.
     and clip duration are read client-side, and a cover frame is grabbed from
     video with a canvas so the post has a feed poster. Publishing lands on
     `/videos/:id`.
-  - **Make it with AI** — plain outbound link to Solo. There is no Solo API
-    integration; you generate there and upload the result back here. The old
-    embedded iframe still exists at `/create?mode=solo`.
+  - **Make it with AI** — opens the Solo workspace embedded in a full-height
+    iframe, without leaving the site. There is no Solo API integration; the
+    workspace is their site framed in-page. "Open separately" in the header
+    is there if you want it in its own tab.
 - **Profiles** at `/u/:handle` — avatar, bio, follower/post/like counts, follow
   button, and the creator's posts. Your own profile adds a **Saved** tab.
   Reachable from the sidebar and from the author on any video.

@@ -11,14 +11,6 @@ import {
   Sparkles,
   Upload,
 } from 'lucide-react';
-
-function soloHost(url: string) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return 'Solo';
-  }
-}
 import MediaUploader from '@/app/components/MediaUploader';
 import type { AppUser } from '@/lib/types';
 import SoloWorkspace from './SoloWorkspace';
@@ -49,6 +41,11 @@ export default function CreateWorkspace({
   function reloadFrame() {
     setFrameLoading(true);
     setFrameKey((key) => key + 1);
+  }
+
+  function openSolo() {
+    setFrameLoading(true);
+    setMode('solo');
   }
 
   return (
@@ -114,16 +111,16 @@ export default function CreateWorkspace({
                 </span>
               </button>
 
-              {/* No Solo API yet, so this is just a link out to their site. */}
-              <a className="pick-card" href={soloUrl} target="_blank" rel="noreferrer">
+              {/* No Solo API yet — the workspace is embedded in-page as an iframe. */}
+              <button type="button" className="pick-card" onClick={openSolo}>
                 <span className="pick-ic ai"><Sparkles aria-hidden="true" /></span>
                 <b>Make it with AI</b>
-                <small>Generate it on Solo, then come back and upload the result here.</small>
+                <small>Open the Solo workspace right here and generate from a prompt.</small>
                 <span className="pick-go">
-                  Open {soloHost(soloUrl)}
-                  <ExternalLink aria-hidden="true" />
+                  Open AI Studio
+                  <ChevronRight aria-hidden="true" />
                 </span>
-              </a>
+              </button>
             </div>
           </div>
         </section>
