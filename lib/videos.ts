@@ -282,22 +282,68 @@ export async function recordVideoView(videoId: number): Promise<number> {
   return row?.views_count ?? 0;
 }
 
-export async function toggleLike({ userId, videoId }: { userId: string; videoId: number }): Promise<SocialToggle> {
-  const [result] = await sql<Array<{ liked: boolean; likes_count: number }>>`
-    SELECT liked, likes_count
-    FROM public.toggle_video_like(${userId}, ${videoId})
-  `;
+// Likes and saves used to go through Postgres functions (`toggle_video_like`,
+// `toggle_video_save`). A database that never had the migration applied has no
+// such function, so every like threw and the button silently sprang back — and
+// nothing in the app could repair that from the outside. The toggle is plain
+// SQL now: delete-or-insert, then set the counter to what the rows actually
+// say. That needs no migration, and it heals a counter that has drifted
+// instead of trusting a trigger to have kept it honest.
+async function toggleRow({
+  table,
+  column,
+  userId,
+  videoId,
+}: {
+  table: 'video_likes' | 'video_saves';
+  column: 'likes_count' | 'saves_count';
+  userId: string;
+  videoId: number;
+}): Promise<{ on: boolean; count: number }> {
+  const removed = await sql.unsafe<Array<{ ok: number }>>(
+    `DELETE FROM ${table} WHERE user_id = $1::text AND video_id = $2::integer RETURNING 1 AS ok`,
+    [userId, videoId],
+  );
+  const on = removed.length === 0;
+  if (on) {
+    await sql.unsafe(
+      `INSERT INTO ${table} (user_id, video_id) VALUES ($1::text, $2::integer)
+       ON CONFLICT DO NOTHING`,
+      [userId, videoId],
+    );
+  }
+
+  // Counted from the rows rather than adjusted by one, so a miscount from a
+  // missing trigger or an earlier failure corrects itself on the next tap.
+  const [row] = await sql.unsafe<Array<{ count: number }>>(
+    `UPDATE videos SET ${column} = (
+       SELECT COUNT(*) FROM ${table} WHERE video_id = $1::integer
+     ) WHERE id = $1::integer RETURNING ${column} AS count`,
+    [videoId],
+  );
+
   revalidateTag('videos-feed', 'max');
-  return result ?? { liked: false, likes_count: 0 };
+  return { on, count: Number(row?.count ?? 0) };
+}
+
+export async function toggleLike({ userId, videoId }: { userId: string; videoId: number }): Promise<SocialToggle> {
+  const { on, count } = await toggleRow({
+    table: 'video_likes',
+    column: 'likes_count',
+    userId,
+    videoId,
+  });
+  return { liked: on, likes_count: count };
 }
 
 export async function toggleSave({ userId, videoId }: { userId: string; videoId: number }): Promise<SocialToggle> {
-  const [result] = await sql<Array<{ saved: boolean; saves_count: number }>>`
-    SELECT saved, saves_count
-    FROM public.toggle_video_save(${userId}, ${videoId})
-  `;
-  revalidateTag('videos-feed', 'max');
-  return result ?? { saved: false, saves_count: 0 };
+  const { on, count } = await toggleRow({
+    table: 'video_saves',
+    column: 'saves_count',
+    userId,
+    videoId,
+  });
+  return { saved: on, saves_count: count };
 }
 
 export async function toggleFollow({
@@ -307,12 +353,29 @@ export async function toggleFollow({
   if (!authorId || followerId === authorId) {
     return { following: false, followers_count: 0 };
   }
-  const [result] = await sql<Array<{ following: boolean; followers_count: number }>>`
-    SELECT following, followers_count
-    FROM public.toggle_author_follow(${followerId}, ${authorId})
+  const removed = await sql<Array<{ ok: number }>>`
+    DELETE FROM follows
+    WHERE follower_id = ${followerId} AND author_id = ${authorId}
+    RETURNING 1 AS ok
   `;
+  const following = removed.length === 0;
+  if (following) {
+    await sql`
+      INSERT INTO follows (follower_id, author_id)
+      VALUES (${followerId}, ${authorId})
+      ON CONFLICT DO NOTHING
+    `;
+  }
+
+  const [row] = await sql<Array<{ followers_count: number }>>`
+    UPDATE profiles SET followers_count = (
+      SELECT COUNT(*) FROM follows WHERE author_id = ${authorId}
+    ) WHERE user_id = ${authorId}
+    RETURNING followers_count
+  `;
+
   revalidateTag('videos-feed', 'max');
-  return result ?? { following: false, followers_count: 0 };
+  return { following, followers_count: Number(row?.followers_count ?? 0) };
 }
 
 export async function getComments(videoId: number): Promise<Comment[]> {
@@ -341,10 +404,20 @@ export async function addComment({
   const text = String(body || '').trim().slice(0, 1000);
   if (!text) return null;
 
-  const [row] = await sql<Array<CommentInsertRow & { comments_count: number }>>`
-    SELECT id, body, created_at, user_id, comments_count
-    FROM public.add_video_comment(${userId}, ${videoId}, ${text})
+  const [inserted] = await sql<CommentInsertRow[]>`
+    INSERT INTO comments (user_id, video_id, body)
+    VALUES (${userId}, ${videoId}, ${text})
+    RETURNING id, body, created_at, user_id
   `;
+  if (!inserted) return null;
+
+  const [counted] = await sql<Array<{ comments_count: number }>>`
+    UPDATE videos SET comments_count = (
+      SELECT COUNT(*) FROM comments WHERE video_id = ${videoId}
+    ) WHERE id = ${videoId}
+    RETURNING comments_count
+  `;
+  const row = { ...inserted, comments_count: Number(counted?.comments_count ?? 0) };
   const [author] = await sql<CommentAuthorRow[]>`
     SELECT COALESCE(display_name, 'You') AS author_name, handle AS author_handle, avatar_color AS author_color
     FROM profiles WHERE user_id = ${userId}
