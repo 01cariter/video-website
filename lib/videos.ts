@@ -209,6 +209,61 @@ export async function getVideoById({ id, userId = null }: { id: number; userId?:
   return row ?? null;
 }
 
+export interface CreateVideoInput {
+  userId: string;
+  title: string;
+  description?: string | null;
+  category: VideoCategory;
+  label?: string | null;
+  posterMediaId?: number | null;
+  videoMediaId?: number | null;
+  duration?: string;
+}
+
+export async function createVideo({
+  userId,
+  title,
+  description = null,
+  category,
+  label = null,
+  posterMediaId = null,
+  videoMediaId = null,
+  duration = '',
+}: CreateVideoInput): Promise<Video> {
+  const mediaIds = [posterMediaId, videoMediaId].filter(
+    (id): id is number => Number.isInteger(id),
+  );
+  if (mediaIds.length === 0) {
+    throw new Error('A post needs at least a photo or a video.');
+  }
+
+  // The direct Postgres connection bypasses RLS, so re-check the ownership the
+  // `media_*_own` policies would have enforced.
+  const owned = await sql<Array<{ id: number }>>`
+    SELECT id FROM media
+    WHERE id = ANY(${mediaIds}::integer[]) AND owner_id = ${userId}
+  `;
+  if (owned.length !== mediaIds.length) {
+    throw new Error('That media does not belong to you.');
+  }
+
+  const [row] = await sql<Array<{ id: number }>>`
+    INSERT INTO videos
+      (title, description, category, label, author_id, poster_media_id, video_media_id, duration)
+    VALUES (
+      ${title}, ${description}, ${category}, ${label},
+      ${userId}, ${posterMediaId}, ${videoMediaId}, ${duration}
+    )
+    RETURNING id
+  `;
+  if (!row) throw new Error('The post could not be created.');
+
+  revalidateTag('videos-feed', 'max');
+  const video = await getVideoById({ id: row.id, userId });
+  if (!video) throw new Error('The post could not be loaded after creation.');
+  return video;
+}
+
 export async function toggleLike({ userId, videoId }: { userId: string; videoId: number }): Promise<SocialToggle> {
   const [result] = await sql<Array<{ liked: boolean; likes_count: number }>>`
     SELECT liked, likes_count

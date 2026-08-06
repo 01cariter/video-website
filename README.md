@@ -90,9 +90,15 @@ Supabase Auth user id via a `TEXT` `user_id` column.
 - The migration enables RLS on every public business table, applies Storage
   ownership policies, and limits the bucket to approved image/video MIME types
   and 50 MB per object.
-- `POST /api/media` accepts approved multipart files up to 4 MB (the Vercel
-  request-safe path) or a public HTTPS URL. Larger files should upload directly
-  from the signed-in browser to Supabase Storage, where the bucket limit applies.
+- `POST /api/media` accepts three shapes: an approved multipart file up to 4 MB
+  (the Vercel request-safe path), a public HTTPS `url`, or a `storagePath` for
+  an object the signed-in browser already pushed straight to Supabase Storage.
+  The `storagePath` form verifies the path sits in the caller's own folder and
+  that the object exists before recording the row — that is how uploads above
+  4 MB reach the 50 MB bucket limit.
+- `POST /api/videos` publishes a post. It re-checks that the attached
+  `posterMediaId` / `videoMediaId` belong to the caller, because the direct
+  Postgres connection bypasses RLS.
 - **Creators are real users** — every video's `author_id` references a
   `profiles` row (a Supabase Auth user). Seeded demo authors use synthetic
   `seed_*` ids.
@@ -110,6 +116,11 @@ Supabase Auth user id via a `TEXT` `user_id` column.
 - Search bar and category filters
 - **Follow** creators, **like**, **save** (favourite) and **comment** — all
   persisted per signed-in user
-- **Create** opens the Solo workspace in a dedicated full-height iframe
+- **Create → Upload** — drag-and-drop photo/video uploader. Files go from the
+  browser straight to Supabase Storage with a real progress bar, dimensions and
+  clip duration are read client-side, and a cover frame is grabbed from video
+  with a canvas so the post has a feed poster. Publishing lands on
+  `/videos/:id`.
+- **Create → Solo workspace** opens Solo in a dedicated full-height iframe
 - Light / dark theme toggle
 - Self-hosted media (SVG posters by default), Lucide interface icons
