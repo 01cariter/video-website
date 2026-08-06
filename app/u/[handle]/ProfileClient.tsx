@@ -180,7 +180,18 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
 
       <AnimatePresence>
         {createOpen && user && (
-          <CreateModal user={user} soloUrl={getSoloUrl()} onClose={() => setCreateOpen(false)} />
+          <CreateModal
+            user={user}
+            soloUrl={getSoloUrl()}
+            onClose={() => setCreateOpen(false)}
+            onPublished={() => {
+              setCreateOpen(false);
+              // Posts arrive as a server prop, so a refresh is what redraws the
+              // grid with the new one — on the tab that actually shows it.
+              setTab('posts');
+              router.refresh();
+            }}
+          />
         )}
       </AnimatePresence>
     </main>

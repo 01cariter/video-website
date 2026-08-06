@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import MediaUploader from './MediaUploader';
 import SoloWorkspace from './SoloWorkspace';
-import type { AppUser } from '@/lib/types';
+import type { AppUser, Video } from '@/lib/types';
 
 export type CreateMode = 'choose' | 'upload' | 'solo';
 
@@ -22,6 +22,7 @@ interface CreateWorkspaceProps {
   // Posting is an overlay on whatever page opened it, so dismissing always
   // returns to that page rather than navigating anywhere.
   onClose: () => void;
+  onPublished: (video: Video) => void;
 }
 
 const MODE_TITLE: Record<CreateMode, string> = {
@@ -30,7 +31,12 @@ const MODE_TITLE: Record<CreateMode, string> = {
   solo: 'AI Studio',
 };
 
-export default function CreateWorkspace({ user, soloUrl, onClose }: CreateWorkspaceProps) {
+export default function CreateWorkspace({
+  user,
+  soloUrl,
+  onClose,
+  onPublished,
+}: CreateWorkspaceProps) {
   const [mode, setMode] = useState<CreateMode>('choose');
   const [frameKey, setFrameKey] = useState(0);
 
@@ -117,7 +123,7 @@ export default function CreateWorkspace({ user, soloUrl, onClose }: CreateWorksp
         </section>
       )}
 
-      {mode === 'upload' && <MediaUploader user={user} />}
+      {mode === 'upload' && <MediaUploader user={user} onPublished={onPublished} />}
 
       {mode === 'solo' && (
         <SoloWorkspace

@@ -397,6 +397,30 @@ export default function HomeFeed({
     }
   }
 
+  // Publishing dismisses the overlay onto the feed the post belongs in, so the
+  // post is visible the moment it exists — no navigation, no reload.
+  function showPublished(video: Video) {
+    setCreateOpen(false);
+    // A live search would filter the new post straight back out.
+    setQuery('');
+
+    for (const feed of ['all', video.category] as FeedMode[]) {
+      const page = feedCache.current.get(feed);
+      if (!page) continue;
+      feedCache.current.set(feed, {
+        videos: [video, ...page.videos.filter((item) => item.id !== video.id)],
+        nextCursor: page.nextCursor,
+      });
+    }
+
+    if (mode === 'all' || mode === video.category) {
+      setVideos((items) => [video, ...items.filter((item) => item.id !== video.id)]);
+      return;
+    }
+    // Posted to the other category: follow it, or the post lands off-screen.
+    void changeMode(video.category);
+  }
+
   const loadMore = useCallback(async () => {
     if (!nextCursor || feedLoading || loadingMoreRef.current) return;
     const requestId = feedRequestId.current;
@@ -712,7 +736,12 @@ export default function HomeFeed({
 
       <AnimatePresence>
         {createOpen && user && (
-          <CreateModal user={user} soloUrl={getSoloUrl()} onClose={() => setCreateOpen(false)} />
+          <CreateModal
+            user={user}
+            soloUrl={getSoloUrl()}
+            onClose={() => setCreateOpen(false)}
+            onPublished={showPublished}
+          />
         )}
       </AnimatePresence>
     </>
