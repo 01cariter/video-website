@@ -6,6 +6,7 @@ import {
   createMediaFromUrl,
   kindFromMime,
   listMedia,
+  registerStorageMedia,
   uploadMediaFile,
 } from '@/lib/media';
 import type { MediaKind } from '@/lib/types';
@@ -14,6 +15,7 @@ export const runtime = 'nodejs';
 
 interface MediaJsonBody {
   url?: string;
+  storagePath?: string;
   kind?: MediaKind;
   mime?: string;
   width?: number | string | null;
@@ -69,8 +71,29 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json().catch(() => ({}))) as MediaJsonBody;
+
+    // The browser uploaded straight to Supabase Storage; register the metadata.
+    if (body.storagePath) {
+      const mime = body.mime || '';
+      if (!ALLOWED_MEDIA_MIME_TYPES.has(mime)) {
+        return NextResponse.json({ error: 'Unsupported media type.' }, { status: 415 });
+      }
+      const media = await registerStorageMedia({
+        path: body.storagePath,
+        mime,
+        width: numOrNull(body.width),
+        height: numOrNull(body.height),
+        durationSeconds: numOrNull(body.durationSeconds),
+        ownerId: user.id,
+      });
+      return NextResponse.json({ media }, { status: 201 });
+    }
+
     if (!body.url) {
-      return NextResponse.json({ error: 'A `url` (or multipart `file`) is required.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'A `url`, a `storagePath`, or a multipart `file` is required.' },
+        { status: 400 },
+      );
     }
     if (!isAllowedRemoteUrl(body.url)) {
       return NextResponse.json({ error: 'Only public HTTPS media URLs are accepted.' }, { status: 400 });

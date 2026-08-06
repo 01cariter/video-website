@@ -44,6 +44,20 @@ export interface Video {
   following: boolean;
 }
 
+export interface Profile {
+  user_id: string;
+  handle: string | null;
+  display_name: string;
+  bio: string | null;
+  avatar_color: string;
+  level: number;
+  streak: number;
+  followers_count: number;
+  posts_count: number;
+  total_likes: number;
+  following: boolean;
+}
+
 export interface Comment {
   id: number;
   body: string;

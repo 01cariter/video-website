@@ -10,7 +10,7 @@ import { flushSync } from 'react-dom';
 import { createClient } from '@/lib/supabase/client';
 import type { AppUser, Comment, FeedMode, FeedPage, SocialToggle, Video } from '@/lib/types';
 import AuthModal from './AuthModal';
-import { initials } from './media';
+import { initials, profileHref } from './media';
 import VideoCard from './VideoCard';
 import VideoViewer from './VideoViewer';
 
@@ -534,13 +534,15 @@ export default function HomeFeed({
 
           {user ? (
             <div className="me">
-              <span className="av" style={{ background: user.avatar_color }}>
-                {initials(user.display_name)}
-              </span>
-              <span className="txt">
-                <b>{user.display_name}</b>
-                <small>Lvl {user.level} · Streak {user.streak}</small>
-              </span>
+              <Link className="me-link" href={profileHref(user.handle) || '/'} title="Your profile">
+                <span className="av" style={{ background: user.avatar_color }}>
+                  {initials(user.display_name)}
+                </span>
+                <span className="txt">
+                  <b>{user.display_name}</b>
+                  <small>Lvl {user.level} · Streak {user.streak}</small>
+                </span>
+              </Link>
               <button type="button" className="logout" onClick={logout} title="Sign out" aria-label="Sign out">
                 <LogOut aria-hidden="true" />
               </button>

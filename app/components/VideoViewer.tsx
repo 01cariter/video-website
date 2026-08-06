@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import type { FormEvent, MouseEvent } from 'react';
+import Link from 'next/link';
 import {
   ArrowLeft,
   Bookmark,
@@ -17,7 +18,7 @@ import {
   VolumeX,
 } from 'lucide-react';
 import type { AppUser, Comment, Video } from '@/lib/types';
-import { bg, fmtLikes, initials } from './media';
+import { bg, fmtLikes, initials, profileHref } from './media';
 
 interface VideoViewerProps {
   video: Video;
@@ -126,6 +127,28 @@ function PlaybackStage({ video }: PlaybackStageProps) {
   );
 }
 
+function AuthorIdentity({ video }: { video: Video }) {
+  const identity = (
+    <>
+      <span className="av" style={{ background: video.author_color }}>
+        {initials(video.author_name)}
+      </span>
+      <span className="who">
+        <b>{video.author_name}</b>
+        <small>{video.author_handle} · {fmtLikes(video.author_followers)} followers</small>
+      </span>
+    </>
+  );
+
+  const href = profileHref(video.author_handle);
+  if (!href) return <span className="pv-who">{identity}</span>;
+  return (
+    <Link className="pv-who" href={href} title={`View ${video.author_name}'s profile`}>
+      {identity}
+    </Link>
+  );
+}
+
 function timeAgo(timestamp: string) {
   const seconds = (Date.now() - new Date(timestamp).getTime()) / 1000;
   if (seconds < 60) return 'now';
@@ -213,13 +236,7 @@ export default function VideoViewer({
 
             <aside className="pv-panel">
               <section className="pv-author">
-                <span className="av" style={{ background: video.author_color }}>
-                  {initials(video.author_name)}
-                </span>
-                <span className="who">
-                  <b>{video.author_name}</b>
-                  <small>{video.author_handle} · {fmtLikes(video.author_followers)} followers</small>
-                </span>
+                <AuthorIdentity video={video} />
                 {user?.id === video.author_id ? (
                   <span className="own">YOU</span>
                 ) : (

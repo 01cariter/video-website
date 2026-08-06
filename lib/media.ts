@@ -2,20 +2,24 @@ import 'server-only';
 
 import { sql } from './db';
 import { createClient as createSupabaseClient } from './supabase/server';
+import {
+  ALLOWED_MEDIA_MIME_TYPES,
+  MAX_DIRECT_UPLOAD_BYTES,
+  MAX_MEDIA_UPLOAD_BYTES,
+  MEDIA_BUCKET,
+  extensionFor,
+  isOwnedStoragePath,
+  kindFromMime,
+} from './media-shared';
 import type { Media, MediaKind } from './types';
 
-export const MEDIA_BUCKET = 'media';
-export const MAX_MEDIA_UPLOAD_BYTES = 4 * 1024 * 1024;
-export const ALLOWED_MEDIA_MIME_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-  'image/avif',
-  'video/mp4',
-  'video/webm',
-  'video/quicktime',
-]);
+export {
+  ALLOWED_MEDIA_MIME_TYPES,
+  MAX_DIRECT_UPLOAD_BYTES,
+  MAX_MEDIA_UPLOAD_BYTES,
+  MEDIA_BUCKET,
+  kindFromMime,
+};
 
 interface CreateMediaInput {
   url: string;
@@ -25,10 +29,6 @@ interface CreateMediaInput {
   height?: number | null;
   durationSeconds?: number | null;
   ownerId?: string | null;
-}
-
-export function kindFromMime(mime = ''): MediaKind {
-  return mime.startsWith('video/') ? 'video' : 'image';
 }
 
 export async function createMediaFromUrl({
@@ -103,6 +103,67 @@ export async function uploadMediaFile({
   }
 }
 
+// Registers an object the signed-in browser already uploaded straight to
+// Supabase Storage. The bytes never pass through this server, which is how
+// uploads above the 4 MB request-body ceiling reach the 50 MB bucket limit.
+export async function registerStorageMedia({
+  path,
+  mime,
+  width = null,
+  height = null,
+  durationSeconds = null,
+  ownerId,
+}: {
+  path: string;
+  mime: string;
+  width?: number | null;
+  height?: number | null;
+  durationSeconds?: number | null;
+  ownerId: string;
+}): Promise<Media> {
+  if (!ALLOWED_MEDIA_MIME_TYPES.has(mime)) {
+    throw new Error('Unsupported media type.');
+  }
+  if (!isOwnedStoragePath(path, ownerId)) {
+    throw new Error('That storage path does not belong to you.');
+  }
+
+  const separator = path.lastIndexOf('/');
+  const folder = path.slice(0, separator);
+  const name = path.slice(separator + 1);
+
+  const supabase = await createSupabaseClient();
+  const { data: entries, error: listError } = await supabase.storage
+    .from(MEDIA_BUCKET)
+    .list(folder, { search: name, limit: 100 });
+  if (listError) throw new Error(listError.message);
+
+  const object = entries?.find((entry) => entry.name === name);
+  if (!object) throw new Error('That upload was not found in storage.');
+
+  const size = Number(object.metadata?.size ?? 0);
+  if (size > MAX_DIRECT_UPLOAD_BYTES) {
+    await supabase.storage.from(MEDIA_BUCKET).remove([path]);
+    throw new Error('Uploads are limited to 50 MB.');
+  }
+
+  const { data } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path);
+  try {
+    return await createMediaFromUrl({
+      url: data.publicUrl,
+      kind: kindFromMime(mime),
+      mime,
+      width,
+      height,
+      durationSeconds,
+      ownerId,
+    });
+  } catch (error) {
+    await supabase.storage.from(MEDIA_BUCKET).remove([path]);
+    throw error;
+  }
+}
+
 export async function getMedia(id: number): Promise<Media | null> {
   const [row] = await sql<Media[]>`
     SELECT id, kind, mime, url, data, width, height, duration_seconds
@@ -126,20 +187,4 @@ export async function listMedia({
     SELECT id, kind, mime, url, width, height, duration_seconds, created_at
     FROM media ORDER BY id DESC LIMIT ${limit}
   `;
-}
-
-function extensionFor(fileName: string, mime: string) {
-  const match = /\.([a-z0-9]{1,8})$/i.exec(fileName);
-  if (match) return `.${match[1].toLowerCase()}`;
-  const fallback: Record<string, string> = {
-    'image/jpeg': '.jpg',
-    'image/png': '.png',
-    'image/webp': '.webp',
-    'image/gif': '.gif',
-    'image/avif': '.avif',
-    'video/mp4': '.mp4',
-    'video/webm': '.webm',
-    'video/quicktime': '.mov',
-  };
-  return fallback[mime] || '';
 }
