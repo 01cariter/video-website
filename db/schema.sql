@@ -3,11 +3,9 @@
 -- ----------------------------------------------------------------------------
 -- Run with:  npm run db:setup     (executes this file, then seeds mock data)
 --
--- Authentication is handled by **Supabase Auth**. Users, sessions and OAuth
--- providers live in the managed `auth` schema — this file does NOT create any
--- auth tables. Business rows reference the Supabase auth user id (a UUID)
--- directly via a `user_id` column (TEXT, so seeded demo authors can use a
--- synthetic non-UUID id like `seed_mathmood`).
+-- Authentication is handled by Supabase Auth. Users, sessions and providers
+-- live in Supabase's managed auth schema. Business rows reference the
+-- Supabase Auth user id directly via a TEXT `user_id` column.
 --
 -- v2 changes:
 --   • All imagery / video lives in a self-hosted `media` table (no Unsplash).
@@ -17,6 +15,7 @@
 
 -- Drop in dependency order so the script is re-runnable.
 DROP TABLE IF EXISTS comments     CASCADE;
+DROP TABLE IF EXISTS agent_messages CASCADE;
 DROP TABLE IF EXISTS video_saves  CASCADE;
 DROP TABLE IF EXISTS video_likes  CASCADE;
 DROP TABLE IF EXISTS follows      CASCADE;
@@ -26,20 +25,20 @@ DROP TABLE IF EXISTS media        CASCADE;
 DROP TABLE IF EXISTS creators     CASCADE;
 DROP TABLE IF EXISTS profiles     CASCADE;
 
--- Legacy self-managed auth tables (replaced by Supabase Auth). Dropped if present.
+-- Legacy self-managed auth tables. Dropped if present.
 DROP TABLE IF EXISTS otp_codes  CASCADE;
 DROP TABLE IF EXISTS identities CASCADE;
 DROP TABLE IF EXISTS sessions   CASCADE;
 DROP TABLE IF EXISTS users      CASCADE;
 
 -- ----------------------------------------------------------------------------
--- profiles — app-specific data that extends a Supabase Auth user. This is
--- also the *creator identity*: every video is authored by a profile (a real
--- user). `user_id` holds the Supabase Auth user id (UUID, as text).
+-- profiles — app-specific data that extends a Supabase Auth user. This is also the
+-- *creator identity*: every video is authored by a profile (a real user).
+-- `user_id` holds the Supabase Auth user id.
 -- Seeded demo authors use synthetic ids prefixed with `seed_`.
 -- ----------------------------------------------------------------------------
 CREATE TABLE profiles (
-  user_id         TEXT        PRIMARY KEY,            -- Supabase Auth user id (UUID)
+  user_id         TEXT        PRIMARY KEY,            -- Supabase Auth user id
   handle          TEXT        UNIQUE,                 -- @handle (nullable until chosen)
   display_name    TEXT,                               -- falls back to Supabase Auth name
   bio             TEXT,
@@ -48,6 +47,9 @@ CREATE TABLE profiles (
   level           INTEGER     NOT NULL DEFAULT 1,
   streak          INTEGER     NOT NULL DEFAULT 0,
   followers_count INTEGER     NOT NULL DEFAULT 0,
+  CONSTRAINT profiles_nonnegative_counters CHECK (
+    level >= 1 AND streak >= 0 AND followers_count >= 0
+  ),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -94,6 +96,12 @@ CREATE TABLE videos (
   saves_count     INTEGER     NOT NULL DEFAULT 0,
   comments_count  INTEGER     NOT NULL DEFAULT 0,
   views_count     INTEGER     NOT NULL DEFAULT 0,
+  CONSTRAINT videos_nonnegative_counters CHECK (
+    likes_count >= 0
+    AND saves_count >= 0
+    AND comments_count >= 0
+    AND views_count >= 0
+  ),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -149,18 +157,3 @@ CREATE TABLE comments (
 );
 
 CREATE INDEX idx_comments_video ON comments (video_id, created_at DESC);
-
--- ----------------------------------------------------------------------------
--- projects — drafts in the "Create studio". Thumbnails reference self-hosted
--- media rows (was Unsplash photo ids).
--- ----------------------------------------------------------------------------
-CREATE TABLE projects (
-  id         SERIAL      PRIMARY KEY,
-  user_id    TEXT        NOT NULL,                  -- Supabase Auth user id
-  name       TEXT        NOT NULL,
-  status     TEXT        NOT NULL DEFAULT 'draft',  -- draft | storyboard | published
-  media_ids  INTEGER[]   NOT NULL DEFAULT '{}',     -- media ids for thumbnail
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX idx_projects_user ON projects (user_id);

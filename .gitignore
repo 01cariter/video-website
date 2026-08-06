@@ -15,9 +15,9 @@ node_modules/
 
 # Next.js
 .next/
+*.tsbuildinfo
 out/
 build/
-next-env.d.ts
 
 # Legacy static-site build output (pre-Next.js)
 dist/
@@ -30,8 +30,5 @@ dist/
 .vercel
 .env*
 
-# Local visual brainstorming previews
-.superpowers/
-
-# Isolated feature worktrees
-.worktrees/
+# Local code intelligence index
+.codegraph/

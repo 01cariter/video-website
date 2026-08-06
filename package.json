@@ -2,32 +2,38 @@
   "name": "video-website",
   "version": "1.0.0",
   "private": true,
-  "description": "Video Website — a short-form learning/play video app. Next.js (App Router) on Vercel, Supabase Postgres storage, authentication powered by Supabase Auth.",
+  "description": "Video Website — a short-form learning/play video app. Next.js (App Router) on Vercel with Supabase Postgres and Supabase Auth.",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "test": "node --experimental-default-type=module --test",
     "lint": "eslint .",
-    "db:setup": "node db/setup.mjs",
-    "db:seed": "node db/seed.mjs",
-    "db:canvas": "node db/migrate-canvas.mjs"
+    "typecheck": "tsc --noEmit",
+    "db:setup": "tsx db/setup.ts",
+    "db:seed": "tsx db/seed.ts"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.12.0",
-    "@supabase/supabase-js": "^2.110.1",
-    "@xyflow/react": "^12.11.1",
-    "ai": "^6.0.209",
-    "lucide-react": "^1.24.0",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.89.0",
+    "lucide-react": "^0.468.0",
     "motion": "^12.41.0",
     "next": "^16.0.0",
-    "postgres": "^3.4.9",
+    "postgres": "^3.4.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.3",
+    "@types/react-dom": "^19.0.2",
     "dotenv": "^16.4.5",
     "eslint": "^9.39.4",
-    "eslint-config-next": "^16.2.9"
+    "eslint-config-next": "^16.2.12",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "overrides": {
+    "postcss": "^8.5.18",
+    "sharp": "^0.35.0"
   }
 }
