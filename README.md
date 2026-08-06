@@ -81,6 +81,14 @@ npm start
   databases unless `ALLOW_DESTRUCTIVE_DB_SETUP=1` is explicitly set.
 - `npm run db:seed` — re-seed business content only (schema must already exist)
 
+> **Uploading fails with "Bucket not found"?** The `media` storage bucket is
+> created only by that migration — `db/schema.sql` contains no storage
+> statements, and `db:setup` refuses to touch a remote database. Run the
+> migration (its bucket and policy statements are idempotent). Creating the
+> bucket by hand in the dashboard is not enough: without the storage policies
+> the upload then fails on row-level security, and the name must be exactly
+> `media`.
+
 Schema (`db/schema.sql`): `profiles`, `media`, `videos`, `video_likes`,
 `video_saves`, `follows`, `comments`. Business tables reference the
 Supabase Auth user id via a `TEXT` `user_id` column.
