@@ -195,8 +195,16 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible,input:focus-v
 .auth-close:active{transform:scale(.96)}
 .auth-close svg{width:18px;height:18px}
 
+/* Create: the posting overlay, opened from the feed and the profile */
+.create-modal{position:fixed;inset:0;width:min(1180px,calc(100vw - 32px));max-width:none;
+  height:min(880px,calc(100dvh - 32px));max-height:none;margin:auto;padding:0;
+  border:0;background:transparent;color:var(--ink);overflow:visible}
+.create-modal::backdrop{background:rgba(12,11,9,.72);backdrop-filter:blur(8px);animation:auth-backdrop-in .16s ease-out}
+.create-modal-shell{height:100%}
+
 /* Create / Solo iframe */
-.solo-shell{display:grid;grid-template-rows:auto minmax(0,1fr);height:100dvh;background:var(--cream)}
+.solo-shell{display:grid;grid-template-rows:auto minmax(0,1fr);height:100%;overflow:hidden;
+  border:2px solid var(--line);border-radius:16px;background:var(--cream);box-shadow:var(--shadow)}
 .solo-header{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:12px 18px;
   background:var(--bar);border-bottom:2px solid var(--line);backdrop-filter:blur(10px)}
 .solo-header-left,.solo-actions{display:flex;align-items:center;gap:10px;min-width:0}
@@ -551,6 +559,9 @@ a.pv-who:hover .who b{color:var(--orange-d)}
   .grid{grid-auto-rows:158px;gap:12px}
   .vcard{border-radius:11px}
   .vcard-info{right:11px;bottom:10px;left:11px}
+  /* Below tablet the workspace needs every pixel, so the overlay goes edge to edge. */
+  .create-modal{width:100vw;height:100dvh}
+  .solo-shell{border:0;border-radius:0}
   .solo-header{padding:10px 12px}
   .solo-status,.solo-divider,.solo-external span,.back span,.stitle>span:last-child{display:none}
   .solo-external{width:42px;height:42px;padding:0;justify-content:center}

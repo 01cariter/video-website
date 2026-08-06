@@ -8,8 +8,10 @@ import { BookOpen, Clapperboard, Home, LogIn, LogOut, Moon, Plus, Search, Sun, X
 import { AnimatePresence } from 'motion/react';
 import { flushSync } from 'react-dom';
 import { createClient } from '@/lib/supabase/client';
+import { getSoloUrl } from '@/lib/solo';
 import type { AppUser, Comment, FeedMode, FeedPage, SocialToggle, Video } from '@/lib/types';
 import AuthModal from './AuthModal';
+import CreateModal from './CreateModal';
 import { initials, profileHref } from './media';
 import VideoCard from './VideoCard';
 import VideoViewer from './VideoViewer';
@@ -65,6 +67,7 @@ export default function HomeFeed({
   const [posting, setPosting] = useState(false);
   const [sharedId, setSharedId] = useState<number | null>(null);
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   const lastNavigationAt = useRef(0);
   const loadMoreTarget = useRef<HTMLDivElement>(null);
   const loadingMoreRef = useRef(false);
@@ -464,14 +467,15 @@ export default function HomeFeed({
   }, [list, loadComments]);
 
   useEffect(() => {
-    document.body.style.overflow = openId || authMode ? 'hidden' : '';
+    document.body.style.overflow = openId || authMode || createOpen ? 'hidden' : '';
     return () => {
       document.body.style.overflow = '';
     };
-  }, [authMode, openId]);
+  }, [authMode, createOpen, openId]);
 
   useEffect(() => {
-    if (!current || authMode) return;
+    // The overlay owns Escape and the arrow keys while it is up.
+    if (!current || authMode || createOpen) return;
     function onKey(event: globalThis.KeyboardEvent) {
       if (event.key === 'Escape') closePreview();
       if (event.key === 'ArrowDown') go(1);
@@ -479,7 +483,7 @@ export default function HomeFeed({
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [authMode, closePreview, current, go]);
+  }, [authMode, closePreview, createOpen, current, go]);
 
   return (
     <>
@@ -521,10 +525,10 @@ export default function HomeFeed({
           </nav>
 
           {user ? (
-            <Link className="create" href="/create">
+            <button type="button" className="create" onClick={() => setCreateOpen(true)}>
               <span className="ic"><Plus aria-hidden="true" /></span>
               <span>Create</span>
-            </Link>
+            </button>
           ) : (
             <button type="button" className="create" onClick={() => setAuthMode('login')}>
               <span className="ic"><Plus aria-hidden="true" /></span>
@@ -703,6 +707,12 @@ export default function HomeFeed({
             onClose={() => setAuthMode(null)}
             onModeChange={setAuthMode}
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {createOpen && user && (
+          <CreateModal user={user} soloUrl={getSoloUrl()} onClose={() => setCreateOpen(false)} />
         )}
       </AnimatePresence>
     </>

@@ -35,7 +35,8 @@ Key files:
 | `lib/supabase/client.ts` | Browser Supabase client |
 | `lib/user.ts` | `getCurrentUser()` — merges the Supabase Auth user with the `profiles` row |
 | `app/auth/callback/route.ts` | OAuth / email PKCE callback |
-| `proxy.ts` | Refreshes Supabase cookies and protects `/create` |
+| `proxy.ts` | Refreshes Supabase cookies |
+| `app/components/CreateModal.tsx` | Posting overlay — opened from the feed and the profile, no `/create` route |
 
 ## Environment
 
