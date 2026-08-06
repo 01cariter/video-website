@@ -4,17 +4,18 @@ import { useEffect, useRef } from 'react';
 import type { MouseEvent } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import CreateWorkspace from './CreateWorkspace';
-import type { AppUser } from '@/lib/types';
+import type { AppUser, Video } from '@/lib/types';
 
 interface CreateModalProps {
   user: AppUser;
   soloUrl: string;
   onClose: () => void;
+  onPublished: (video: Video) => void;
 }
 
 const MODAL_EASE = [0.22, 1, 0.36, 1] as const;
 
-export default function CreateModal({ user, soloUrl, onClose }: CreateModalProps) {
+export default function CreateModal({ user, soloUrl, onClose, onPublished }: CreateModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const prefersReducedMotion = Boolean(useReducedMotion());
 
@@ -47,7 +48,12 @@ export default function CreateModal({ user, soloUrl, onClose }: CreateModalProps
         exit={{ opacity: 0, y: 8, scale: 0.99 }}
         transition={{ duration: prefersReducedMotion ? 0 : 0.18, ease: MODAL_EASE }}
       >
-        <CreateWorkspace user={user} soloUrl={soloUrl} onClose={onClose} />
+        <CreateWorkspace
+          user={user}
+          soloUrl={soloUrl}
+          onClose={onClose}
+          onPublished={onPublished}
+        />
       </motion.div>
     </dialog>
   );

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { CloudUpload, Film, Image as ImageIcon, LoaderCircle, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { getSupabasePublishableKey, getSupabaseUrl } from '@/lib/supabase/env';
@@ -13,10 +12,13 @@ import {
   kindFromMime,
   storagePathFor,
 } from '@/lib/media-shared';
-import type { AppUser, MediaKind, Media, VideoCategory } from '@/lib/types';
+import type { AppUser, MediaKind, Media, Video, VideoCategory } from '@/lib/types';
 
 interface MediaUploaderProps {
   user: AppUser;
+  // The finished post, handed back so the page underneath can show it without
+  // a navigation — publishing dismisses the overlay, it does not leave.
+  onPublished: (video: Video) => void;
 }
 
 interface Probe {
@@ -38,14 +40,13 @@ interface MediaResponse {
 }
 
 interface VideoResponse {
-  video: { id: number };
+  video: Video;
 }
 
 const ACCEPT = Array.from(ALLOWED_MEDIA_MIME_TYPES).join(',');
 const POSTER_CAPTURE_TIMEOUT_MS = 8000;
 
-export default function MediaUploader({ user }: MediaUploaderProps) {
-  const router = useRouter();
+export default function MediaUploader({ user, onPublished }: MediaUploaderProps) {
   const supabase = useMemo(() => createClient(), []);
   const inputRef = useRef<HTMLInputElement>(null);
   const selectionRef = useRef<Selection | null>(null);
@@ -221,8 +222,7 @@ export default function MediaUploader({ user }: MediaUploaderProps) {
         throw new Error(payload.detail || payload.error || 'The post could not be published.');
       }
 
-      router.push(`/videos/${payload.video.id}`);
-      router.refresh();
+      onPublished(payload.video);
     } catch (publishError) {
       setError(publishError instanceof Error ? publishError.message : 'Upload failed.');
       setStage('idle');
