@@ -457,6 +457,15 @@ function uploadToStorage({
         resolve();
         return;
       }
+      // Storage puts the real cause in the body; keep it whole in the console
+      // so a bare status code is never all there is to go on.
+      console.error('[snackd] storage upload rejected', {
+        status: request.status,
+        endpoint,
+        path,
+        mime,
+        body: request.responseText,
+      });
       reject(new Error(storageErrorMessage(request.responseText, request.status)));
     };
     request.onerror = () => reject(new Error('The network dropped during upload.'));
@@ -465,14 +474,19 @@ function uploadToStorage({
   });
 }
 
+// The status alone does not separate a missing bucket from a policy rejection
+// from a blocked MIME type, so the server's own wording is always kept.
 function storageErrorMessage(responseText: string, status: number) {
+  let detail = '';
   try {
     const parsed = JSON.parse(responseText) as { message?: string; error?: string };
-    if (parsed.message || parsed.error) return String(parsed.message || parsed.error);
+    detail = String(parsed.message || parsed.error || '');
   } catch {
-    // Storage returned a non-JSON body.
+    detail = responseText.trim().slice(0, 200);
   }
-  return `Storage rejected the upload (HTTP ${status}).`;
+  return detail
+    ? `Storage rejected the upload (HTTP ${status}): ${detail}`
+    : `Storage rejected the upload (HTTP ${status}).`;
 }
 
 function probeImage(objectUrl: string) {

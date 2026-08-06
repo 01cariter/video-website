@@ -3,7 +3,8 @@ export function getSupabaseUrl() {
   if (!value) {
     throw new Error('NEXT_PUBLIC_SUPABASE_URL is not set. Pull it from the Vercel Supabase integration.');
   }
-  return value;
+  // A trailing slash here becomes `//storage/v1/...`, which Storage rejects.
+  return value.replace(/\/+$/, '');
 }
 
 export function getSupabasePublishableKey() {
