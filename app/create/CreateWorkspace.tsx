@@ -35,17 +35,10 @@ export default function CreateWorkspace({
   initialMode = 'choose',
 }: CreateWorkspaceProps) {
   const [mode, setMode] = useState<CreateMode>(initialMode);
-  const [frameLoading, setFrameLoading] = useState(true);
   const [frameKey, setFrameKey] = useState(0);
 
   function reloadFrame() {
-    setFrameLoading(true);
     setFrameKey((key) => key + 1);
-  }
-
-  function openSolo() {
-    setFrameLoading(true);
-    setMode('solo');
   }
 
   return (
@@ -111,11 +104,12 @@ export default function CreateWorkspace({
                 </span>
               </button>
 
-              {/* No Solo API yet — the workspace is embedded in-page as an iframe. */}
-              <button type="button" className="pick-card" onClick={openSolo}>
+              {/* No Solo API yet, so this hands off to their studio and takes the
+                  finished file back through the uploader. */}
+              <button type="button" className="pick-card" onClick={() => setMode('solo')}>
                 <span className="pick-ic ai"><Sparkles aria-hidden="true" /></span>
                 <b>Make it with AI</b>
-                <small>Open the Solo workspace right here and generate from a prompt.</small>
+                <small>Generate from a prompt in the Solo studio, then bring the file back here.</small>
                 <span className="pick-go">
                   Open AI Studio
                   <ChevronRight aria-hidden="true" />
@@ -132,8 +126,7 @@ export default function CreateWorkspace({
         <SoloWorkspace
           soloUrl={soloUrl}
           frameKey={frameKey}
-          loading={frameLoading}
-          onLoaded={() => setFrameLoading(false)}
+          onUpload={() => setMode('upload')}
         />
       )}
     </main>

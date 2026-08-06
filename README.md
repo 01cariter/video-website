@@ -122,10 +122,15 @@ Supabase Auth user id via a `TEXT` `user_id` column.
     and clip duration are read client-side, and a cover frame is grabbed from
     video with a canvas so the post has a feed poster. Publishing lands on
     `/videos/:id`.
-  - **Make it with AI** — opens the Solo workspace embedded in a full-height
-    iframe, without leaving the site. There is no Solo API integration; the
-    workspace is their site framed in-page. "Open separately" in the header
-    is there if you want it in its own tab.
+  - **Make it with AI** — hands off to the Solo studio and takes the finished
+    file back through the uploader. There is no Solo API integration. The page
+    still mounts Solo in a full-height iframe first, but **Solo refuses to
+    render when it is not the top window** — it sends no `X-Frame-Options` and
+    no `frame-ancestors` CSP, so the frame fires `load` and then stays blank,
+    and nothing cross-origin reveals that. After a 3s grace period the page
+    offers **Open Solo** (its own tab) and **I have the file — upload it**,
+    with a "Show the embed anyway" escape hatch in case Solo ever allows
+    framing.
 - **Profiles** at `/u/:handle` — avatar, bio, follower/post/like counts, follow
   button, and the creator's posts. Your own profile adds a **Saved** tab.
   Reachable from the sidebar and from the author on any video.
