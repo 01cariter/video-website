@@ -51,27 +51,23 @@ async function extractShade(url: string): Promise<string | null> {
 export default function VideoCard({ video, index, sizeClass, onOpen, onWarm }: VideoCardProps) {
   const baseColor = placeholderColor(video.category, index);
   const poster = hasPoster(video.poster_url) ? video.poster_url : null;
-  const [shade, setShade] = useState(() =>
-    poster && shadeCache.has(poster) ? shadeCache.get(poster)! : baseColor,
-  );
+  // Only a real extraction needs state: a missing poster and a cached one both
+  // resolve during render, so switching cards never paints the old shade.
+  const [extracted, setExtracted] = useState<{ url: string; hex: string } | null>(null);
+  const shade = poster
+    ? shadeCache.get(poster) ?? (extracted?.url === poster ? extracted.hex : baseColor)
+    : baseColor;
 
   useEffect(() => {
-    if (!poster) {
-      setShade(baseColor);
-      return;
-    }
-    if (shadeCache.has(poster)) {
-      setShade(shadeCache.get(poster)!);
-      return;
-    }
+    if (!poster || shadeCache.has(poster)) return;
 
     let cancelled = false;
     extractShade(poster)
       .then((hex) => {
-        if (!cancelled) setShade(hex || baseColor);
+        if (!cancelled) setExtracted({ url: poster, hex: hex || baseColor });
       })
       .catch(() => {
-        if (!cancelled) setShade(baseColor);
+        if (!cancelled) setExtracted({ url: poster, hex: baseColor });
       });
 
     return () => {
