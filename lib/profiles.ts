@@ -104,3 +104,38 @@ export async function getSavedVideos({
     [userId, userId],
   );
 }
+
+export interface SuggestedAuthor {
+  user_id: string;
+  handle: string | null;
+  display_name: string;
+  avatar_color: string;
+  followers_count: number;
+  following: boolean;
+}
+
+export async function getSuggestedAuthors({
+  viewerId,
+  limit = 3,
+}: {
+  viewerId: string | null;
+  limit?: number;
+}): Promise<SuggestedAuthor[]> {
+  return sql<SuggestedAuthor[]>`
+    SELECT
+      p.user_id,
+      p.handle,
+      COALESCE(p.display_name, 'Creator') AS display_name,
+      p.avatar_color,
+      p.followers_count,
+      false AS following
+    FROM profiles p
+    WHERE (${viewerId}::text IS NULL OR p.user_id <> ${viewerId}::text)
+      AND (${viewerId}::text IS NULL OR NOT EXISTS (
+        SELECT 1 FROM follows f
+        WHERE f.author_id = p.user_id AND f.follower_id = ${viewerId}::text
+      ))
+    ORDER BY p.followers_count DESC, p.user_id
+    LIMIT ${pageSize(limit)}
+  `;
+}

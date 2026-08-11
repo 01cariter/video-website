@@ -1,5 +1,9 @@
 export type FeedMode = 'all' | 'study' | 'play';
 export type VideoCategory = Exclude<FeedMode, 'all'>;
+export type FeedFilter =
+  | { kind: 'foryou' }
+  | { kind: 'following' }
+  | { kind: 'category'; category: VideoCategory };
 export type MediaKind = 'image' | 'video';
 
 export interface AppUser {

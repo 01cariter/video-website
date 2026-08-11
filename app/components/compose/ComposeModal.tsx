@@ -3,19 +3,21 @@
 import { useEffect, useRef } from 'react';
 import type { MouseEvent } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import CreateWorkspace from './CreateWorkspace';
+import { X } from 'lucide-react';
+import MediaUploader from '../MediaUploader';
 import type { AppUser, Video } from '@/lib/types';
 
-interface CreateModalProps {
+interface ComposeModalProps {
   user: AppUser;
-  soloUrl: string;
   onClose: () => void;
   onPublished: (video: Video) => void;
 }
 
 const MODAL_EASE = [0.22, 1, 0.36, 1] as const;
 
-export default function CreateModal({ user, soloUrl, onClose, onPublished }: CreateModalProps) {
+// Post is upload-only — no AI/Solo choice here. Studio is the one surface
+// that embeds Worksolo; this modal never renders it.
+export default function ComposeModal({ user, onClose, onPublished }: ComposeModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const prefersReducedMotion = Boolean(useReducedMotion());
 
@@ -34,7 +36,7 @@ export default function CreateModal({ user, soloUrl, onClose, onPublished }: Cre
     <dialog
       ref={dialogRef}
       className="create-modal"
-      aria-label="Create a post"
+      aria-label="Post"
       onCancel={(event) => {
         event.preventDefault();
         onClose();
@@ -48,12 +50,22 @@ export default function CreateModal({ user, soloUrl, onClose, onPublished }: Cre
         exit={{ opacity: 0, y: 8, scale: 0.99 }}
         transition={{ duration: prefersReducedMotion ? 0 : 0.18, ease: MODAL_EASE }}
       >
-        <CreateWorkspace
-          user={user}
-          soloUrl={soloUrl}
-          onClose={onClose}
-          onPublished={onPublished}
-        />
+        <div className="solo-shell">
+          <header className="solo-header">
+            <div className="solo-header-left">
+              <button type="button" className="back" onClick={onClose} aria-label="Close" title="Close">
+                <X aria-hidden="true" />
+                <span>Close</span>
+              </button>
+              <span className="solo-divider" />
+              <div className="stitle">
+                <span className="mark" />
+                <span>Post</span>
+              </div>
+            </div>
+          </header>
+          <MediaUploader user={user} onPublished={onPublished} />
+        </div>
       </motion.div>
     </dialog>
   );

@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { parseFeedQuery } from '@/lib/feed-mode';
 import { createVideo, getFeedPage } from '@/lib/videos';
 import { getAuthUser } from '@/lib/supabase/server';
 import { getCurrentUser } from '@/lib/user';
-import type { VideoCategory } from '@/lib/types';
+import type { FeedFilter, VideoCategory } from '@/lib/types';
 
 export const runtime = 'nodejs';
 
@@ -22,15 +23,24 @@ interface CreateVideoBody {
 }
 
 export async function GET(request: NextRequest) {
-  const value = request.nextUrl.searchParams.get('category');
-  const category: VideoCategory | null = value === 'study' || value === 'play' ? value : null;
+  const { mode, category } = parseFeedQuery({
+    mode: request.nextUrl.searchParams.get('mode'),
+    category: request.nextUrl.searchParams.get('category'),
+  });
   const cursor = request.nextUrl.searchParams.get('cursor');
   const requestedLimit = Number(request.nextUrl.searchParams.get('limit') || 12);
   const limit = Number.isFinite(requestedLimit) ? requestedLimit : 12;
 
+  const filter: FeedFilter =
+    mode === 'following'
+      ? { kind: 'following' }
+      : category
+        ? { kind: 'category', category }
+        : { kind: 'foryou' };
+
   const user = await getAuthUser();
   const page = await getFeedPage({
-    category,
+    filter,
     cursor,
     limit,
     userId: user?.id ?? null,

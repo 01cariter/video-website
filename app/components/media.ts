@@ -73,6 +73,24 @@ export function fmtDate(timestamp: string | null | undefined) {
   return Number.isNaN(date.getTime()) ? '' : UPLOAD_DATE.format(date);
 }
 
+// X-style short relative time for timeline rows. "now" covers the whole
+// first minute rather than counting seconds, so a server render and the
+// client hydrating a beat later can't disagree and trip a hydration warning.
+export function fmtRelativeTime(timestamp: string | null | undefined) {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  const diffSeconds = Math.round((Date.now() - date.getTime()) / 1000);
+  if (diffSeconds < 60) return 'now';
+  const diffMinutes = Math.round(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes}m`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h`;
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d`;
+  return fmtDate(timestamp);
+}
+
 // The grid used to shape a card from its index, so the same post changed shape
 // as the feed reordered and a portrait clip could land in a letterbox. Shape
 // follows the media's own proportions instead, and only falls back to the

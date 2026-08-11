@@ -2,9 +2,11 @@ import 'server-only';
 
 import { revalidateTag, unstable_cache } from 'next/cache';
 import { sql } from './db';
-import type { Comment, FeedPage, SocialToggle, Video, VideoCategory } from './types';
+import type { Comment, FeedFilter, FeedPage, SocialToggle, Video, VideoCategory } from './types';
 
 interface FeedOptions {
+  filter?: FeedFilter;
+  /** @deprecated Use filter: { kind: 'category', category } instead */
   category?: VideoCategory | null;
   userId?: string | null;
   cursor?: string | null;
@@ -57,14 +59,36 @@ const getCachedPublicFeedPage = unstable_cache(
   { revalidate: 60, tags: ['videos-feed'] },
 );
 
+function resolveFeedFilter(filter: FeedFilter | undefined, category: VideoCategory | null): FeedFilter {
+  if (filter) return filter;
+  if (category) return { kind: 'category', category };
+  return { kind: 'foryou' };
+}
+
 export async function getFeedPage({
+  filter,
   category = null,
   userId = null,
   cursor = null,
   limit = 12,
 }: FeedOptions = {}): Promise<FeedPage> {
   const pageSize = Math.min(Math.max(Math.trunc(limit), 1), 24);
-  const page = await getCachedPublicFeedPage(category, cursor, pageSize);
+  const resolvedFilter = resolveFeedFilter(filter, category);
+
+  if (resolvedFilter.kind === 'following') {
+    if (!userId) {
+      return { videos: [], nextCursor: null };
+    }
+    const page = await queryFollowingFeedPage({ userId, cursor, limit: pageSize });
+    const videos = await applyViewerState(page.videos, userId);
+    return {
+      videos: videos.map(toPublicVideo),
+      nextCursor: page.nextCursor,
+    };
+  }
+
+  const categoryFilter = resolvedFilter.kind === 'category' ? resolvedFilter.category : null;
+  const page = await getCachedPublicFeedPage(categoryFilter, cursor, pageSize);
   const videos = userId ? await applyViewerState(page.videos, userId) : page.videos;
   return {
     videos: videos.map(toPublicVideo),
@@ -76,6 +100,37 @@ function toPublicVideo(video: RankedVideo): Video {
   const result = { ...video } as Partial<RankedVideo>;
   delete result.recommendation_score;
   return result as Video;
+}
+
+// Shared column list + recency-weighted score for both ranked feed queries
+// below. Passed as a `${}` fragment rather than duplicated, so the two
+// queries can't drift out of sync on their columns or scoring formula.
+function rankedVideoSelect() {
+  return sql`
+    v.id, v.title, v.description, v.category, v.label, v.size, v.duration, v.created_at,
+    v.likes_count, v.saves_count, v.comments_count, v.views_count, v.author_id,
+    p.handle AS author_handle,
+    COALESCE(p.display_name, 'Creator') AS author_name,
+    p.avatar_color AS author_color,
+    p.bio AS author_bio,
+    p.followers_count AS author_followers,
+    pm.url AS poster_url, pm.width AS poster_w, pm.height AS poster_h,
+    vm.url AS video_url, vm.mime AS video_mime, vm.width AS video_w, vm.height AS video_h,
+    false AS liked,
+    false AS saved,
+    false AS following,
+    -- Recency is a day count, not a decay against now(), so a row's score
+    -- never moves and the (score, id) cursor below stays stable mid-page.
+    -- 12 a day sits just under one like (LN(2) * 18 = 12.5): fresh wins
+    -- ties, engagement still wins, and neither buries the other.
+    ROUND((
+      LN(1 + v.likes_count) * 18
+      + LN(1 + v.saves_count) * 16
+      + LN(1 + v.comments_count) * 14
+      + LN(1 + v.views_count) * 7
+      + EXTRACT(EPOCH FROM v.created_at) / 86400 * 12
+    ) * 1000)::double precision AS recommendation_score
+  `;
 }
 
 async function queryPublicFeedPage({
@@ -91,34 +146,58 @@ async function queryPublicFeedPage({
   const rows = await sql<RankedVideo[]>`
     WITH ranked AS (
       SELECT
-        v.id, v.title, v.description, v.category, v.label, v.size, v.duration,
-        v.likes_count, v.saves_count, v.comments_count, v.views_count, v.author_id,
-        p.handle AS author_handle,
-        COALESCE(p.display_name, 'Creator') AS author_name,
-        p.avatar_color AS author_color,
-        p.bio AS author_bio,
-        p.followers_count AS author_followers,
-        pm.url AS poster_url, pm.width AS poster_w, pm.height AS poster_h,
-        vm.url AS video_url, vm.mime AS video_mime, vm.width AS video_w, vm.height AS video_h,
-        false AS liked,
-        false AS saved,
-        false AS following,
-        -- Recency is a day count, not a decay against now(), so a row's score
-        -- never moves and the (score, id) cursor below stays stable mid-page.
-        -- 12 a day sits just under one like (LN(2) * 18 = 12.5): fresh wins
-        -- ties, engagement still wins, and neither buries the other.
-        ROUND((
-          LN(1 + v.likes_count) * 18
-          + LN(1 + v.saves_count) * 16
-          + LN(1 + v.comments_count) * 14
-          + LN(1 + v.views_count) * 7
-          + EXTRACT(EPOCH FROM v.created_at) / 86400 * 12
-        ) * 1000)::double precision AS recommendation_score
+        ${rankedVideoSelect()}
       FROM videos v
       JOIN profiles p ON p.user_id = v.author_id
       LEFT JOIN media pm ON pm.id = v.poster_media_id
       LEFT JOIN media vm ON vm.id = v.video_media_id
       WHERE ${category}::text IS NULL OR v.category = ${category}::text
+    )
+    SELECT *
+    FROM ranked
+    WHERE
+      ${decodedCursor?.score ?? null}::double precision IS NULL
+      OR (recommendation_score, id) < (
+        ${decodedCursor?.score ?? null}::double precision,
+        ${decodedCursor?.id ?? null}::integer
+      )
+    ORDER BY recommendation_score DESC, id DESC
+    LIMIT ${limit + 1}
+  `;
+
+  const hasMore = rows.length > limit;
+  const videos = hasMore ? rows.slice(0, limit) : rows;
+  const last = videos.at(-1);
+  return {
+    videos,
+    nextCursor: hasMore && last
+      ? encodeFeedCursor({ score: Number(last.recommendation_score), id: last.id })
+      : null,
+  };
+}
+
+async function queryFollowingFeedPage({
+  userId,
+  cursor,
+  limit,
+}: {
+  userId: string;
+  cursor: string | null;
+  limit: number;
+}): Promise<RankedFeedPage> {
+  const decodedCursor = decodeFeedCursor(cursor);
+  const rows = await sql<RankedVideo[]>`
+    WITH ranked AS (
+      SELECT
+        ${rankedVideoSelect()}
+      FROM videos v
+      JOIN profiles p ON p.user_id = v.author_id
+      LEFT JOIN media pm ON pm.id = v.poster_media_id
+      LEFT JOIN media vm ON vm.id = v.video_media_id
+      WHERE EXISTS (
+        SELECT 1 FROM follows f
+        WHERE f.author_id = v.author_id AND f.follower_id = ${userId}
+      )
     )
     SELECT *
     FROM ranked

@@ -1,12 +1,11 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { AnimatePresence } from 'motion/react';
 import type { AppUser, Comment, SocialToggle, Video } from '@/lib/types';
 import AuthModal from '@/app/components/AuthModal';
-import VideoViewer from '@/app/components/VideoViewer';
+import PostDetail from '@/app/components/feed/PostDetail';
 
 interface VideoPageClientProps {
   user: AppUser | null;
@@ -30,7 +29,6 @@ export default function VideoPageClient({
   initialComments,
   initialCommentsError,
 }: VideoPageClientProps) {
-  const router = useRouter();
   const [video, setVideo] = useState(initialVideo);
   const [comments, setComments] = useState(initialComments);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -40,8 +38,23 @@ export default function VideoPageClient({
   const [shared, setShared] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
   const pending = useRef(new Set<string>());
+  const viewed = useRef(false);
 
   const needAuth = useCallback(() => setAuthMode('login'), []);
+
+  useEffect(() => {
+    if (viewed.current) return;
+    viewed.current = true;
+    const id = video.id;
+    void fetch(`/api/videos/${id}/view`, { method: 'POST' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { views_count?: number } | null) => {
+        if (typeof data?.views_count === 'number') {
+          setVideo((current) => ({ ...current, views_count: data.views_count! }));
+        }
+      })
+      .catch(() => {});
+  }, [video.id]);
 
   async function act<T>(url: string, body?: object): Promise<T | null> {
     const response = await fetch(url, {
@@ -128,7 +141,9 @@ export default function VideoPageClient({
       author_followers: Math.max(0, current.author_followers + (optimistic ? 1 : -1)),
     }));
     try {
-      const result = await act<SocialToggle>(`/api/authors/${encodeURIComponent(video.author_id)}/follow`);
+      const result = await act<SocialToggle>(
+        `/api/authors/${encodeURIComponent(video.author_id)}/follow`,
+      );
       if (!result) throw new Error('Follow failed.');
       setVideo((current) => ({
         ...current,
@@ -196,21 +211,15 @@ export default function VideoPageClient({
 
   return (
     <>
-      <VideoViewer
-        standalone
+      <PostDetail
         video={video}
         user={user}
-        index={0}
-        total={1}
-        direction={0}
         comments={comments}
         commentsLoading={commentsLoading}
         commentsError={commentsError}
         draft={draft}
         posting={posting}
         shared={shared}
-        onClose={() => router.push('/')}
-        onNavigate={() => undefined}
         onLike={() => void like()}
         onSave={() => void save()}
         onFollow={() => void follow()}
