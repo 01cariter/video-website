@@ -1,10 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { getVideoById, getComments } from '@/lib/videos';
+import { getVideoById } from '@/lib/videos';
 import { getAuthUser } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
-// GET /api/videos/:id - full video detail for the preview (incl. comments).
+// GET /api/videos/:id — post body only. Comments load from /comments.
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const videoId = Number(id);
@@ -17,6 +17,5 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   if (!video) {
     return NextResponse.json({ error: 'Video not found.' }, { status: 404 });
   }
-  const comments = await getComments(videoId);
-  return NextResponse.json({ video, comments });
+  return NextResponse.json({ video });
 }

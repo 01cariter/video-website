@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { cache } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { getAuthUser } from './supabase/server';
 import { sql } from './db';
@@ -11,7 +12,6 @@ const AVATAR_COLORS = ['#3f7d92', '#cf4f2a', '#4a7a6a', '#52708f', '#b06a3a', '#
 interface ProfileRow extends Record<string, unknown> {
   handle: string | null;
   avatar_color: string;
-  xp: number;
   followers_count: number;
 }
 
@@ -42,22 +42,31 @@ function deriveHandle(user: User) {
   return `@${base}_${suffix}`;
 }
 
-export async function getCurrentUser(): Promise<AppUser | null> {
+// Per-request memo: layout + page both call this on every navigation.
+export const getCurrentUser = cache(async (): Promise<AppUser | null> => {
   const authUser = await getAuthUser();
   if (!authUser?.id) return null;
 
   const displayName = displayNameFor(authUser);
   const handle = deriveHandle(authUser);
-  const [profile] = await sql<ProfileRow[]>`
-    INSERT INTO profiles (user_id, display_name, handle, avatar_color)
-    VALUES (${authUser.id}, ${displayName}, ${handle}, ${randomColor()})
-    ON CONFLICT (user_id) DO UPDATE SET display_name = EXCLUDED.display_name
-    RETURNING handle, avatar_color, followers_count,
-      -- Same derivation the profile page uses: the stored level column was
-      -- never written to, so it always read 1.
-      (SELECT COALESCE(SUM(v.likes_count * 2 + v.saves_count * 3 + 10), 0)
-       FROM videos v WHERE v.author_id = ${authUser.id})::integer AS xp
+
+  // Fast path: no XP SUM over all posts on every route change.
+  const [existing] = await sql<ProfileRow[]>`
+    SELECT handle, avatar_color, followers_count
+    FROM profiles
+    WHERE user_id = ${authUser.id}
   `;
+
+  let profile = existing;
+  if (!profile) {
+    const [created] = await sql<ProfileRow[]>`
+      INSERT INTO profiles (user_id, display_name, handle, avatar_color)
+      VALUES (${authUser.id}, ${displayName}, ${handle}, ${randomColor()})
+      ON CONFLICT (user_id) DO UPDATE SET display_name = EXCLUDED.display_name
+      RETURNING handle, avatar_color, followers_count
+    `;
+    profile = created;
+  }
 
   if (!profile) throw new Error('Could not load the current user profile.');
 
@@ -68,8 +77,9 @@ export async function getCurrentUser(): Promise<AppUser | null> {
     email: authUser.email ?? null,
     avatar_url: avatarUrlFor(authUser),
     avatar_color: profile.avatar_color,
-    xp: profile.xp,
-    level: levelFromXp(profile.xp),
+    // XP/level are profile-page concerns; shell does not need a live SUM.
+    xp: 0,
+    level: levelFromXp(0),
     followers_count: profile.followers_count,
   };
-}
+});

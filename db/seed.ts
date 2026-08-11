@@ -59,14 +59,22 @@ export async function seed() {
     const authorId = handleToUserId[video.author];
     if (!authorId) throw new Error(`Missing seed author ${video.author}.`);
     const likes = (index + 3) * 7000;
-    await sql`
+    const [row] = await sql<{ id: number }[]>`
       INSERT INTO videos
         (title, description, category, label, size, author_id, poster_media_id, duration, likes_count, views_count)
       VALUES (
         ${video.title}, ${video.description}, ${video.category}, ${video.label ?? null}, ${video.size},
         ${authorId}, ${media.id}, ${video.duration}, ${likes}, ${likes * 4}
       )
+      RETURNING id
     `;
+    if (row) {
+      await sql`
+        INSERT INTO video_assets (video_id, media_id, position)
+        VALUES (${row.id}, ${media.id}, 0)
+        ON CONFLICT DO NOTHING
+      `;
+    }
   }
 
   console.log('  Seed complete.\n');

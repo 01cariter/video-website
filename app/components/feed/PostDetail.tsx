@@ -5,7 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Bookmark, Heart, MessageCircle, Share2 } from 'lucide-react';
 import type { AppUser, Comment, Video } from '@/lib/types';
-import { bg, fmtDate, fmtLikes, fmtRelativeTime, initials, profileHref } from '../media';
+import { fmtDate, fmtLikes, fmtRelativeTime, initials, profileHref } from '../media';
+import { useMediaPreview } from '../shell/MediaPreviewContext';
+import MediaCarousel from './MediaCarousel';
 
 interface PostDetailProps {
   video: Video;
@@ -47,6 +49,7 @@ export default function PostDetail({
   const router = useRouter();
   const profile = profileHref(video.author_handle);
   const isOwner = user?.id === video.author_id;
+  const { openPreview } = useMediaPreview();
 
   return (
     <article className="pd">
@@ -55,58 +58,49 @@ export default function PostDetail({
           <ArrowLeft aria-hidden="true" />
         </button>
         <h1>Post</h1>
+        <div className="pd-top-author">
+          <Link
+            className="pd-top-av"
+            href={profile || `/videos/${video.id}`}
+            style={{ background: video.author_color }}
+            aria-label={video.author_name}
+          >
+            {initials(video.author_name)}
+          </Link>
+          <Link href={profile || `/videos/${video.id}`} className="pd-top-who">
+            <b className="t-name">{video.author_name}</b>
+            {video.author_handle && <span className="t-handle">{video.author_handle}</span>}
+          </Link>
+          {!isOwner && (
+            <button
+              type="button"
+              className={`pd-follow ${video.following ? 'on' : ''}`}
+              onClick={() => (user ? onFollow() : onNeedAuth())}
+            >
+              {video.following ? 'Following' : 'Follow'}
+            </button>
+          )}
+        </div>
       </header>
 
-      <div className="pd-author">
-        <Link
-          className="t-av"
-          href={profile || `/videos/${video.id}`}
-          style={{ background: video.author_color }}
-          aria-label={video.author_name}
-        >
-          {initials(video.author_name)}
-        </Link>
-        <div className="pd-who">
-          <Link href={profile || `/videos/${video.id}`} className="t-name">
-            {video.author_name}
-          </Link>
-          {video.author_handle && <span className="t-handle">{video.author_handle}</span>}
-          <small>
-            {fmtLikes(video.author_followers)} followers · {fmtRelativeTime(video.created_at)}
-          </small>
-        </div>
-        {!isOwner && (
-          <button
-            type="button"
-            className={`pd-follow ${video.following ? 'on' : ''}`}
-            onClick={() => (user ? onFollow() : onNeedAuth())}
-          >
-            {video.following ? 'Following' : 'Follow'}
-          </button>
-        )}
-      </div>
-
       <div className="pd-body">
-        <h2>{video.title}</h2>
+        {video.title?.trim() ? <h2>{video.title.trim()}</h2> : null}
         <p>{video.description || 'No description yet.'}</p>
+
+        {(video.assets?.length ?? 0) > 0 && (
+          <MediaCarousel
+            video={video}
+            className="pd-media-wrap"
+            onOpen={() => openPreview({ video })}
+          />
+        )}
+
         <div className="pd-meta">
           <span>{video.label || (video.category === 'study' ? 'Study' : 'Entertainment')}</span>
-          <span>{video.duration}</span>
+          {video.duration ? <span>{video.duration}</span> : null}
           <span>{fmtLikes(video.views_count)} views</span>
           <span>Uploaded {fmtDate(video.created_at)}</span>
         </div>
-      </div>
-
-      <div className="pd-media" style={{ background: bg(video.poster_url, video.category, video.id) }}>
-        {video.video_url ? (
-          <video
-            src={video.video_url}
-            poster={video.poster_url || undefined}
-            controls
-            playsInline
-            preload="metadata"
-          />
-        ) : null}
       </div>
 
       <div className="t-actions pd-actions">
@@ -157,12 +151,15 @@ export default function PostDetail({
             </button>
           </form>
         ) : (
-          <p className="pd-signin">
-            <button type="button" onClick={onNeedAuth}>
+          <div className="pd-guest">
+            <div className="pd-guest-copy">
+              <b>Join the conversation</b>
+              <p>Sign in to reply and follow creators.</p>
+            </div>
+            <button type="button" className="pd-guest-cta" onClick={onNeedAuth}>
               Sign in
-            </button>{' '}
-            to reply.
-          </p>
+            </button>
+          </div>
         )}
 
         {commentsLoading && <p className="pd-muted">Loading comments…</p>}

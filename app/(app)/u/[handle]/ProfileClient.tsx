@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Bookmark, Sparkles } from 'lucide-react';
+import { ArrowLeft, Bookmark, Sparkles } from 'lucide-react';
 import type { AppUser, Profile, SocialToggle, Video } from '@/lib/types';
 import { LEVEL_RULE, levelProgress } from '@/lib/levels';
 import { fmtLikes, initials } from '@/app/components/media';
@@ -116,7 +116,11 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
     const url = `${window.location.origin}/videos/${video.id}`;
     try {
       if (navigator.share) {
-        await navigator.share({ title: video.title, text: video.description || undefined, url });
+        await navigator.share({
+          title: video.title || video.description || 'Snackd',
+          text: video.description || undefined,
+          url,
+        });
       } else {
         await navigator.clipboard.writeText(url);
       }
@@ -127,6 +131,19 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
 
   return (
     <section className="pf pf-shell">
+      <header className="pf-topbar">
+        <button type="button" className="pd-back" onClick={() => router.back()} aria-label="Back">
+          <ArrowLeft aria-hidden="true" />
+        </button>
+        <div className="pf-topbar-title">
+          <b>{profile.display_name}</b>
+          {profile.handle && <span>{profile.handle}</span>}
+        </div>
+        <Link href="/" className="pf-home-link">
+          Home
+        </Link>
+      </header>
+
       <header className="pf-head">
         <span className="pf-av" style={{ background: profile.avatar_color }}>
           {initials(profile.display_name)}
@@ -227,6 +244,7 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
               key={video.id}
               video={video}
               user={user}
+              playlist={list}
               onLike={(item) => void like(item)}
               onSave={(item) => void save(item)}
               onShare={(item) => void share(item)}
@@ -256,11 +274,6 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
         </div>
       )}
 
-      {!isOwner && (
-        <p className="pd-muted">
-          <Link href="/">Back to Home</Link>
-        </p>
-      )}
     </section>
   );
 }

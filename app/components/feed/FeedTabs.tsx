@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { Plus, X } from 'lucide-react';
 import type { VideoCategory } from '@/lib/types';
 
@@ -83,23 +84,32 @@ export default function FeedTabs({ active, customTabs, onSelect, onAddTab, onRem
           >
             <Plus aria-hidden="true" />
           </button>
-          {menuOpen && (
-            <div className="t-tab-menu" role="menu">
-              {availableCategories.map((category) => (
-                <button
-                  key={category}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    onAddTab(category);
-                    setMenuOpen(false);
-                  }}
-                >
-                  {CATEGORY_TAB_LABELS[category]}
-                </button>
-              ))}
-            </div>
-          )}
+          <AnimatePresence>
+            {menuOpen && (
+              <motion.div
+                className="t-tab-menu"
+                role="menu"
+                initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                transition={{ duration: 0.14 }}
+              >
+                {availableCategories.map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      onAddTab(category);
+                      setMenuOpen(false);
+                    }}
+                  >
+                    {CATEGORY_TAB_LABELS[category]}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </nav>

@@ -3,20 +3,22 @@ import { parseFeedQuery } from '@/lib/feed-mode';
 import { createVideo, getFeedPage } from '@/lib/videos';
 import { getAuthUser } from '@/lib/supabase/server';
 import { getCurrentUser } from '@/lib/user';
-import type { FeedFilter, VideoCategory } from '@/lib/types';
+import type { FeedFilter } from '@/lib/types';
+import { MAX_POST_ASSETS, MAX_POST_BODY_LENGTH } from '@/lib/types';
 
 export const runtime = 'nodejs';
 
 const MAX_TITLE_LENGTH = 120;
-const MAX_DESCRIPTION_LENGTH = 2000;
 const MAX_LABEL_LENGTH = 24;
 const MAX_DURATION_LENGTH = 12;
 
 interface CreateVideoBody {
   title?: unknown;
   description?: unknown;
+  body?: unknown;
   category?: unknown;
   label?: unknown;
+  mediaIds?: unknown;
   posterMediaId?: unknown;
   videoMediaId?: unknown;
   duration?: unknown;
@@ -49,7 +51,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(page);
 }
 
-// POST /api/videos - publish an uploaded photo or clip to the feed.
+// POST /api/videos - publish a text and/or media post to the feed.
 export async function POST(request: NextRequest) {
   // getCurrentUser (not getAuthUser) so the `profiles` row the author_id
   // foreign key points at is guaranteed to exist.
@@ -60,9 +62,10 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json().catch(() => ({}))) as CreateVideoBody;
 
-  const title = trimmed(body.title, MAX_TITLE_LENGTH);
-  if (!title) {
-    return NextResponse.json({ error: 'A title is required.' }, { status: 400 });
+  const description =
+    trimmed(body.body, MAX_POST_BODY_LENGTH) || trimmed(body.description, MAX_POST_BODY_LENGTH);
+  if (!description) {
+    return NextResponse.json({ error: 'Write something before posting.' }, { status: 400 });
   }
 
   const category = body.category === 'study' || body.category === 'play' ? body.category : null;
@@ -70,19 +73,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Category must be "study" or "play".' }, { status: 400 });
   }
 
+  const mediaIds = parseMediaIds(body.mediaIds);
   const posterMediaId = mediaIdOrNull(body.posterMediaId);
   const videoMediaId = mediaIdOrNull(body.videoMediaId);
-  if (posterMediaId === null && videoMediaId === null) {
-    return NextResponse.json({ error: 'Attach a photo or a video first.' }, { status: 400 });
-  }
 
   try {
     const video = await createVideo({
       userId: user.id,
-      title,
-      description: trimmed(body.description, MAX_DESCRIPTION_LENGTH) || null,
+      title: trimmed(body.title, MAX_TITLE_LENGTH) || null,
+      description,
       category,
       label: trimmed(body.label, MAX_LABEL_LENGTH).toUpperCase() || null,
+      mediaIds,
       posterMediaId,
       videoMediaId,
       duration: trimmed(body.duration, MAX_DURATION_LENGTH),
@@ -101,4 +103,12 @@ function trimmed(value: unknown, max: number) {
 function mediaIdOrNull(value: unknown) {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function parseMediaIds(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  const ids = value
+    .map((item) => Number(item))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  return [...new Set(ids)].slice(0, MAX_POST_ASSETS);
 }

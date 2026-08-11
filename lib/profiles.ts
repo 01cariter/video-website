@@ -3,6 +3,7 @@ import 'server-only';
 import { sql } from './db';
 import { levelFromXp } from './levels';
 import type { Profile, Video } from './types';
+import { attachVideoAssets } from './videos';
 
 // The feed projection, reused by every profile listing. `$1` is the viewer id
 // (nullable) and `$2` is the profile the rows are being read for.
@@ -83,26 +84,28 @@ export async function getVideosByAuthor({
   viewerId = null,
   limit = 60,
 }: { authorId: string; viewerId?: string | null; limit?: number }): Promise<Video[]> {
-  return sql.unsafe<Video[]>(
+  const rows = await sql.unsafe<Video[]>(
     `SELECT ${VIDEO_COLUMNS} ${VIDEO_SOURCE}
      WHERE v.author_id = $2::text
      ORDER BY v.created_at DESC, v.id DESC
      LIMIT ${pageSize(limit)}`,
     [viewerId, authorId],
   );
+  return attachVideoAssets(rows.map((row) => ({ ...row, assets: row.assets ?? [] })));
 }
 
 export async function getSavedVideos({
   userId,
   limit = 60,
 }: { userId: string; limit?: number }): Promise<Video[]> {
-  return sql.unsafe<Video[]>(
+  const rows = await sql.unsafe<Video[]>(
     `SELECT ${VIDEO_COLUMNS} ${VIDEO_SOURCE}
      JOIN video_saves saved ON saved.video_id = v.id AND saved.user_id = $2::text
      ORDER BY saved.created_at DESC, v.id DESC
      LIMIT ${pageSize(limit)}`,
     [userId, userId],
   );
+  return attachVideoAssets(rows.map((row) => ({ ...row, assets: row.assets ?? [] })));
 }
 
 export interface SuggestedAuthor {

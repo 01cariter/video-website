@@ -18,9 +18,20 @@ export interface AppUser {
   followers_count: number;
 }
 
+export interface VideoAsset {
+  media_id: number;
+  kind: MediaKind;
+  mime: string;
+  url: string | null;
+  width: number | null;
+  height: number | null;
+  duration_seconds: number | null;
+  position: number;
+}
+
 export interface Video {
   id: number;
-  title: string;
+  title: string | null;
   description: string | null;
   category: VideoCategory;
   label: string | null;
@@ -44,10 +55,15 @@ export interface Video {
   video_mime: string | null;
   video_w: number | null;
   video_h: number | null;
+  /** Ordered carousel items (0–20). Empty for legacy text-only / unloaded. */
+  assets: VideoAsset[];
   liked: boolean;
   saved: boolean;
   following: boolean;
 }
+
+export const MAX_POST_ASSETS = 20;
+export const MAX_POST_BODY_LENGTH = 4000;
 
 export interface Profile {
   user_id: string;

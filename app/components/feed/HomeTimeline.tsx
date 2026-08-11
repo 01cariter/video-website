@@ -196,7 +196,11 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
     const url = `${window.location.origin}/videos/${video.id}`;
     try {
       if (navigator.share) {
-        await navigator.share({ title: video.title, text: video.description || undefined, url });
+        await navigator.share({
+          title: video.title || video.description || 'Snackd',
+          text: video.description || undefined,
+          url,
+        });
       } else {
         await navigator.clipboard.writeText(url);
       }
@@ -286,7 +290,7 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
     if (!normalized) return videos;
     return videos.filter(
       (video) =>
-        video.title.toLowerCase().includes(normalized) ||
+        (video.title || '').toLowerCase().includes(normalized) ||
         (video.description || '').toLowerCase().includes(normalized) ||
         (video.author_handle || '').toLowerCase().includes(normalized) ||
         video.author_name.toLowerCase().includes(normalized),

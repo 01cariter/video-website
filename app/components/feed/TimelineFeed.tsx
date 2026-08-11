@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { Search } from 'lucide-react';
 import type { AppUser, Video } from '@/lib/types';
+import FeedSkeleton from './FeedSkeleton';
 import TimelinePost from './TimelinePost';
 
 export interface TimelineFeedProps {
@@ -52,21 +53,7 @@ export default function TimelineFeed({
   }, [loading, nextCursor, onLoadMore]);
 
   if (loading) {
-    return (
-      <div className="t-feed" role="status" aria-label="Loading posts">
-        <span className="sr-only">Loading posts</span>
-        {Array.from({ length: 4 }, (_, index) => (
-          <div className="t-skeleton" key={index}>
-            <i className="t-skeleton-av" />
-            <div className="t-skeleton-body">
-              <i className="t-skeleton-line" style={{ width: '40%' }} />
-              <i className="t-skeleton-line" style={{ width: '85%' }} />
-              <i className="t-skeleton-media" />
-            </div>
-          </div>
-        ))}
-      </div>
-    );
+    return <FeedSkeleton />;
   }
 
   return (
@@ -76,6 +63,7 @@ export default function TimelineFeed({
           key={video.id}
           video={video}
           user={user}
+          playlist={videos}
           onLike={onLike}
           onSave={onSave}
           onShare={onShare}

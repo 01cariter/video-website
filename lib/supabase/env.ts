@@ -19,11 +19,15 @@ export function getSupabasePublishableKey() {
 }
 
 export function getPostgresUrl() {
+  // Prefer the Supabase Postgres URLs (VIDEO_WEB_*) over leftover Neon
+  // POSTGRES_URL values from other integrations.
   const value =
-    process.env.POSTGRES_URL ||
+    process.env.VIDEO_WEB_POSTGRES_URL_NON_POOLING ||
+    process.env.VIDEO_WEB_POSTGRES_URL ||
     process.env.SUPABASE_DATABASE_URL ||
     process.env.SUPABASE_DB_URL ||
-    process.env.POSTGRES_URL_NON_POOLING;
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.POSTGRES_URL;
   if (!value) {
     throw new Error('POSTGRES_URL is not set. Pull it from the Vercel Supabase integration or add SUPABASE_DATABASE_URL.');
   }

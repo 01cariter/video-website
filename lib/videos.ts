@@ -1,8 +1,18 @@
 import 'server-only';
 
+import { cache } from 'react';
 import { revalidateTag, unstable_cache } from 'next/cache';
 import { sql } from './db';
-import type { Comment, FeedFilter, FeedPage, SocialToggle, Video, VideoCategory } from './types';
+import type {
+  Comment,
+  FeedFilter,
+  FeedPage,
+  SocialToggle,
+  Video,
+  VideoAsset,
+  VideoCategory,
+} from './types';
+import { MAX_POST_ASSETS } from './types';
 
 interface FeedOptions {
   filter?: FeedFilter;
@@ -55,7 +65,7 @@ export async function getFeed({ category = null, userId = null }: FeedOptions = 
 const getCachedPublicFeedPage = unstable_cache(
   async (category: VideoCategory | null, cursor: string | null, limit: number) =>
     queryPublicFeedPage({ category, cursor, limit }),
-  ['ranked-video-feed-v3'],
+  ['ranked-video-feed-v4'],
   { revalidate: 60, tags: ['videos-feed'] },
 );
 
@@ -81,8 +91,9 @@ export async function getFeedPage({
     }
     const page = await queryFollowingFeedPage({ userId, cursor, limit: pageSize });
     const videos = await applyViewerState(page.videos, userId);
+    const withMedia = await attachVideoAssets(videos.map(toPublicVideo));
     return {
-      videos: videos.map(toPublicVideo),
+      videos: withMedia,
       nextCursor: page.nextCursor,
     };
   }
@@ -90,8 +101,9 @@ export async function getFeedPage({
   const categoryFilter = resolvedFilter.kind === 'category' ? resolvedFilter.category : null;
   const page = await getCachedPublicFeedPage(categoryFilter, cursor, pageSize);
   const videos = userId ? await applyViewerState(page.videos, userId) : page.videos;
+  const withMedia = await attachVideoAssets(videos.map(toPublicVideo));
   return {
-    videos: videos.map(toPublicVideo),
+    videos: withMedia,
     nextCursor: page.nextCursor,
   };
 }
@@ -100,6 +112,85 @@ function toPublicVideo(video: RankedVideo): Video {
   const result = { ...video } as Partial<RankedVideo>;
   delete result.recommendation_score;
   return result as Video;
+}
+
+interface AssetRow extends Record<string, unknown> {
+  video_id: number;
+  media_id: number;
+  kind: 'image' | 'video';
+  mime: string;
+  url: string | null;
+  width: number | null;
+  height: number | null;
+  duration_seconds: number | null;
+  position: number;
+}
+
+/** Attach ordered assets; fall back to legacy poster/video columns when empty. */
+export async function attachVideoAssets<T extends Video>(videos: T[]): Promise<T[]> {
+  if (videos.length === 0) return videos;
+  const ids = videos.map((video) => video.id);
+  const rows = await sql<AssetRow[]>`
+    SELECT
+      va.video_id, va.media_id, va.position,
+      m.kind, m.mime, m.url, m.width, m.height, m.duration_seconds
+    FROM video_assets va
+    JOIN media m ON m.id = va.media_id
+    WHERE va.video_id = ANY(${ids}::integer[])
+    ORDER BY va.video_id, va.position
+  `;
+  const byVideo = new Map<number, VideoAsset[]>();
+  for (const row of rows) {
+    const list = byVideo.get(row.video_id) ?? [];
+    list.push({
+      media_id: row.media_id,
+      kind: row.kind,
+      mime: row.mime,
+      url: row.url,
+      width: row.width,
+      height: row.height,
+      duration_seconds: row.duration_seconds,
+      position: row.position,
+    });
+    byVideo.set(row.video_id, list);
+  }
+
+  return videos.map((video) => {
+    const fromTable = byVideo.get(video.id);
+    if (fromTable && fromTable.length > 0) {
+      return { ...video, assets: fromTable };
+    }
+    return { ...video, assets: legacyAssets(video) };
+  });
+}
+
+function legacyAssets(video: Video): VideoAsset[] {
+  // Prefer the playable clip; poster covers are not carousel items.
+  if (video.video_url) {
+    return [{
+      media_id: 0,
+      kind: 'video',
+      mime: video.video_mime || 'video/mp4',
+      url: video.video_url,
+      width: video.video_w,
+      height: video.video_h,
+      duration_seconds: null,
+      position: 0,
+    }];
+  }
+  if (video.poster_url) {
+    return [{
+      media_id: 0,
+      kind: 'image',
+      mime: 'image/jpeg',
+      url: video.poster_url,
+      width: video.poster_w,
+      height: video.poster_h,
+      duration_seconds: null,
+      position: 0,
+    }];
+  }
+  return [];
 }
 
 // Shared column list + recency-weighted score for both ranked feed queries
@@ -262,7 +353,13 @@ function decodeFeedCursor(cursor: string | null): FeedCursor | null {
   }
 }
 
-export async function getVideoById({ id, userId = null }: { id: number; userId?: string | null }) {
+export const getVideoById = cache(async function getVideoById({
+  id,
+  userId = null,
+}: {
+  id: number;
+  userId?: string | null;
+}) {
   const [row] = await sql<Video[]>`
     SELECT
       v.id, v.title, v.description, v.category, v.label, v.size, v.duration, v.created_at,
@@ -289,15 +386,20 @@ export async function getVideoById({ id, userId = null }: { id: number; userId?:
     LEFT JOIN media vm ON vm.id = v.video_media_id
     WHERE v.id = ${id}
   `;
-  return row ?? null;
-}
+  if (!row) return null;
+  const [withMedia] = await attachVideoAssets([{ ...row, assets: [] }]);
+  return withMedia ?? null;
+});
 
 export interface CreateVideoInput {
   userId: string;
-  title: string;
-  description?: string | null;
+  title?: string | null;
+  description: string;
   category: VideoCategory;
   label?: string | null;
+  /** Ordered carousel media (0–20). Cover posters for videos are not included. */
+  mediaIds?: number[];
+  /** Legacy single-slot fields; used only when mediaIds is omitted. */
   posterMediaId?: number | null;
   videoMediaId?: number | null;
   duration?: string;
@@ -305,41 +407,76 @@ export interface CreateVideoInput {
 
 export async function createVideo({
   userId,
-  title,
-  description = null,
+  title = null,
+  description,
   category,
   label = null,
+  mediaIds: rawMediaIds,
   posterMediaId = null,
   videoMediaId = null,
   duration = '',
 }: CreateVideoInput): Promise<Video> {
-  const mediaIds = [posterMediaId, videoMediaId].filter(
-    (id): id is number => Number.isInteger(id),
-  );
-  if (mediaIds.length === 0) {
-    throw new Error('A post needs at least a photo or a video.');
+  const body = description.trim();
+  if (!body) {
+    throw new Error('Write something before posting.');
   }
 
-  // The direct Postgres connection bypasses RLS, so re-check the ownership the
-  // `media_*_own` policies would have enforced.
-  const owned = await sql<Array<{ id: number }>>`
-    SELECT id FROM media
-    WHERE id = ANY(${mediaIds}::integer[]) AND owner_id = ${userId}
-  `;
-  if (owned.length !== mediaIds.length) {
-    throw new Error('That media does not belong to you.');
+  let mediaIds = (rawMediaIds ?? [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0)
+    .slice(0, MAX_POST_ASSETS);
+
+  // Deduplicate while preserving order.
+  mediaIds = [...new Set(mediaIds)];
+
+  if (mediaIds.length === 0 && (posterMediaId || videoMediaId)) {
+    mediaIds = [videoMediaId, posterMediaId].filter(
+      (id): id is number => Number.isInteger(id) && id !== null && id > 0,
+    );
+    // Prefer video-only when both were sent as legacy cover+clip.
+    if (videoMediaId && posterMediaId) {
+      mediaIds = [videoMediaId];
+    }
+  }
+
+  if (mediaIds.length > 0) {
+    // The direct Postgres connection bypasses RLS, so re-check ownership.
+    const owned = await sql<Array<{ id: number; kind: string }>>`
+      SELECT id, kind FROM media
+      WHERE id = ANY(${mediaIds}::integer[]) AND owner_id = ${userId}
+    `;
+    if (owned.length !== mediaIds.length) {
+      throw new Error('That media does not belong to you.');
+    }
+    const kindById = new Map(owned.map((row) => [row.id, row.kind]));
+    const firstImage = mediaIds.find((id) => kindById.get(id) === 'image') ?? null;
+    const firstVideo = mediaIds.find((id) => kindById.get(id) === 'video') ?? null;
+    posterMediaId = firstImage ?? posterMediaId;
+    videoMediaId = firstVideo ?? videoMediaId;
+  } else {
+    posterMediaId = null;
+    videoMediaId = null;
   }
 
   const [row] = await sql<Array<{ id: number }>>`
     INSERT INTO videos
       (title, description, category, label, author_id, poster_media_id, video_media_id, duration)
     VALUES (
-      ${title}, ${description}, ${category}, ${label},
+      ${title?.trim() || null}, ${body}, ${category}, ${label},
       ${userId}, ${posterMediaId}, ${videoMediaId}, ${duration}
     )
     RETURNING id
   `;
   if (!row) throw new Error('The post could not be created.');
+
+  if (mediaIds.length > 0) {
+    for (let position = 0; position < mediaIds.length; position += 1) {
+      await sql`
+        INSERT INTO video_assets (video_id, media_id, position)
+        VALUES (${row.id}, ${mediaIds[position]}, ${position})
+      `;
+    }
+  }
 
   revalidateTag('videos-feed', 'max');
   const video = await getVideoById({ id: row.id, userId });

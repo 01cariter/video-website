@@ -10,13 +10,11 @@ import type { SuggestedAuthor } from '@/lib/profiles';
 import AuthModal from '../AuthModal';
 import ComposeModal from '../compose/ComposeModal';
 import { OPEN_COMPOSE_EVENT, PUBLISHED_EVENT } from './compose-events';
+import { MediaPreviewProvider } from './MediaPreviewContext';
 import LeftNav from './LeftNav';
 import RightRail, { type RailTopic } from './RightRail';
 import MobileTabBar from './MobileTabBar';
 
-// The right rail owns the search input, but the home timeline (and any other
-// page mounted inside the shell) is what actually filters on it — a context
-// beats threading `query`/`setQuery` through the route tree by hand.
 export interface ShellSearchContextValue {
   query: string;
   setQuery: (value: string) => void;
@@ -33,8 +31,6 @@ export function useShellSearch() {
 
 export interface AppShellProps {
   user: AppUser | null;
-  suggestions: SuggestedAuthor[];
-  hideRightRail?: boolean;
   children: ReactNode;
 }
 
@@ -43,20 +39,25 @@ const TOPICS: RailTopic[] = [
   { id: 'play', label: 'Entertainment', href: '/?tab=play' },
 ];
 
-export default function AppShell({ user, suggestions, hideRightRail = false, children }: AppShellProps) {
+export default function AppShell({ user, children }: AppShellProps) {
   const router = useRouter();
   const pathname = usePathname();
   const supabase = useMemo(() => createClient(), []);
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const [suggestionList, setSuggestionList] = useState(suggestions);
+  const [queryByPath, setQueryByPath] = useState<Record<string, string>>({});
+  const [suggestionList, setSuggestionList] = useState<SuggestedAuthor[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
 
-  // CreatorStudio is the one surface that fills main+right with Worksolo —
-  // detected from the route so a segment layout doesn't have to thread a
-  // prop through the shared (app) layout.
   const isStudioRoute = pathname?.startsWith('/studio') ?? false;
-  const hideRail = hideRightRail || isStudioRoute;
+  const pathKey = pathname || '/';
+  const query = queryByPath[pathKey] ?? '';
+  const setQuery = useCallback(
+    (value: string) => {
+      setQueryByPath((current) => ({ ...current, [pathKey]: value }));
+    },
+    [pathKey],
+  );
 
   const requireAuth = useCallback(() => setAuthMode('login'), []);
 
@@ -65,12 +66,31 @@ export default function AppShell({ user, suggestions, hideRightRail = false, chi
     setComposeOpen(true);
   }, [requireAuth, user]);
 
-  // Studio's "I have the file" hand-off has no direct reference to this
-  // component's state, so it asks for the composer via a window event.
   useEffect(() => {
     window.addEventListener(OPEN_COMPOSE_EVENT, openCompose);
     return () => window.removeEventListener(OPEN_COMPOSE_EVENT, openCompose);
   }, [openCompose]);
+
+  // Suggestions are intentionally client-fetched so the shared layout does
+  // not block every soft navigation on a database round-trip.
+  useEffect(() => {
+    let cancelled = false;
+    void fetch('/api/suggestions')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { authors?: SuggestedAuthor[] } | null) => {
+        if (cancelled) return;
+        setSuggestionList(data?.authors || []);
+        setSuggestionsLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSuggestionList([]);
+        setSuggestionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   async function logout() {
     await supabase.auth.signOut();
@@ -81,13 +101,7 @@ export default function AppShell({ user, suggestions, hideRightRail = false, chi
     if (!user) return requireAuth();
     const target = suggestionList.find((author) => author.user_id === authorId);
     if (!target) return;
-    const optimistic = !target.following;
-    // Following someone removes them from "Who to follow"; unfollowing restores.
-    setSuggestionList((items) =>
-      optimistic
-        ? items.filter((author) => author.user_id !== authorId)
-        : items.map((author) => (author.user_id === authorId ? { ...author, following: false } : author)),
-    );
+    setSuggestionList((items) => items.filter((author) => author.user_id !== authorId));
     try {
       const response = await fetch(`/api/authors/${encodeURIComponent(authorId)}/follow`, { method: 'POST' });
       if (response.status === 401) {
@@ -104,58 +118,62 @@ export default function AppShell({ user, suggestions, hideRightRail = false, chi
     }
   }
 
-  const searchContextValue = useMemo(() => ({ query, setQuery }), [query]);
+  const searchContextValue = useMemo(() => ({ query, setQuery }), [query, setQuery]);
 
   return (
     <ShellSearchContext.Provider value={searchContextValue}>
-      <div className={`x-app${hideRail ? ' studio' : ''}`}>
-        <LeftNav
-          user={user}
-          onCompose={openCompose}
-          onSignIn={() => setAuthMode('login')}
-          onSignUp={() => setAuthMode('register')}
-          onLogout={() => void logout()}
-        />
-        <main className="x-main">{children}</main>
-        {!hideRail && (
-          <RightRail
-            query={query}
-            onQueryChange={setQuery}
-            topics={TOPICS}
-            suggestions={suggestionList}
-            onFollow={(authorId) => void follow(authorId)}
-          />
-        )}
-      </div>
-
-      <MobileTabBar onCompose={openCompose} />
-
-      <AnimatePresence>
-        {authMode && (
-          <AuthModal
-            mode={authMode}
-            nextPath="/"
-            onClose={() => setAuthMode(null)}
-            onModeChange={setAuthMode}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Post is upload-only. CreatorStudio (/studio) is the sole surface
-          that embeds Worksolo — this modal never renders it. */}
-      <AnimatePresence>
-        {composeOpen && user && (
-          <ComposeModal
+      <MediaPreviewProvider user={user} onNeedAuth={requireAuth}>
+        <div className={`x-app${isStudioRoute ? ' studio' : ''}`}>
+          <LeftNav
             user={user}
-            onClose={() => setComposeOpen(false)}
-            onPublished={(video: Video) => {
-              setComposeOpen(false);
-              window.dispatchEvent(new CustomEvent(PUBLISHED_EVENT, { detail: video }));
-              router.refresh();
-            }}
+            onCompose={openCompose}
+            onSignIn={() => setAuthMode('login')}
+            onSignUp={() => setAuthMode('register')}
+            onLogout={() => void logout()}
           />
-        )}
-      </AnimatePresence>
+          <main className="x-main">
+            {/* Instant route paint — animated remounts caused flash/jump + felt laggy. */}
+            <div className="x-main-pane">{children}</div>
+          </main>
+          {!isStudioRoute && (
+            <RightRail
+              query={query}
+              onQueryChange={setQuery}
+              topics={TOPICS}
+              suggestions={suggestionList}
+              suggestionsLoading={suggestionsLoading}
+              onFollow={(authorId) => void follow(authorId)}
+            />
+          )}
+        </div>
+
+        <MobileTabBar onCompose={openCompose} />
+
+        <AnimatePresence>
+          {authMode && (
+            <AuthModal
+              mode={authMode}
+              nextPath="/"
+              onClose={() => setAuthMode(null)}
+              onModeChange={setAuthMode}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {composeOpen && user && (
+            <ComposeModal
+              user={user}
+              onClose={() => setComposeOpen(false)}
+              onPublished={(video: Video) => {
+                setComposeOpen(false);
+                window.dispatchEvent(new CustomEvent(PUBLISHED_EVENT, { detail: video }));
+                router.refresh();
+              }}
+            />
+          )}
+        </AnimatePresence>
+      </MediaPreviewProvider>
     </ShellSearchContext.Provider>
   );
 }

@@ -83,14 +83,14 @@ CREATE INDEX idx_media_kind  ON media (kind);
 -- ----------------------------------------------------------------------------
 CREATE TABLE videos (
   id              SERIAL      PRIMARY KEY,
-  title           TEXT        NOT NULL,
-  description     TEXT,
+  title           TEXT,                               -- optional short headline
+  description     TEXT,                               -- required body at the app layer
   category        TEXT        NOT NULL CHECK (category IN ('study', 'play')),
   label           TEXT,                               -- optional override badge, e.g. SPORTS
   size            TEXT        NOT NULL DEFAULT '',     -- grid layout hint: '', 'big', 'tall'
   author_id       TEXT        NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
-  poster_media_id INTEGER     REFERENCES media(id) ON DELETE SET NULL,  -- cover image
-  video_media_id  INTEGER     REFERENCES media(id) ON DELETE SET NULL,  -- playable clip
+  poster_media_id INTEGER     REFERENCES media(id) ON DELETE SET NULL,  -- cover image (legacy + OG)
+  video_media_id  INTEGER     REFERENCES media(id) ON DELETE SET NULL,  -- first video (legacy)
   duration        TEXT        NOT NULL DEFAULT '',     -- display string, e.g. 0:58
   likes_count     INTEGER     NOT NULL DEFAULT 0,
   saves_count     INTEGER     NOT NULL DEFAULT 0,
@@ -107,6 +107,17 @@ CREATE TABLE videos (
 
 CREATE INDEX idx_videos_category ON videos (category);
 CREATE INDEX idx_videos_author   ON videos (author_id);
+
+-- Ordered media attached to a post (0–20). Images and videos may mix.
+CREATE TABLE video_assets (
+  video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+  media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL CHECK (position >= 0 AND position < 20),
+  PRIMARY KEY (video_id, position),
+  UNIQUE (video_id, media_id)
+);
+
+CREATE INDEX idx_video_assets_media ON video_assets (media_id);
 
 -- ----------------------------------------------------------------------------
 -- video_likes — which user liked which video (many-to-many).

@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
 import { getSupabasePublishableKey, getSupabaseUrl } from './env';
@@ -27,7 +28,9 @@ export async function createClient(providedCookieStore?: CookieStore) {
   });
 }
 
-export async function getAuthUser() {
+// Per-request memo. Prefer getSession (cookie decode) over getUser (Auth HTTP),
+// so every soft navigation is not blocked on a Supabase Auth round-trip.
+export const getAuthUser = cache(async () => {
   const cookieStore = await cookies();
   const projectRef = new URL(getSupabaseUrl()).hostname.split('.')[0];
   const authCookie = `sb-${projectRef}-auth-token`;
@@ -37,7 +40,7 @@ export async function getAuthUser() {
   if (!hasSession) return null;
 
   const supabase = await createClient(cookieStore);
-  const { data, error } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getSession();
   if (error) return null;
-  return data.user ?? null;
-}
+  return data.session?.user ?? null;
+});

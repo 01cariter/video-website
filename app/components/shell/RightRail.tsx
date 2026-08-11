@@ -16,10 +16,18 @@ interface RightRailProps {
   onQueryChange: (value: string) => void;
   topics: RailTopic[];
   suggestions: SuggestedAuthor[];
+  suggestionsLoading?: boolean;
   onFollow: (authorId: string) => void;
 }
 
-export default function RightRail({ query, onQueryChange, topics, suggestions, onFollow }: RightRailProps) {
+export default function RightRail({
+  query,
+  onQueryChange,
+  topics,
+  suggestions,
+  suggestionsLoading = false,
+  onFollow,
+}: RightRailProps) {
   return (
     <aside className="x-right">
       <label className="x-search">
@@ -45,7 +53,20 @@ export default function RightRail({ query, onQueryChange, topics, suggestions, o
 
       <section className="x-widget">
         <h2>Who to follow</h2>
-        {suggestions.length === 0 ? (
+        {suggestionsLoading ? (
+          <ul className="x-suggestions x-suggestions-skel" aria-busy="true" aria-label="Loading suggestions">
+            {[0, 1, 2].map((item) => (
+              <li key={item}>
+                <i className="x-skel-av" />
+                <span className="txt">
+                  <i className="x-skel-line" style={{ width: '70%' }} />
+                  <i className="x-skel-line" style={{ width: '46%' }} />
+                </span>
+                <i className="x-skel-btn" />
+              </li>
+            ))}
+          </ul>
+        ) : suggestions.length === 0 ? (
           <p className="x-widget-empty">No suggestions right now.</p>
         ) : (
           <ul className="x-suggestions">
