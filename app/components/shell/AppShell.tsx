@@ -49,7 +49,7 @@ export default function AppShell({ user, children }: AppShellProps) {
   const [suggestionList, setSuggestionList] = useState<SuggestedAuthor[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
 
-  const isStudioRoute = pathname?.startsWith('/studio') ?? false;
+  const isStudioHome = pathname === '/studio';
   const pathKey = pathname || '/';
   const query = queryByPath[pathKey] ?? '';
   const setQuery = useCallback(
@@ -123,7 +123,7 @@ export default function AppShell({ user, children }: AppShellProps) {
   return (
     <ShellSearchContext.Provider value={searchContextValue}>
       <MediaPreviewProvider user={user} onNeedAuth={requireAuth}>
-        <div className={`x-app${isStudioRoute ? ' studio' : ''}`}>
+        <div className={`x-app${isStudioHome ? ' studio-home' : ''}`}>
           <LeftNav
             user={user}
             onCompose={openCompose}
@@ -135,7 +135,7 @@ export default function AppShell({ user, children }: AppShellProps) {
             {/* Instant route paint — animated remounts caused flash/jump + felt laggy. */}
             <div className="x-main-pane">{children}</div>
           </main>
-          {!isStudioRoute && (
+          {!isStudioHome && (
             <RightRail
               query={query}
               onQueryChange={setQuery}

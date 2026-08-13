@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { Plus, X } from 'lucide-react';
 import type { VideoCategory } from '@/lib/types';
@@ -24,19 +25,31 @@ export interface FeedTabsProps {
 
 export default function FeedTabs({ active, customTabs, onSelect, onAddTab, onRemoveTab }: FeedTabsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuWrapRef = useRef<HTMLDivElement>(null);
-  const availableCategories = ALL_CATEGORIES.filter((category) => !customTabs.includes(category));
+  const [mounted, setMounted] = useState(false);
+  const titleId = useId();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
-    function onPointerDown(event: PointerEvent) {
-      if (menuWrapRef.current && !menuWrapRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setMenuOpen(false);
     }
-    window.addEventListener('pointerdown', onPointerDown);
-    return () => window.removeEventListener('pointerdown', onPointerDown);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener('keydown', onKeyDown);
+    };
   }, [menuOpen]);
+
+  function toggleCategory(category: VideoCategory) {
+    if (customTabs.includes(category)) onRemoveTab(category);
+    else onAddTab(category);
+  }
 
   return (
     <nav className="t-tabs" aria-label="Home feed tabs">
@@ -73,45 +86,99 @@ export default function FeedTabs({ active, customTabs, onSelect, onAddTab, onRem
         </div>
       ))}
 
-      {availableCategories.length > 0 && (
-        <div className="t-tab-add-wrap" ref={menuWrapRef}>
-          <button
-            type="button"
-            className="t-tab-add"
-            onClick={() => setMenuOpen((open) => !open)}
-            aria-label="Add a tab"
-            aria-expanded={menuOpen}
-          >
-            <Plus aria-hidden="true" />
-          </button>
+      <div className="t-tab-add-wrap">
+        <button
+          type="button"
+          className="t-tab-add"
+          onClick={() => setMenuOpen(true)}
+          aria-label="Customize tabs"
+          aria-haspopup="dialog"
+          aria-expanded={menuOpen}
+        >
+          <Plus aria-hidden="true" />
+        </button>
+      </div>
+
+      {mounted &&
+        createPortal(
           <AnimatePresence>
             {menuOpen && (
               <motion.div
-                className="t-tab-menu"
-                role="menu"
-                initial={{ opacity: 0, y: -6, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -4, scale: 0.98 }}
-                transition={{ duration: 0.14 }}
+                className="t-tab-modal"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.16 }}
               >
-                {availableCategories.map((category) => (
-                  <button
-                    key={category}
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      onAddTab(category);
-                      setMenuOpen(false);
-                    }}
-                  >
-                    {CATEGORY_TAB_LABELS[category]}
-                  </button>
-                ))}
+                <button
+                  type="button"
+                  className="t-tab-modal-backdrop"
+                  aria-label="Close"
+                  onClick={() => setMenuOpen(false)}
+                />
+                <motion.div
+                  className="t-tab-modal-panel"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby={titleId}
+                  initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                  transition={{ duration: 0.18, ease: [0.25, 0.7, 0.25, 1] }}
+                >
+                  <header className="t-tab-modal-head">
+                    <h2 id={titleId}>Customize tabs</h2>
+                    <button
+                      type="button"
+                      className="t-tab-modal-close"
+                      onClick={() => setMenuOpen(false)}
+                      aria-label="Close"
+                    >
+                      <X aria-hidden="true" />
+                    </button>
+                  </header>
+                  <p className="t-tab-modal-lead">Choose which tabs appear on Home.</p>
+                  <ul className="t-tab-modal-list">
+                    <li>
+                      <span>
+                        <b>For You</b>
+                        <small>Pinned</small>
+                      </span>
+                      <span className="t-tab-modal-pin">On</span>
+                    </li>
+                    <li>
+                      <span>
+                        <b>Following</b>
+                        <small>Pinned</small>
+                      </span>
+                      <span className="t-tab-modal-pin">On</span>
+                    </li>
+                    {ALL_CATEGORIES.map((category) => {
+                      const on = customTabs.includes(category);
+                      return (
+                        <li key={category}>
+                          <span>
+                            <b>{CATEGORY_TAB_LABELS[category]}</b>
+                            <small>{on ? 'Showing on Home' : 'Hidden'}</small>
+                          </span>
+                          <button
+                            type="button"
+                            className={on ? 't-tab-modal-toggle on' : 't-tab-modal-toggle'}
+                            aria-pressed={on}
+                            onClick={() => toggleCategory(category)}
+                          >
+                            {on ? 'On' : 'Off'}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </motion.div>
               </motion.div>
             )}
-          </AnimatePresence>
-        </div>
-      )}
+          </AnimatePresence>,
+          document.body,
+        )}
     </nav>
   );
 }

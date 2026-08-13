@@ -1,9 +1,23 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import { Manrope } from 'next/font/google';
+import { Fraunces, Outfit } from 'next/font/google';
+import { TooltipProvider } from '@/app/components/ui/tooltip';
 
-const manrope = Manrope({ subsets: ['latin'], variable: '--font-manrope', display: 'swap' });
+const outfit = Outfit({
+  subsets: ['latin'],
+  variable: '--font-outfit',
+  display: 'swap',
+  weight: ['400', '500', '600', '700'],
+});
+
+const fraunces = Fraunces({
+  subsets: ['latin'],
+  variable: '--font-fraunces',
+  display: 'swap',
+  weight: ['500', '600', '700'],
+});
+
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ||
   (process.env.VERCEL_PROJECT_PRODUCTION_URL
@@ -25,7 +39,9 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
-      <body className={manrope.variable}>{children}</body>
+      <body className={`${outfit.variable} ${fraunces.variable}`}>
+        <TooltipProvider>{children}</TooltipProvider>
+      </body>
     </html>
   );
 }

@@ -1,6 +1,4 @@
-import FeedSkeleton from './FeedSkeleton';
-
-/** Profile header + tabs + posts while `/u/[handle]` loads. */
+/** Profile header + tabs + media grid while `/u/[handle]` loads. */
 export default function ProfileSkeleton() {
   return (
     <div className="pf pf-shell pf-skeleton" role="status" aria-label="Loading profile">
@@ -11,7 +9,7 @@ export default function ProfileSkeleton() {
           <i className="pd-skel-line" style={{ width: 120, height: 14 }} />
           <i className="pd-skel-line" style={{ width: 80, height: 10 }} />
         </div>
-        <i className="pd-skel-line" style={{ width: 56, height: 28, borderRadius: 10 }} />
+        <i className="pd-skel-line" style={{ width: 56, height: 28, borderRadius: 999 }} />
       </header>
       <header className="pf-head">
         <i className="pf-skel-av" />
@@ -30,7 +28,11 @@ export default function ProfileSkeleton() {
         <i className="pd-skel-line" style={{ width: 88, height: 34, borderRadius: 9 }} />
         <i className="pd-skel-line" style={{ width: 88, height: 34, borderRadius: 9 }} />
       </div>
-      <FeedSkeleton rows={3} />
+      <div className="pf-grid-skel" aria-hidden="true">
+        {Array.from({ length: 9 }, (_, index) => (
+          <i key={index} style={{ animationDelay: `${(index % 3) * 0.08}s` }} />
+        ))}
+      </div>
     </div>
   );
 }

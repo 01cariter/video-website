@@ -84,22 +84,23 @@ export default function PostDetail({
       </header>
 
       <div className="pd-body">
-        {video.title?.trim() ? <h2>{video.title.trim()}</h2> : null}
-        <p>{video.description || 'No description yet.'}</p>
-
         {(video.assets?.length ?? 0) > 0 && (
           <MediaCarousel
             video={video}
-            className="pd-media-wrap"
+            className="pd-media-wrap pd-media-lead"
             onOpen={() => openPreview({ video })}
           />
         )}
+
+        {video.title?.trim() ? <h2>{video.title.trim()}</h2> : null}
+        <p>{video.description || 'No description yet.'}</p>
 
         <div className="pd-meta">
           <span>{video.label || (video.category === 'study' ? 'Study' : 'Entertainment')}</span>
           {video.duration ? <span>{video.duration}</span> : null}
           <span>{fmtLikes(video.views_count)} views</span>
-          <span>Uploaded {fmtDate(video.created_at)}</span>
+          <time dateTime={video.created_at}>{fmtRelativeTime(video.created_at)}</time>
+          <span className="pd-meta-muted">Uploaded {fmtDate(video.created_at)}</span>
         </div>
       </div>
 

@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Bookmark, Sparkles } from 'lucide-react';
+import { ArrowLeft, Bookmark, Play, Sparkles } from 'lucide-react';
 import type { AppUser, Profile, SocialToggle, Video } from '@/lib/types';
 import { LEVEL_RULE, levelProgress } from '@/lib/levels';
+import { postHeadline } from '@/lib/post-text';
 import { fmtLikes, initials } from '@/app/components/media';
-import TimelinePost from '@/app/components/feed/TimelinePost';
+import { useMediaPreview } from '@/app/components/shell/MediaPreviewContext';
 import { OPEN_COMPOSE_EVENT } from '@/app/components/shell/compose-events';
 
 interface ProfileClientProps {
@@ -20,20 +21,31 @@ interface ProfileClientProps {
 
 type ProfileTab = 'posts' | 'saved';
 
+function tileThumb(video: Video): string | null {
+  const first = video.assets?.[0];
+  if (first?.url) return first.url;
+  return video.poster_url;
+}
+
+function tileHasVideo(video: Video): boolean {
+  return (video.assets ?? []).some((asset) => asset.kind === 'video') || Boolean(video.video_url);
+}
+
 export default function ProfileClient({ user, profile, posts, saved, isOwner }: ProfileClientProps) {
   const router = useRouter();
+  const { openPreview } = useMediaPreview();
   const [tab, setTab] = useState<ProfileTab>('posts');
   const [following, setFollowing] = useState(profile.following);
   const [followers, setFollowers] = useState(profile.followers_count);
   const [pending, setPending] = useState(false);
-  const [items, setItems] = useState(() => ({ posts, saved }));
 
-  const list = tab === 'saved' ? items.saved : items.posts;
+  const list = tab === 'saved' ? saved : posts;
   const progress = levelProgress(profile.xp);
+  const loginNext = `/login?next=/u/${encodeURIComponent((profile.handle || '').replace(/^@+/, ''))}`;
 
   async function toggleFollow() {
     if (!user) {
-      router.push(`/login?next=/u/${encodeURIComponent((profile.handle || '').replace(/^@+/, ''))}`);
+      router.push(loginNext);
       return;
     }
     if (pending || isOwner) return;
@@ -58,75 +70,12 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
     }
   }
 
-  function patchVideo(id: number, patch: Partial<Video>) {
-    setItems((state) => ({
-      posts: state.posts.map((video) => (video.id === id ? { ...video, ...patch } : video)),
-      saved: state.saved.map((video) => (video.id === id ? { ...video, ...patch } : video)),
-    }));
-  }
-
-  async function like(video: Video) {
-    if (!user) return;
-    const optimistic = !video.liked;
-    patchVideo(video.id, {
-      liked: optimistic,
-      likes_count: Math.max(0, video.likes_count + (optimistic ? 1 : -1)),
-    });
-    const response = await fetch(`/api/videos/${video.id}/like`, { method: 'POST' });
-    if (!response.ok) {
-      patchVideo(video.id, { liked: video.liked, likes_count: video.likes_count });
+  function openTile(video: Video) {
+    if ((video.assets?.length ?? 0) > 0) {
+      openPreview({ video, playlist: list });
       return;
     }
-    const data = (await response.json()) as SocialToggle;
-    patchVideo(video.id, {
-      liked: data.liked ?? optimistic,
-      likes_count: data.likes_count ?? video.likes_count,
-    });
-  }
-
-  async function save(video: Video) {
-    if (!user) return;
-    const optimistic = !video.saved;
-    if (tab === 'saved' && !optimistic) {
-      setItems((state) => ({
-        ...state,
-        saved: state.saved.filter((item) => item.id !== video.id),
-      }));
-    } else {
-      patchVideo(video.id, {
-        saved: optimistic,
-        saves_count: Math.max(0, video.saves_count + (optimistic ? 1 : -1)),
-      });
-    }
-    const response = await fetch(`/api/videos/${video.id}/save`, { method: 'POST' });
-    if (!response.ok) {
-      router.refresh();
-      return;
-    }
-    const data = (await response.json()) as SocialToggle;
-    if (tab !== 'saved' || (data.saved ?? optimistic)) {
-      patchVideo(video.id, {
-        saved: data.saved ?? optimistic,
-        saves_count: data.saves_count ?? video.saves_count,
-      });
-    }
-  }
-
-  async function share(video: Video) {
-    const url = `${window.location.origin}/videos/${video.id}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: video.title || video.description || 'Snackd',
-          text: video.description || undefined,
-          url,
-        });
-      } else {
-        await navigator.clipboard.writeText(url);
-      }
-    } catch {
-      // cancelled
-    }
+    router.push(`/videos/${video.id}`);
   }
 
   return (
@@ -223,7 +172,7 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
             aria-selected={tab === 'posts'}
             onClick={() => setTab('posts')}
           >
-            Posts <span>{items.posts.length}</span>
+            Posts <span>{posts.length}</span>
           </button>
           <button
             type="button"
@@ -232,29 +181,37 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
             aria-selected={tab === 'saved'}
             onClick={() => setTab('saved')}
           >
-            Saved <span>{items.saved.length}</span>
+            Saved <span>{saved.length}</span>
           </button>
         </div>
       )}
 
       {list.length > 0 ? (
-        <div className="t-feed">
-          {list.map((video) => (
-            <TimelinePost
-              key={video.id}
-              video={video}
-              user={user}
-              playlist={list}
-              onLike={(item) => void like(item)}
-              onSave={(item) => void save(item)}
-              onShare={(item) => void share(item)}
-              onNeedAuth={() =>
-                router.push(
-                  `/login?next=/u/${encodeURIComponent((profile.handle || '').replace(/^@+/, ''))}`,
-                )
-              }
-            />
-          ))}
+        <div className="pf-grid" role="list">
+          {list.map((video) => {
+            const thumb = tileThumb(video);
+            const count = video.assets?.length ?? 0;
+            const headline = postHeadline(video);
+            return (
+              <button
+                key={video.id}
+                type="button"
+                role="listitem"
+                className={thumb ? 'pf-tile' : 'pf-tile pf-tile-text'}
+                style={thumb ? { backgroundImage: `url(${thumb})` } : undefined}
+                onClick={() => openTile(video)}
+                aria-label={headline}
+              >
+                {!thumb && <span className="pf-tile-copy">{video.description || video.title || 'Post'}</span>}
+                {tileHasVideo(video) && (
+                  <span className="pf-tile-play" aria-hidden="true">
+                    <Play />
+                  </span>
+                )}
+                {count > 1 && <span className="pf-tile-count">{count}</span>}
+              </button>
+            );
+          })}
         </div>
       ) : (
         <div className="empty">
@@ -273,7 +230,6 @@ export default function ProfileClient({ user, profile, posts, saved, isOwner }: 
           )}
         </div>
       )}
-
     </section>
   );
 }

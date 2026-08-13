@@ -40,69 +40,71 @@ export default function RightRail({
         />
       </label>
 
-      <section className="x-widget">
-        <h2>Top topics</h2>
-        <ul className="x-topics">
-          {topics.map((topic) => (
-            <li key={topic.id}>
-              <Link href={topic.href}>{topic.label}</Link>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="x-widget">
-        <h2>Who to follow</h2>
-        {suggestionsLoading ? (
-          <ul className="x-suggestions x-suggestions-skel" aria-busy="true" aria-label="Loading suggestions">
-            {[0, 1, 2].map((item) => (
-              <li key={item}>
-                <i className="x-skel-av" />
-                <span className="txt">
-                  <i className="x-skel-line" style={{ width: '70%' }} />
-                  <i className="x-skel-line" style={{ width: '46%' }} />
-                </span>
-                <i className="x-skel-btn" />
+      <div className="x-right-scroll">
+        <section className="x-widget">
+          <h2>Top topics</h2>
+          <ul className="x-topics">
+            {topics.map((topic) => (
+              <li key={topic.id}>
+                <Link href={topic.href}>{topic.label}</Link>
               </li>
             ))}
           </ul>
-        ) : suggestions.length === 0 ? (
-          <p className="x-widget-empty">No suggestions right now.</p>
-        ) : (
-          <ul className="x-suggestions">
-            {suggestions.map((author) => (
-              <li key={author.user_id}>
-                <Link className="x-suggestion-who" href={profileHref(author.handle) || '#'}>
-                  <span className="av" style={{ background: author.avatar_color }}>
-                    {initials(author.display_name)}
-                  </span>
+        </section>
+
+        <section className="x-widget">
+          <h2>Who to follow</h2>
+          {suggestionsLoading ? (
+            <ul className="x-suggestions x-suggestions-skel" aria-busy="true" aria-label="Loading suggestions">
+              {[0, 1, 2].map((item) => (
+                <li key={item}>
+                  <i className="x-skel-av" />
                   <span className="txt">
-                    <b>{author.display_name}</b>
-                    <small>{author.handle}</small>
+                    <i className="x-skel-line" style={{ width: '70%' }} />
+                    <i className="x-skel-line" style={{ width: '46%' }} />
                   </span>
-                </Link>
-                <button
-                  type="button"
-                  className={author.following ? 'followBtn on' : 'followBtn'}
-                  onClick={() => onFollow(author.user_id)}
-                >
-                  {author.following ? 'Following' : 'Follow'}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                  <i className="x-skel-btn" />
+                </li>
+              ))}
+            </ul>
+          ) : suggestions.length === 0 ? (
+            <p className="x-widget-empty">No suggestions right now.</p>
+          ) : (
+            <ul className="x-suggestions">
+              {suggestions.map((author) => (
+                <li key={author.user_id}>
+                  <Link className="x-suggestion-who" href={profileHref(author.handle) || '#'}>
+                    <span className="av" style={{ background: author.avatar_color }}>
+                      {initials(author.display_name)}
+                    </span>
+                    <span className="txt">
+                      <b>{author.display_name}</b>
+                      <small>{author.handle}</small>
+                    </span>
+                  </Link>
+                  <button
+                    type="button"
+                    className={author.following ? 'followBtn on' : 'followBtn'}
+                    onClick={() => onFollow(author.user_id)}
+                  >
+                    {author.following ? 'Following' : 'Follow'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
-      <footer className="x-rail-footer">
-        <a href="#">About</a>
-        <span aria-hidden="true">·</span>
-        <a href="#">Terms</a>
-        <span aria-hidden="true">·</span>
-        <a href="#">Privacy</a>
-        <span aria-hidden="true">·</span>
-        <span>© Snackd</span>
-      </footer>
+        <footer className="x-rail-footer">
+          <a href="#">About</a>
+          <span aria-hidden="true">·</span>
+          <a href="#">Terms</a>
+          <span aria-hidden="true">·</span>
+          <a href="#">Privacy</a>
+          <span aria-hidden="true">·</span>
+          <span>© Snackd</span>
+        </footer>
+      </div>
     </aside>
   );
 }

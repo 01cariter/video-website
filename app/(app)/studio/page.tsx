@@ -1,6 +1,5 @@
-import { getSoloUrl } from '@/lib/solo';
-import StudioView from '../../components/studio/StudioView';
+import StudioHome from '../../components/studio/StudioHome';
 
 export default function StudioPage() {
-  return <StudioView soloUrl={getSoloUrl()} />;
+  return <StudioHome />;
 }
