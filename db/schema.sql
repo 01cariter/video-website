@@ -139,7 +139,7 @@ CREATE TABLE video_likes (
 CREATE INDEX idx_video_likes_user ON video_likes (user_id);
 
 -- ----------------------------------------------------------------------------
--- video_saves — favourites / "收藏". Same shape as likes.
+-- video_saves — favourites. Same shape as likes.
 -- ----------------------------------------------------------------------------
 CREATE TABLE video_saves (
   user_id    TEXT        NOT NULL,                                   -- Supabase Auth user id

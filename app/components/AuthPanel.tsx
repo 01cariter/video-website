@@ -140,7 +140,7 @@ export default function AuthPanel({
           <span>Snackd</span>
         </Link>
       )}
-      <h1>{isLogin ? 'Welcome back' : 'Create your account'}</h1>
+      <h1>{isLogin ? 'Welcome back' : 'Sign up'}</h1>
       <p className="lead">{isLogin ? 'Sign in to continue.' : 'Create an account to continue.'}</p>
 
       {error && <div className="err" role="alert">{error}</div>}
@@ -191,7 +191,7 @@ export default function AuthPanel({
         </div>
         <button className="submit" type="submit" disabled={loading}>
           {loading && <LoaderCircle className="button-spinner" aria-hidden="true" />}
-          {loading ? 'Please wait...' : isLogin ? 'Sign in' : 'Create account'}
+          {loading ? 'Please wait...' : isLogin ? 'Sign in' : 'Sign up'}
         </button>
       </form>
 

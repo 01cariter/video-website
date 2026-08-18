@@ -50,6 +50,7 @@ export default function AppShell({ user, children }: AppShellProps) {
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
 
   const isStudioHome = pathname === '/studio';
+  const isWideWorkspace = isStudioHome || pathname === '/credits';
   const pathKey = pathname || '/';
   const query = queryByPath[pathKey] ?? '';
   const setQuery = useCallback(
@@ -123,7 +124,7 @@ export default function AppShell({ user, children }: AppShellProps) {
   return (
     <ShellSearchContext.Provider value={searchContextValue}>
       <MediaPreviewProvider user={user} onNeedAuth={requireAuth}>
-        <div className={`x-app${isStudioHome ? ' studio-home' : ''}`}>
+        <div className={`x-app${isWideWorkspace ? ' wide-workspace' : ''}${isStudioHome ? ' studio-home' : ''}`}>
           <LeftNav
             user={user}
             onCompose={openCompose}
@@ -135,7 +136,7 @@ export default function AppShell({ user, children }: AppShellProps) {
             {/* Instant route paint — animated remounts caused flash/jump + felt laggy. */}
             <div className="x-main-pane">{children}</div>
           </main>
-          {!isStudioHome && (
+          {!isWideWorkspace && (
             <RightRail
               query={query}
               onQueryChange={setQuery}
@@ -153,7 +154,7 @@ export default function AppShell({ user, children }: AppShellProps) {
           {authMode && (
             <AuthModal
               mode={authMode}
-              nextPath="/"
+              nextPath={pathname || '/'}
               onClose={() => setAuthMode(null)}
               onModeChange={setAuthMode}
             />

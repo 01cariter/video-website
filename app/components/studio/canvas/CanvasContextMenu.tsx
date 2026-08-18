@@ -32,10 +32,10 @@ import {
 } from '@/app/components/ui/dropdown-menu';
 
 const KIND_LABEL: Record<StudioNodeKind, string> = {
-  image: '图片',
-  video: '视频',
-  text: '文本',
-  section: '分组',
+  image: 'Image',
+  video: 'Video',
+  text: 'Text',
+  section: 'Group',
 };
 
 function downloadSrc(src: string, title: string) {
@@ -105,7 +105,7 @@ export default function CanvasContextMenu({
         {menu.type === 'pane' ? (
           <>
             <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">
-              在此添加
+              Add here
             </DropdownMenuLabel>
             <DropdownMenuItem
               onSelect={() =>
@@ -114,7 +114,7 @@ export default function CanvasContextMenu({
                 })
               }
             >
-              <ImageIcon /> 图片生成器
+              <ImageIcon /> Image generator
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() =>
@@ -123,7 +123,7 @@ export default function CanvasContextMenu({
                 })
               }
             >
-              <Video /> 视频生成器
+              <Video /> Video generator
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() =>
@@ -132,7 +132,7 @@ export default function CanvasContextMenu({
                 })
               }
             >
-              <FileText /> 文本
+              <FileText /> Text
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() =>
@@ -141,22 +141,22 @@ export default function CanvasContextMenu({
                 })
               }
             >
-              <RectangleHorizontal /> 分组
+              <RectangleHorizontal /> Group
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => fitView()}>
-              <Maximize2 /> 适应画布
+              <Maximize2 /> Fit canvas
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => changeZoom(1)}>
-              缩放到 100%
+              Zoom to 100%
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => setTool('select')}>
-              <MousePointer2 /> 选择工具
+              <MousePointer2 /> Select tool
               <DropdownMenuShortcut>V</DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setTool('pan')}>
-              <Hand /> 平移工具
+              <Hand /> Pan tool
               <DropdownMenuShortcut>H</DropdownMenuShortcut>
             </DropdownMenuItem>
           </>
@@ -171,11 +171,11 @@ export default function CanvasContextMenu({
               <DropdownMenuItem
                 onSelect={() => void generateNode(menu.nodeId)}
               >
-                <Wand2 /> {generator ? '生成' : '重新生成'}
+                <Wand2 /> {generator ? 'Generate' : 'Regenerate'}
               </DropdownMenuItem>
             ) : null}
             <DropdownMenuItem onSelect={() => duplicateNode(menu.nodeId)}>
-              <Copy /> 复制
+              <Copy /> Duplicate
             </DropdownMenuItem>
             {node.type === 'text' && hasText ? (
               <DropdownMenuItem
@@ -183,7 +183,7 @@ export default function CanvasContextMenu({
                   void navigator.clipboard.writeText(String(data.text));
                 }}
               >
-                <Type /> 复制文本
+                <Type /> Copy text
               </DropdownMenuItem>
             ) : null}
             {hasSrc ? (
@@ -193,7 +193,7 @@ export default function CanvasContextMenu({
                     window.open(String(data.src), '_blank', 'noopener')
                   }
                 >
-                  <ExternalLink /> 在新标签打开
+                  <ExternalLink /> Open in new tab
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() =>
@@ -203,23 +203,23 @@ export default function CanvasContextMenu({
                     )
                   }
                 >
-                  <Download /> 下载
+                  <Download /> Download
                 </DropdownMenuItem>
               </>
             ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => bringToFront(menu.nodeId)}>
-              <ArrowUpToLine /> 置于顶层
+              <ArrowUpToLine /> Bring to front
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => sendToBack(menu.nodeId)}>
-              <ArrowDownToLine /> 置于底层
+              <ArrowDownToLine /> Send to back
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
               onSelect={() => removeNode(menu.nodeId)}
             >
-              <Trash2 /> 删除
+              <Trash2 /> Delete
             </DropdownMenuItem>
           </>
         ) : null}
@@ -227,23 +227,23 @@ export default function CanvasContextMenu({
         {menu.type === 'selection' ? (
           <>
             <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">
-              已选 {menu.ids.length} 项
+              {menu.ids.length} selected
             </DropdownMenuLabel>
             <DropdownMenuItem onSelect={() => duplicateNodes(menu.ids)}>
-              <Copy /> 复制所选
+              <Copy /> Duplicate selected
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
               onSelect={() => removeNodes(menu.ids)}
             >
-              <Trash2 /> 删除所选
+              <Trash2 /> Delete selected
             </DropdownMenuItem>
           </>
         ) : null}
 
         {menu.type === 'node' && !node ? (
-          <DropdownMenuItem disabled>节点已不存在</DropdownMenuItem>
+          <DropdownMenuItem disabled>Node no longer exists</DropdownMenuItem>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>

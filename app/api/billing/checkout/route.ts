@@ -4,6 +4,11 @@ import {
   ensureCreditAccount,
   getCreditPackage,
 } from '@/lib/credits/server';
+import {
+  CUSTOM_CREDIT_PACKAGE_ID,
+  customCreditPriceCents,
+  isValidCustomCreditAmount,
+} from '@/lib/credits/packages';
 import { sql } from '@/lib/db';
 import { getAuthUser } from '@/lib/supabase/server';
 
@@ -16,19 +21,38 @@ interface OrderRow extends Record<string, unknown> {
 export async function POST(request: Request) {
   const user = await getAuthUser();
   if (!user) {
-    return NextResponse.json({ error: '请先登录。' }, { status: 401 });
+    return NextResponse.json({ error: 'Sign in first.' }, { status: 401 });
   }
   const body = (await request.json().catch(() => null)) as {
     packageId?: string;
+    credits?: number;
   } | null;
   const packageId = body?.packageId?.trim();
   if (!packageId) {
-    return NextResponse.json({ error: '请选择积分包。' }, { status: 400 });
+    return NextResponse.json({ error: 'Choose a credit pack.' }, { status: 400 });
   }
   const creditPackage = await getCreditPackage(packageId);
   if (!creditPackage) {
-    return NextResponse.json({ error: '积分包不存在或已下架。' }, { status: 404 });
+    return NextResponse.json({ error: 'This credit pack is unavailable.' }, { status: 404 });
   }
+  const customCredits = Number(body?.credits);
+  if (
+    creditPackage.id === CUSTOM_CREDIT_PACKAGE_ID &&
+    !isValidCustomCreditAmount(customCredits)
+  ) {
+    return NextResponse.json(
+      { error: 'Custom credits must be a whole number between 100 and 50,000.' },
+      { status: 400 },
+    );
+  }
+  const orderCredits =
+    creditPackage.id === CUSTOM_CREDIT_PACKAGE_ID
+      ? customCredits
+      : creditPackage.credits;
+  const orderPriceCents =
+    creditPackage.id === CUSTOM_CREDIT_PACKAGE_ID
+      ? customCreditPriceCents(customCredits)
+      : creditPackage.price_cents;
 
   let orderId: string | null = null;
   try {
@@ -40,9 +64,9 @@ export async function POST(request: Request) {
       VALUES (
         ${user.id},
         ${creditPackage.id},
-        ${creditPackage.price_cents},
+        ${orderPriceCents},
         ${creditPackage.currency},
-        ${creditPackage.credits}
+        ${orderCredits}
       )
       RETURNING id
     `;
@@ -55,10 +79,10 @@ export async function POST(request: Request) {
       {
         mode: 'payment',
         customer_email: user.email || undefined,
-        allow_promotion_codes: true,
         billing_address_collection: 'auto',
         line_items: [
-          creditPackage.stripe_price_id
+          creditPackage.stripe_price_id &&
+          creditPackage.id !== CUSTOM_CREDIT_PACKAGE_ID
             ? {
                 price: creditPackage.stripe_price_id,
                 quantity: 1,
@@ -66,9 +90,9 @@ export async function POST(request: Request) {
             : {
                 price_data: {
                   currency: creditPackage.currency,
-                  unit_amount: creditPackage.price_cents,
+                  unit_amount: orderPriceCents,
                   product_data: {
-                    name: `${creditPackage.name} · ${creditPackage.credits} 积分`,
+                    name: `${creditPackage.name} · ${orderCredits} credits`,
                     description:
                       creditPackage.description ||
                       'Snackd CreatorStudio AI credits',
@@ -81,7 +105,7 @@ export async function POST(request: Request) {
           orderId,
           userId: user.id,
           packageId: creditPackage.id,
-          credits: String(creditPackage.credits),
+          credits: String(orderCredits),
         },
         payment_intent_data: {
           metadata: {
@@ -111,13 +135,13 @@ export async function POST(request: Request) {
       `.catch(() => undefined);
     }
     const message =
-      error instanceof Error ? error.message : '创建支付页面失败。';
+      error instanceof Error ? error.message : 'Could not create the checkout session.';
     const notConfigured = /STRIPE_SECRET_KEY/.test(message);
     return NextResponse.json(
       {
         error: notConfigured
-          ? 'Stripe 尚未配置。请先添加 STRIPE_SECRET_KEY。'
-          : '创建支付页面失败，请稍后重试。',
+          ? 'Stripe is not configured. Add STRIPE_SECRET_KEY first.'
+          : 'Could not create the checkout session. Try again shortly.',
         detail: process.env.NODE_ENV === 'development' ? message : undefined,
       },
       { status: notConfigured ? 503 : 502 },

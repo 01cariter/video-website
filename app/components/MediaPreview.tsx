@@ -206,7 +206,11 @@ function AuthorIdentity({ video }: { video: Video }) {
       </span>
       <span className="who">
         <b>{video.author_name}</b>
-        <small>{video.author_handle} · {fmtLikes(video.author_followers)} followers</small>
+        <small>
+          {video.author_handle} ·{' '}
+          <span className="tabular-nums">{fmtLikes(video.author_followers)}</span>{' '}
+          followers
+        </small>
       </span>
     </>
   );
@@ -323,8 +327,13 @@ export default function MediaPreview({
               <section className="pv-details">
                 <div className="pv-detail-meta">
                   <span>{video.label || (video.category === 'study' ? 'Study' : 'Entertainment')}</span>
-                  <span>{video.duration}</span>
-                  <span>{fmtLikes(video.views_count)} views</span>
+                  <span className="tabular-nums">{video.duration}</span>
+                  <span>
+                    <span className="tabular-nums">
+                      {fmtLikes(video.views_count)}
+                    </span>{' '}
+                    views
+                  </span>
                   <span>Uploaded {fmtDate(video.created_at)}</span>
                 </div>
                 {video.title?.trim() ? <h2>{video.title.trim()}</h2> : <h2>{postHeadline(video)}</h2>}
@@ -339,7 +348,9 @@ export default function MediaPreview({
                   aria-label={video.liked ? 'Unlike' : 'Like'}
                 >
                   <Heart aria-hidden="true" />
-                  <span>{fmtLikes(video.likes_count)}</span>
+                  <span className="tabular-nums">
+                    {fmtLikes(video.likes_count)}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -348,7 +359,9 @@ export default function MediaPreview({
                   aria-label={video.saved ? 'Remove from saved' : 'Save'}
                 >
                   <Bookmark aria-hidden="true" />
-                  <span>{fmtLikes(video.saves_count)}</span>
+                  <span className="tabular-nums">
+                    {fmtLikes(video.saves_count)}
+                  </span>
                 </button>
                 <button type="button" onClick={() => onShare(video)} aria-label="Share">
                   <Share2 aria-hidden="true" />
@@ -359,7 +372,7 @@ export default function MediaPreview({
               <section className="pv-comments">
                 <header>
                   <b>Comments</b>
-                  <span>{video.comments_count}</span>
+                  <span className="tabular-nums">{video.comments_count}</span>
                 </header>
                 <div className="clist">
                   {commentsLoading && (

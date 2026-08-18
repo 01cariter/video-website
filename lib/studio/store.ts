@@ -41,6 +41,24 @@ function numberValue(value: unknown, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function normalizeProjectTitle(value: unknown) {
+  const title = String(value || '').trim();
+  return !title || title === '未命名项目' ? 'Untitled project' : title;
+}
+
+function normalizeNodeTitle(kind: StudioNodeKind, value: unknown) {
+  const title = String(value || '').trim();
+  const legacyDefaults = new Set(['分组', '图片生成', '视频生成', '文本']);
+  if (title && !legacyDefaults.has(title)) return title;
+  return kind === 'section'
+    ? 'Group'
+    : kind === 'image'
+      ? 'Image generation'
+      : kind === 'video'
+        ? 'Video generation'
+        : 'Text';
+}
+
 function normalizeNode(value: unknown, index: number): StudioNode | null {
   if (!value || typeof value !== 'object') return null;
   const legacy = value as Record<string, unknown>;
@@ -71,23 +89,13 @@ function normalizeNode(value: unknown, index: number): StudioNode | null {
     rotation: 0,
     zIndex: numberValue(legacy.zIndex, index),
     data: {
-      title:
-        String(
-          rawData.title ||
-            (kind === 'section'
-              ? '分组'
-              : kind === 'image'
-                ? '图片生成'
-                : kind === 'video'
-                  ? '视频生成'
-                  : '文本'),
-        ),
       prompt: String(rawData.prompt || ''),
       status: (rawData.status ||
         (rawData.src || rawData.text ? 'ready' : 'idle')) as StudioNodeData['status'],
       aspect: String(rawData.aspect || (kind === 'video' ? '16:9' : '1:1')),
       ...rawData,
       kind,
+      title: normalizeNodeTitle(kind, rawData.title),
     },
   };
 }
@@ -102,7 +110,7 @@ export function normalizeStudioProject(value: unknown): StudioProject | null {
   const createdAt = String(project.createdAt || nowIso());
   return {
     id: String(project.id),
-    title: String(project.title || '未命名项目'),
+    title: normalizeProjectTitle(project.title),
     createdAt,
     updatedAt: String(project.updatedAt || createdAt),
     coverUrls: Array.isArray(project.coverUrls)
@@ -225,7 +233,7 @@ function seedStore(): StudioStoreFile {
     projects: [
       {
         id: 'demo-sky',
-        title: '未命名项目',
+        title: 'Untitled project',
         createdAt: created,
         updatedAt: new Date(
           Date.now() - 1000 * 60 * 60 * 24 * 30,
@@ -239,8 +247,8 @@ function seedStore(): StudioStoreFile {
         nodes: [
           demoImageNode(
             'n1',
-            '星野 01',
-            '银河越过松岭',
+            'Night sky 01',
+            'Milky Way above the pine ridge',
             '/studio/sky-1.jpg',
             40,
             40,
@@ -248,8 +256,8 @@ function seedStore(): StudioStoreFile {
           ),
           demoImageNode(
             'n2',
-            '星野 02',
-            '湖面倒映银河',
+            'Night sky 02',
+            'Milky Way reflected on the lake',
             '/studio/sky-2.jpg',
             340,
             40,
@@ -257,8 +265,8 @@ function seedStore(): StudioStoreFile {
           ),
           demoImageNode(
             'n3',
-            '星野 03',
-            '雪山长曝光',
+            'Night sky 03',
+            'Long exposure over snowy peaks',
             '/studio/sky-3.jpg',
             40,
             340,
@@ -266,8 +274,8 @@ function seedStore(): StudioStoreFile {
           ),
           demoImageNode(
             'n4',
-            '星野 04',
-            '极光与湖面',
+            'Night sky 04',
+            'Aurora above the lake',
             '/studio/sky-4.jpg',
             340,
             340,
@@ -323,7 +331,7 @@ export function renameStudioProject(id: string, title: string) {
   if (!current) return null;
   return saveStudioProject({
     ...current,
-    title: title.trim() || '未命名项目',
+    title: title.trim() || 'Untitled project',
   });
 }
 
@@ -333,10 +341,10 @@ export function createBlankNode(
   extras: Partial<StudioNodeData> = {},
 ): StudioNode {
   const titles: Record<StudioNodeKind, string> = {
-    image: '图片生成',
-    video: '视频生成',
-    text: '文本',
-    section: '分组',
+    image: 'Image generation',
+    video: 'Video generation',
+    text: 'Text',
+    section: 'Group',
   };
   const defaults =
     kind === 'section' ? { aspect: '3:2' } : modelForKind(kind).defaults;
@@ -406,7 +414,8 @@ export function createStudioProjectDraft(input: {
 }): StudioProject {
   const template = STUDIO_TEMPLATES.find((item) => item.id === input.templateId);
   const title =
-    (input.title || template?.title || '未命名项目').trim() || '未命名项目';
+    (input.title || template?.title || 'Untitled project').trim() ||
+    'Untitled project';
   const pendingPrompt = input.pendingPrompt || template?.prompt;
   const nodes: StudioNode[] = [];
   if (template) {

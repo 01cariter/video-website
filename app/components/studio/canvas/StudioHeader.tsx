@@ -26,7 +26,7 @@ export default function StudioHeader({ title, onTitleChange, agentOpen, onToggle
   return (
     <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-2">
       <div className="flex min-w-0 items-center gap-0.5">
-        <Button asChild variant="ghost" size="icon-xs" aria-label="返回 CreatorStudio">
+        <Button asChild variant="ghost" size="icon-xs" aria-label="Back to Creator Studio">
           <Link href="/studio">
             <ArrowLeft />
           </Link>
@@ -40,7 +40,7 @@ export default function StudioHeader({ title, onTitleChange, agentOpen, onToggle
           className="h-7 w-auto max-w-64 min-w-28 border-0 bg-transparent px-1 text-[13px] font-medium shadow-none focus-visible:border-0 focus-visible:ring-0"
           value={title}
           onChange={(event) => onTitleChange(event.target.value)}
-          aria-label="项目名称"
+          aria-label="Project name"
         />
       </div>
       <div className="flex items-center gap-1">
@@ -53,7 +53,7 @@ export default function StudioHeader({ title, onTitleChange, agentOpen, onToggle
             setTheme(!dark);
             setDark(!dark);
           }}
-          aria-label={dark ? '切换到浅色' : '切换到深色'}
+          aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
         >
           <AnimatePresence mode="wait" initial={false}>
             <motion.span

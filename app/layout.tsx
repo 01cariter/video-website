@@ -1,22 +1,11 @@
+import '@fontsource-variable/instrument-sans/wght.css';
+import '@fontsource-variable/instrument-sans/wght-italic.css';
+import '@fontsource-variable/bricolage-grotesque/wght.css';
+import '@fontsource-variable/space-grotesk/wght.css';
 import './globals.css';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import { Fraunces, Outfit } from 'next/font/google';
 import { TooltipProvider } from '@/app/components/ui/tooltip';
-
-const outfit = Outfit({
-  subsets: ['latin'],
-  variable: '--font-outfit',
-  display: 'swap',
-  weight: ['400', '500', '600', '700'],
-});
-
-const fraunces = Fraunces({
-  subsets: ['latin'],
-  variable: '--font-fraunces',
-  display: 'swap',
-  weight: ['500', '600', '700'],
-});
 
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ||
@@ -39,7 +28,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
-      <body className={`${outfit.variable} ${fraunces.variable}`}>
+      <body>
         <TooltipProvider>{children}</TooltipProvider>
       </body>
     </html>

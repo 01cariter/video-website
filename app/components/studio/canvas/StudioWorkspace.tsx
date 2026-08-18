@@ -48,6 +48,7 @@ import {
 
 interface StudioWorkspaceProps {
   projectId: string;
+  freeCreditModelsOnly: boolean;
 }
 
 interface AddNodeExtras {
@@ -64,11 +65,11 @@ const EDITOR_CONFIG = {
   rotateable: false,
   flipable: false,
   bright: true,
-  stroke: '#111110',
-  strokeWidth: 1.25,
-  pointFill: '#111110',
+  stroke: '#2f6f7e',
+  strokeWidth: 1,
+  pointFill: '#fffdf9',
   pointRadius: 2,
-  pointSize: 7,
+  pointSize: 8,
 };
 
 function requestId() {
@@ -130,7 +131,13 @@ function applyProcessedTools(
   }
 }
 
-function CanvasWorkspace({ project }: { project: StudioProject }) {
+function CanvasWorkspace({
+  project,
+  freeCreditModelsOnly,
+}: {
+  project: StudioProject;
+  freeCreditModelsOnly: boolean;
+}) {
   const persistTimer = useRef<number | null>(null);
   const generating = useRef(new Set<string>());
   const seenTools = useRef(new Set<string>());
@@ -218,7 +225,7 @@ function CanvasWorkspace({ project }: { project: StudioProject }) {
       const node = nodesRef.current.find((item) => item.id === id);
       if (!node || node.type === 'section') return;
       if (!node.data.prompt.trim()) {
-        updateNodeData(id, { error: '先写下生成要求' });
+        updateNodeData(id, { error: 'Add a generation prompt first.' });
         return;
       }
 
@@ -263,7 +270,7 @@ function CanvasWorkspace({ project }: { project: StudioProject }) {
           balance?: number;
         };
         if (!response.ok) {
-          throw new Error(payload.error || '生成失败');
+          throw new Error(payload.error || 'Generation failed.');
         }
         if (typeof payload.balance === 'number') {
           window.dispatchEvent(
@@ -282,7 +289,7 @@ function CanvasWorkspace({ project }: { project: StudioProject }) {
 
         const urls =
           payload.urls?.filter(Boolean) || (payload.url ? [payload.url] : []);
-        if (!urls.length) throw new Error('生成服务没有返回素材');
+        if (!urls.length) throw new Error('The generation service returned no assets.');
         updateNodeData(id, {
           status: 'ready',
           src: urls[0],
@@ -320,7 +327,7 @@ function CanvasWorkspace({ project }: { project: StudioProject }) {
       } catch (error) {
         updateNodeData(id, {
           status: 'error',
-          error: error instanceof Error ? error.message : '生成失败',
+          error: error instanceof Error ? error.message : 'Generation failed.',
         });
       } finally {
         generating.current.delete(id);
@@ -394,7 +401,7 @@ function CanvasWorkspace({ project }: { project: StudioProject }) {
         height: source.height,
         rotation: 0,
         zIndex: source.type === 'section' ? source.zIndex : top + index + 1,
-        data: { ...source.data, title: `${source.data.title} 副本` },
+        data: { ...source.data, title: `${source.data.title} copy` },
       };
     });
     setNodes((current) => current.concat(copies));
@@ -438,6 +445,7 @@ function CanvasWorkspace({ project }: { project: StudioProject }) {
     zoom,
     selectionRect,
     sectionDraftRect,
+    snapGuides,
     handleAppReady,
     handleLayerCreated,
     changeZoom,
@@ -562,7 +570,7 @@ function CanvasWorkspace({ project }: { project: StudioProject }) {
     persistTimer.current = window.setTimeout(() => {
       void saveStudioProjectSynced({
         ...project,
-        title: title.trim() || '未命名项目',
+        title: title.trim() || 'Untitled project',
         nodes,
         viewport,
         messages,
@@ -579,7 +587,7 @@ function CanvasWorkspace({ project }: { project: StudioProject }) {
   useEffect(() => {
     if (consumedPrompt.current || !project.pendingPrompt) return;
     consumedPrompt.current = true;
-    const kind: StudioNodeKind = /视频|video|短片|分镜/i.test(
+    const kind: StudioNodeKind = /video|clip|shot|storyboard/i.test(
       project.pendingPrompt,
     )
       ? 'video'
@@ -589,7 +597,7 @@ function CanvasWorkspace({ project }: { project: StudioProject }) {
       title: project.title,
     });
     void sendMessage({
-      text: `请围绕这个创作意图展开，并继续组织画布：${project.pendingPrompt}`,
+      text: `Develop this creative direction and continue organizing the canvas: ${project.pendingPrompt}`,
     });
   }, [
     addNode,
@@ -636,6 +644,7 @@ function CanvasWorkspace({ project }: { project: StudioProject }) {
     () => ({
       nodes,
       selectedIds,
+      freeCreditModelsOnly,
       addNode,
       generateNode,
       removeNode,
@@ -667,6 +676,7 @@ function CanvasWorkspace({ project }: { project: StudioProject }) {
       removeNodes,
       changeZoom,
       fitNodes,
+      freeCreditModelsOnly,
       selectIds,
       selectedIds,
       sendToBack,
@@ -727,13 +737,36 @@ function CanvasWorkspace({ project }: { project: StudioProject }) {
 
             {!runtimeReady ? (
               <div className="pointer-events-none absolute inset-0 grid place-items-center text-xs text-muted-foreground">
-                正在准备无限画布…
+                Preparing the infinite canvas…
               </div>
             ) : null}
 
+            {snapGuides.map((guide, index) => (
+              <div
+                key={`${guide.axis}-${index}`}
+                data-testid={`studio-snap-guide-${guide.axis}`}
+                className="pointer-events-none absolute z-10 bg-[#2f6f7e] shadow-[0_0_0_0.5px_rgba(47,111,126,0.24)]"
+                style={
+                  guide.axis === 'x'
+                    ? {
+                        left: Math.round(guide.position),
+                        top: Math.round(guide.start),
+                        width: 1,
+                        height: Math.max(1, Math.round(guide.end - guide.start)),
+                      }
+                    : {
+                        left: Math.round(guide.start),
+                        top: Math.round(guide.position),
+                        width: Math.max(1, Math.round(guide.end - guide.start)),
+                        height: 1,
+                      }
+                }
+              />
+            ))}
+
             {sectionDraftRect ? (
               <div
-                className="pointer-events-none absolute rounded-xl border border-dashed border-primary/70 bg-primary/5"
+                className="pointer-events-none absolute rounded-xl border border-dashed border-[#2f6f7e]/80 bg-[#2f6f7e]/5"
                 style={{
                   left: sectionDraftRect.left,
                   top: sectionDraftRect.top,
@@ -786,7 +819,10 @@ function CanvasWorkspace({ project }: { project: StudioProject }) {
   );
 }
 
-export default function StudioWorkspace({ projectId }: StudioWorkspaceProps) {
+export default function StudioWorkspace({
+  projectId,
+  freeCreditModelsOnly,
+}: StudioWorkspaceProps) {
   const router = useRouter();
   const [project, setProject] = useState<StudioProject | null | undefined>();
 
@@ -803,7 +839,7 @@ export default function StudioWorkspace({ projectId }: StudioWorkspaceProps) {
   if (project === undefined) {
     return (
       <div className="grid min-h-dvh place-items-center text-muted-foreground">
-        正在打开画布…
+        Opening canvas…
       </div>
     );
   }
@@ -811,17 +847,22 @@ export default function StudioWorkspace({ projectId }: StudioWorkspaceProps) {
   if (!project) {
     return (
       <div className="grid min-h-dvh place-items-center gap-3 text-muted-foreground">
-        <p>找不到这个项目。</p>
+        <p>Project not found.</p>
         <button
           type="button"
           className="rounded-full bg-primary px-3.5 py-2 font-bold text-primary-foreground"
           onClick={() => router.push('/studio')}
         >
-          返回 CreatorStudio
+          Back to Creator Studio
         </button>
       </div>
     );
   }
 
-  return <CanvasWorkspace project={project} />;
+  return (
+    <CanvasWorkspace
+      project={project}
+      freeCreditModelsOnly={freeCreditModelsOnly}
+    />
+  );
 }

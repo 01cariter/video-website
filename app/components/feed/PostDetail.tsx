@@ -97,8 +97,15 @@ export default function PostDetail({
 
         <div className="pd-meta">
           <span>{video.label || (video.category === 'study' ? 'Study' : 'Entertainment')}</span>
-          {video.duration ? <span>{video.duration}</span> : null}
-          <span>{fmtLikes(video.views_count)} views</span>
+          {video.duration ? (
+            <span className="tabular-nums">{video.duration}</span>
+          ) : null}
+          <span>
+            <span className="tabular-nums">
+              {fmtLikes(video.views_count)}
+            </span>{' '}
+            views
+          </span>
           <time dateTime={video.created_at}>{fmtRelativeTime(video.created_at)}</time>
           <span className="pd-meta-muted">Uploaded {fmtDate(video.created_at)}</span>
         </div>
@@ -113,11 +120,15 @@ export default function PostDetail({
           aria-label="Like"
         >
           <Heart aria-hidden="true" />
-          <span>{fmtLikes(video.likes_count)}</span>
+          <span className="tabular-nums">
+            {fmtLikes(video.likes_count)}
+          </span>
         </button>
         <span className="t-comment">
           <MessageCircle aria-hidden="true" />
-          <span>{fmtLikes(video.comments_count)}</span>
+          <span className="tabular-nums">
+            {fmtLikes(video.comments_count)}
+          </span>
         </span>
         <button
           type="button"
@@ -127,7 +138,9 @@ export default function PostDetail({
           aria-label="Save"
         >
           <Bookmark aria-hidden="true" />
-          <span>{fmtLikes(video.saves_count)}</span>
+          <span className="tabular-nums">
+            {fmtLikes(video.saves_count)}
+          </span>
         </button>
         <button type="button" onClick={onShare} aria-label="Share">
           <Share2 aria-hidden="true" />

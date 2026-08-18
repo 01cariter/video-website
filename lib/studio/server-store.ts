@@ -97,7 +97,7 @@ export async function saveStudioProjectForUser(
     VALUES (
       ${project.id},
       ${userId},
-      ${project.title.trim() || '未命名项目'},
+      ${project.title.trim() || 'Untitled project'},
       ${projectDocument(project)}::jsonb,
       ${JSON.stringify(project.messages)}::jsonb,
       ${coverUrls},

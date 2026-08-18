@@ -1,4 +1,5 @@
 import { createAgentUIStreamResponse, type UIMessage } from 'ai';
+import { freeCreditModelsOnly } from '@/flags';
 import {
   beginMeteredRequest,
   completeMeteredRequest,
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
   const user = await getAuthUser();
   if (!user) {
     return Response.json(
-      { error: '请先登录，再使用 AI Agent。' },
+      { error: 'Sign in to use the AI Agent.' },
       { status: 401 },
     );
   }
@@ -34,10 +35,11 @@ export async function POST(request: Request) {
   const canvas = Array.isArray(body?.canvas) ? body.canvas.slice(0, 200) : [];
   const requestId = body?.requestId?.trim();
   if (!requestId || requestId.length > 160) {
-    return Response.json({ error: '请求标识无效。' }, { status: 400 });
+    return Response.json({ error: 'Invalid request identifier.' }, { status: 400 });
   }
 
   try {
+    const restrictToFreeCreditModels = await freeCreditModelsOnly();
     const metered = await beginMeteredRequest({
       userId: user.id,
       requestId,
@@ -50,8 +52,8 @@ export async function POST(request: Request) {
         {
           error:
             metered.status === 'completed'
-              ? '这条 Agent 请求已经完成。'
-              : '这条 Agent 请求正在处理或已经失败，请重新发送。',
+              ? 'This Agent request has already completed.'
+              : 'This Agent request is processing or failed. Send it again.',
           balance: metered.balance,
         },
         { status: 409 },
@@ -59,7 +61,7 @@ export async function POST(request: Request) {
     }
 
     let streamFailed = false;
-    const agent = createStudioAgent(canvas);
+    const agent = createStudioAgent(canvas, restrictToFreeCreditModels);
 
     return createAgentUIStreamResponse({
       agent,
@@ -68,7 +70,7 @@ export async function POST(request: Request) {
       onError: (error) => {
         streamFailed = true;
         const message =
-          error instanceof Error ? error.message : 'Agent 请求失败';
+          error instanceof Error ? error.message : 'Agent request failed.';
         void failMeteredRequest({
           userId: user.id,
           requestId,
@@ -95,19 +97,19 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
       return Response.json(
-        { error: '积分不足，请先充值。', code: 'INSUFFICIENT_CREDITS' },
+        { error: 'Not enough credits. Top up first.', code: 'INSUFFICIENT_CREDITS' },
         { status: 402 },
       );
     }
     await failMeteredRequest({
       userId: user.id,
       requestId,
-      error: error instanceof Error ? error.message : 'Agent 请求失败',
+      error: error instanceof Error ? error.message : 'Agent request failed.',
     }).catch(() => undefined);
     return Response.json(
       {
         error: friendlyAiError(
-          error instanceof Error ? error.message : 'Agent 请求失败',
+          error instanceof Error ? error.message : 'Agent request failed.',
         ),
       },
       { status: 502 },

@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { Frame, Img, Rect, Txt } from '@/lib/leafer-react';
 import type { StudioNode } from '@/lib/studio/types';
 
-const NODE_FILL = '#f4f4f2';
-const NODE_STROKE = '#d7d7d2';
+const NODE_FILL = '#f8f3ec';
+const NODE_STROKE = '#d9cec1';
 const NODE_RADIUS = 6;
 const NODE_EDIT_CONFIG = { rotateable: false };
 
@@ -56,8 +56,8 @@ function NodeBody({
           y={0}
           width={node.width}
           height={node.height}
-          fill="rgba(255,255,255,0.16)"
-          stroke="#bdbab1"
+          fill="rgba(70,121,137,0.07)"
+          stroke="#9fb8bf"
           strokeWidth={1}
           dashPattern={[8, 6]}
           cornerRadius={4}
@@ -65,13 +65,13 @@ function NodeBody({
           data={data}
         />
         <Txt
-          text={node.data.title || '分组'}
+          text={node.data.title || 'Group'}
           x={12}
           y={-24}
           width={Math.max(80, node.width - 24)}
           fontSize={12}
           fontWeight={600}
-          fill="#6f6b62"
+          fill="#467989"
           hittable={false}
           data={data}
         />
@@ -91,7 +91,7 @@ function NodeBody({
           y={0}
           width={node.width}
           height={node.height}
-          fill="#171613"
+          fill="#211914"
           stroke={NODE_STROKE}
           strokeWidth={1}
           cornerRadius={NODE_RADIUS}
@@ -109,7 +109,7 @@ function NodeBody({
             data={data}
           />
         ) : (
-          <EmptyNode node={node} label="图片" data={data} />
+          <EmptyNode node={node} label="Image" data={data} />
         )}
       </>
     );
@@ -123,33 +123,33 @@ function NodeBody({
           y={0}
           width={node.width}
           height={node.height}
-          fill="#171613"
+          fill="#211914"
           stroke={NODE_STROKE}
           strokeWidth={1}
           cornerRadius={NODE_RADIUS}
           data={data}
         />
         <Txt
-          text={node.data.src ? '▶  视频已生成' : node.data.error || '视频'}
+          text={node.data.src ? '▶  Video generated' : node.data.error || 'Video'}
           x={0}
           y={Math.max(0, node.height / 2 - 11)}
           width={node.width}
           fontSize={13}
           fontWeight={600}
           textAlign="center"
-          fill={node.data.error ? '#e56969' : '#ddd8cf'}
+          fill={node.data.error ? '#e56969' : '#e8ded1'}
           hittable={false}
           data={data}
         />
         {node.data.src ? (
           <Txt
-            text="双击或使用菜单播放"
+            text="Double-click or use the menu to play"
             x={0}
             y={Math.max(0, node.height / 2 + 14)}
             width={node.width}
             fontSize={10}
             textAlign="center"
-            fill="#8d887f"
+            fill="#a99a8c"
             hittable={false}
             data={data}
           />
@@ -172,7 +172,7 @@ function NodeBody({
         data={data}
       />
       <Txt
-        text={node.data.title || '文本'}
+        text={node.data.title || 'Text'}
         x={14}
         y={12}
         width={Math.max(24, node.width - 28)}
@@ -183,7 +183,7 @@ function NodeBody({
         data={data}
       />
       <Txt
-        text={node.data.text || node.data.error || '双击或在下方输入文案要求'}
+        text={node.data.text || node.data.error || 'Double-click or enter a writing prompt below'}
         x={14}
         y={38}
         width={Math.max(24, node.width - 28)}
@@ -228,7 +228,7 @@ function EmptyNode({
         fontSize={22}
         fontWeight={500}
         textAlign="center"
-        fill={node.data.error ? '#b94e4e' : '#c2c2bd'}
+        fill={node.data.error ? '#b94e4e' : '#c7a58e'}
         hittable={false}
         data={data}
       />
@@ -240,7 +240,7 @@ function EmptyNode({
         fontSize={11}
         fontWeight={600}
         textAlign="center"
-        fill={node.data.error ? '#b94e4e' : '#888882'}
+        fill={node.data.error ? '#b94e4e' : '#75685f'}
         hittable={false}
         data={data}
       />
@@ -287,10 +287,10 @@ function GeneratingNode({
       <Txt
         text={
           node.type === 'video'
-            ? '正在生成视频'
+            ? 'Generating video'
             : node.type === 'text'
-              ? '正在写作'
-              : '正在生成图片'
+              ? 'Writing'
+              : 'Generating image'
         }
         x={12}
         y={Math.max(0, node.height / 2 - 10)}
@@ -298,7 +298,7 @@ function GeneratingNode({
         fontSize={12}
         fontWeight={600}
         textAlign="center"
-        fill="#77736b"
+        fill="#75685f"
         hittable={false}
         data={data}
       />

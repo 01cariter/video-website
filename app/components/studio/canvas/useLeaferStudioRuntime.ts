@@ -21,6 +21,12 @@ import {
   useState,
   type RefObject,
 } from 'react';
+import {
+  containedNodeIdsForSection,
+  resolveStudioSnap,
+  type StudioBounds,
+  type StudioSnapGuide,
+} from '@/lib/studio/geometry';
 import type { StudioNode, StudioViewport } from '@/lib/studio/types';
 import type { StudioTool } from './studio-context';
 
@@ -32,6 +38,8 @@ export interface StudioFloatingRect {
   width: number;
   height: number;
 }
+
+export type StudioCanvasSnapGuide = StudioSnapGuide;
 
 export type StudioCanvasMenuState =
   | {
@@ -163,6 +171,52 @@ function boundsForNodes(nodes: StudioNode[]) {
   };
 }
 
+function frameBounds(frame: IUI): StudioBounds {
+  const left = Number(frame.x ?? 0);
+  const top = Number(frame.y ?? 0);
+  const width = Math.max(1, Number(frame.width ?? 1));
+  const height = Math.max(1, Number(frame.height ?? 1));
+  return {
+    left,
+    top,
+    right: left + width,
+    bottom: top + height,
+    width,
+    height,
+  };
+}
+
+function boundsForFrames(frames: IUI[]): StudioBounds | null {
+  if (!frames.length) return null;
+  const bounds = frames.map(frameBounds);
+  const left = Math.min(...bounds.map((item) => item.left));
+  const top = Math.min(...bounds.map((item) => item.top));
+  const right = Math.max(...bounds.map((item) => item.right));
+  const bottom = Math.max(...bounds.map((item) => item.bottom));
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
+function setFramePosition(frame: IUI, x: number, y: number) {
+  const target = frame as IUI & {
+    set?: (value: { x: number; y: number }) => void;
+    forceUpdate?: () => void;
+  };
+  if (target.set) {
+    target.set({ x, y });
+  } else {
+    Reflect.set(target, 'x', x);
+    Reflect.set(target, 'y', y);
+  }
+  target.forceUpdate?.();
+}
+
 function setTreeViewport(
   tree: {
     x?: number;
@@ -214,6 +268,14 @@ export function useLeaferStudioRuntime({
   });
   const sectionStartRef = useRef<{ x: number; y: number } | null>(null);
   const sectionHandledRef = useRef(false);
+  const sectionChildrenDragRef = useRef<{
+    sectionId: string;
+    childIds: string[];
+    lastX: number;
+    lastY: number;
+  } | null>(null);
+  const snapGuardRef = useRef(false);
+  const snapGuideKeyRef = useRef('');
   const frameRef = useRef<number | null>(null);
   const [runtimeReady, setRuntimeReady] = useState(false);
   const [zoom, setZoom] = useState(initialViewport.zoom);
@@ -221,6 +283,7 @@ export function useLeaferStudioRuntime({
     useState<StudioFloatingRect | null>(null);
   const [sectionDraftRect, setSectionDraftRect] =
     useState<StudioFloatingRect | null>(null);
+  const [snapGuides, setSnapGuides] = useState<StudioCanvasSnapGuide[]>([]);
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -357,6 +420,160 @@ export function useLeaferStudioRuntime({
     });
   }, [updateSelectionRect]);
 
+  const clearSnapGuides = useCallback(() => {
+    if (!snapGuideKeyRef.current) return;
+    snapGuideKeyRef.current = '';
+    setSnapGuides([]);
+  }, []);
+
+  const publishSnapGuides = useCallback(
+    (guides: StudioSnapGuide[]) => {
+      if (!guides.length) {
+        clearSnapGuides();
+        return;
+      }
+      const viewport = currentViewport();
+      const next = guides.map((guide) => {
+        const axisOffset = guide.axis === 'x' ? viewport.x : viewport.y;
+        const crossOffset = guide.axis === 'x' ? viewport.y : viewport.x;
+        return {
+          ...guide,
+          position: axisOffset + guide.position * viewport.zoom,
+          start: crossOffset + guide.start * viewport.zoom,
+          end: crossOffset + guide.end * viewport.zoom,
+        };
+      });
+      const key = next
+        .map(
+          (guide) =>
+            `${guide.axis}:${guide.position.toFixed(2)}:${guide.start.toFixed(2)}:${guide.end.toFixed(2)}`,
+        )
+        .join('|');
+      if (key === snapGuideKeyRef.current) return;
+      snapGuideKeyRef.current = key;
+      setSnapGuides(next);
+    },
+    [clearSnapGuides, currentViewport],
+  );
+
+  const beginSectionChildrenDrag = useCallback(
+    (event: unknown) => {
+      const targetId = nodeIdFromTarget(
+        (event as { target?: unknown } | undefined)?.target,
+      );
+      const selected = selectedIdsRef.current;
+      const candidateIds =
+        selected.length === 1 ? selected : targetId ? [targetId] : [];
+      const sectionId = candidateIds.find(
+        (id) =>
+          nodesRef.current.find((node) => node.id === id)?.type === 'section',
+      );
+      if (!sectionId) {
+        sectionChildrenDragRef.current = null;
+        return;
+      }
+      const frame = findFrame(sectionId);
+      if (!frame) {
+        sectionChildrenDragRef.current = null;
+        return;
+      }
+      sectionChildrenDragRef.current = {
+        sectionId,
+        childIds: containedNodeIdsForSection(
+          nodesRef.current,
+          sectionId,
+        ).filter((id) => !selected.includes(id)),
+        lastX: Number(frame.x ?? 0),
+        lastY: Number(frame.y ?? 0),
+      };
+    },
+    [findFrame],
+  );
+
+  const syncSectionChildrenDuringDrag = useCallback(() => {
+    const state = sectionChildrenDragRef.current;
+    if (!state?.childIds.length) return;
+    const sectionFrame = findFrame(state.sectionId);
+    if (!sectionFrame) return;
+    const nextX = Number(sectionFrame.x ?? state.lastX);
+    const nextY = Number(sectionFrame.y ?? state.lastY);
+    const deltaX = nextX - state.lastX;
+    const deltaY = nextY - state.lastY;
+    if (Math.abs(deltaX) < 0.01 && Math.abs(deltaY) < 0.01) return;
+
+    for (const id of state.childIds) {
+      const frame = findFrame(id);
+      if (!frame) continue;
+      setFramePosition(
+        frame,
+        Number(frame.x ?? 0) + deltaX,
+        Number(frame.y ?? 0) + deltaY,
+      );
+    }
+    state.lastX = nextX;
+    state.lastY = nextY;
+    appRef.current?.tree?.forceUpdate?.();
+  }, [findFrame]);
+
+  const applyMoveSnapping = useCallback(() => {
+    if (toolRef.current !== 'select' || snapGuardRef.current) return;
+    const selected = new Set(selectedIdsRef.current);
+    const movingFrames = [...selected]
+      .map(findFrame)
+      .filter((frame): frame is IUI => Boolean(frame));
+    const movingBounds = boundsForFrames(movingFrames);
+    if (!movingBounds) {
+      clearSnapGuides();
+      return;
+    }
+
+    const groupedChildren = new Set(
+      sectionChildrenDragRef.current?.childIds ?? [],
+    );
+    const targetBounds = nodesRef.current
+      .filter(
+        (node) =>
+          !selected.has(node.id) &&
+          !groupedChildren.has(node.id) &&
+          node.data.hidden !== true,
+      )
+      .map((node) => findFrame(node.id))
+      .filter((frame): frame is IUI => Boolean(frame))
+      .map(frameBounds);
+    if (!targetBounds.length) {
+      clearSnapGuides();
+      return;
+    }
+
+    const viewport = currentViewport();
+    const snap = resolveStudioSnap(
+      movingBounds,
+      targetBounds,
+      6 / Math.max(0.1, viewport.zoom),
+    );
+    if (snap.deltaX || snap.deltaY) {
+      snapGuardRef.current = true;
+      try {
+        for (const frame of movingFrames) {
+          setFramePosition(
+            frame,
+            Number(frame.x ?? 0) + snap.deltaX,
+            Number(frame.y ?? 0) + snap.deltaY,
+          );
+        }
+        appRef.current?.tree?.forceUpdate?.();
+      } finally {
+        snapGuardRef.current = false;
+      }
+    }
+    publishSnapGuides(snap.guides);
+  }, [
+    clearSnapGuides,
+    currentViewport,
+    findFrame,
+    publishSnapGuides,
+  ]);
+
   const readNodesFromFrames = useCallback(
     () =>
       nodesRef.current.map((node) => {
@@ -426,6 +643,8 @@ export function useLeaferStudioRuntime({
       scrollBarRef.current = null;
       appRef.current = null;
       layerRef.current = null;
+      sectionChildrenDragRef.current = null;
+      snapGuideKeyRef.current = '';
       if (frameRef.current != null) {
         cancelAnimationFrame(frameRef.current);
         frameRef.current = null;
@@ -452,15 +671,30 @@ export function useLeaferStudioRuntime({
         selectedIdsRef.current = ids;
         callbacksRef.current.onSelectIds(ids);
       }
+      clearSnapGuides();
       scheduleSelectionRect();
     };
     const beginTransform = () => {
       scheduleSelectionRect();
     };
-    const syncEditorGeometry = () => {
+    const onDragStart = (event: unknown) => {
+      clearSnapGuides();
+      beginSectionChildrenDrag(event);
+      beginTransform();
+    };
+    const syncEditorMoveGeometry = () => {
+      applyMoveSnapping();
+      syncSectionChildrenDuringDrag();
+      scheduleSelectionRect();
+    };
+    const syncEditorScaleGeometry = () => {
+      syncSectionChildrenDuringDrag();
       scheduleSelectionRect();
     };
     const endNodeTransform = () => {
+      syncSectionChildrenDuringDrag();
+      sectionChildrenDragRef.current = null;
+      clearSnapGuides();
       commitFrameState();
       scheduleSelectionRect();
     };
@@ -468,7 +702,11 @@ export function useLeaferStudioRuntime({
       const viewport = currentViewport();
       setZoom(viewport.zoom);
       callbacksRef.current.onViewportChange(viewport);
+      clearSnapGuides();
       scheduleSelectionRect();
+    };
+    const onPointerUp = () => {
+      clearSnapGuides();
     };
     const onPointerDown = (event: unknown) => {
       const targetId = nodeIdFromTarget(
@@ -601,7 +839,8 @@ export function useLeaferStudioRuntime({
     app.on(PointerEvent.TAP, onTap);
     app.on(PointerEvent.DOUBLE_TAP, onDoubleTap);
     app.on(PointerEvent.MENU, onMenu);
-    app.on(DragEvent.START, beginTransform);
+    app.on(PointerEvent.UP, onPointerUp);
+    app.on(DragEvent.START, onDragStart);
     app.on(DragEvent.DRAG, onDrag);
     app.on(DragEvent.END, onDragEnd);
     app.on(ZoomEvent.START, beginTransform);
@@ -611,15 +850,16 @@ export function useLeaferStudioRuntime({
     app.tree.on('move', beginTransform);
     app.tree.on('move.end', syncViewport);
     editor.on(EditorEvent.SELECT, syncSelection);
-    editor.on(EditorMoveEvent.MOVE, syncEditorGeometry);
-    editor.on(EditorScaleEvent.SCALE, syncEditorGeometry);
+    editor.on(EditorMoveEvent.MOVE, syncEditorMoveGeometry);
+    editor.on(EditorScaleEvent.SCALE, syncEditorScaleGeometry);
 
     return () => {
       app.off(PointerEvent.DOWN, onPointerDown);
       app.off(PointerEvent.TAP, onTap);
       app.off(PointerEvent.DOUBLE_TAP, onDoubleTap);
       app.off(PointerEvent.MENU, onMenu);
-      app.off(DragEvent.START, beginTransform);
+      app.off(PointerEvent.UP, onPointerUp);
+      app.off(DragEvent.START, onDragStart);
       app.off(DragEvent.DRAG, onDrag);
       app.off(DragEvent.END, onDragEnd);
       app.off(ZoomEvent.START, beginTransform);
@@ -629,14 +869,18 @@ export function useLeaferStudioRuntime({
       app.tree.off('move', beginTransform);
       app.tree.off('move.end', syncViewport);
       editor.off(EditorEvent.SELECT, syncSelection);
-      editor.off(EditorMoveEvent.MOVE, syncEditorGeometry);
-      editor.off(EditorScaleEvent.SCALE, syncEditorGeometry);
+      editor.off(EditorMoveEvent.MOVE, syncEditorMoveGeometry);
+      editor.off(EditorScaleEvent.SCALE, syncEditorScaleGeometry);
     };
   }, [
+    applyMoveSnapping,
+    beginSectionChildrenDrag,
+    clearSnapGuides,
     commitFrameState,
     currentViewport,
     runtimeReady,
     scheduleSelectionRect,
+    syncSectionChildrenDuringDrag,
   ]);
 
   useEffect(() => {
@@ -661,13 +905,15 @@ export function useLeaferStudioRuntime({
       app.editor.config.moveable = tool === 'select';
       app.editor.config.rotateable = false;
     }
+    clearSnapGuides();
+    sectionChildrenDragRef.current = null;
     if (tool === 'section') {
       app.editor.target = undefined;
       selectedIdsRef.current = [];
       callbacksRef.current.onSelectIds([]);
       scheduleSelectionRect();
     }
-  }, [runtimeReady, scheduleSelectionRect, tool]);
+  }, [clearSnapGuides, runtimeReady, scheduleSelectionRect, tool]);
 
   const changeZoom = useCallback(
     (nextZoom: number) => {
@@ -803,6 +1049,7 @@ export function useLeaferStudioRuntime({
     zoom,
     selectionRect,
     sectionDraftRect,
+    snapGuides,
     handleAppReady,
     handleLayerCreated,
     changeZoom,

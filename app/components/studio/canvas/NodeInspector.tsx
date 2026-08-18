@@ -5,6 +5,7 @@ import Image from 'next/image';
 import byteDanceIcon from '@lobehub/icons-static-svg/icons/bytedance.svg';
 import grokIcon from '@lobehub/icons-static-svg/icons/grok.svg';
 import openAiIcon from '@lobehub/icons-static-svg/icons/openai.svg';
+import poolsideIcon from '@lobehub/icons-static-svg/icons/poolside.svg';
 import recraftIcon from '@lobehub/icons-static-svg/icons/recraft.svg';
 import {
   Check,
@@ -18,6 +19,8 @@ import {
 } from 'lucide-react';
 import {
   fieldSummary,
+  hasAvailableStudioModel,
+  isStudioModelAvailable,
   modelForKind,
   modelOptionsForKind,
   resolveStudioModel,
@@ -56,6 +59,7 @@ interface NodeInspectorProps {
   kind: StudioGenerativeKind;
   data: StudioNodeData;
   canSubmit: boolean;
+  freeCreditModelsOnly: boolean;
   onPromptChange: (value: string) => void;
   onFieldChange: (key: string, value: string | number | boolean) => void;
   onAspectChange: (aspect: string) => void;
@@ -66,19 +70,20 @@ interface NodeInspectorProps {
 const PROVIDER_ICONS = {
   ByteDance: byteDanceIcon,
   OpenAI: openAiIcon,
+  Poolside: poolsideIcon,
   Recraft: recraftIcon,
   xAI: grokIcon,
 } as const;
 
 const ASPECT_LABELS: Record<string, string> = {
-  '1:1': '方形',
-  '16:9': '横屏',
-  '9:16': '竖屏',
-  '4:3': '经典',
-  '3:4': '海报',
-  '21:9': '宽银幕',
-  adaptive: '自适应',
-  auto: '自动',
+  '1:1': 'Square',
+  '16:9': 'Landscape',
+  '9:16': 'Portrait',
+  '4:3': 'Classic',
+  '3:4': 'Poster',
+  '21:9': 'Cinematic',
+  adaptive: 'Adaptive',
+  auto: 'Auto',
 };
 
 function AspectGlyph({ aspect }: { aspect: string }) {
@@ -152,7 +157,7 @@ function SettingControl({
     return (
       <section className="grid gap-3">
         <span className="text-[11px] font-semibold text-[var(--param-ink)]">
-          画面比例
+          Aspect ratio
         </span>
         <ToggleGroup
           type="single"
@@ -192,7 +197,7 @@ function SettingControl({
                         : 'text-[var(--param-muted)]',
                     )}
                   >
-                    {ASPECT_LABELS[aspect] ?? '自定义'}
+                    {ASPECT_LABELS[aspect] ?? 'Custom'}
                   </span>
                 </span>
               </ToggleGroupItem>
@@ -292,7 +297,7 @@ function SettingControl({
                   key={value}
                   type="button"
                   aria-pressed={selected}
-                  aria-label={`生成 ${value} 张`}
+                  aria-label={`Generate ${value} images`}
                   className={cn(
                     'h-9 rounded-[8px] font-mono text-[11px] font-semibold text-[var(--param-muted)] tabular-nums outline-none transition-[background-color,color,box-shadow,transform] duration-150 hover:text-[var(--param-ink)] active:scale-[0.98]',
                     selected
@@ -320,7 +325,7 @@ function SettingControl({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label={`减少${field.label}`}
+            aria-label={`Decrease ${field.label}`}
             className="size-7 rounded-[7px] text-[var(--param-muted)] hover:bg-[var(--param-soft)] hover:text-[var(--param-ink)] focus-visible:!outline-none"
             onClick={() =>
               onFieldChange(
@@ -338,7 +343,7 @@ function SettingControl({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label={`增加${field.label}`}
+            aria-label={`Increase ${field.label}`}
             className="size-7 rounded-[7px] text-[var(--param-muted)] hover:bg-[var(--param-soft)] hover:text-[var(--param-ink)] focus-visible:!outline-none"
             onClick={() =>
               onFieldChange(
@@ -364,7 +369,7 @@ function SettingControl({
           {field.label}
         </label>
         <span className="text-[10px] text-[var(--param-muted)]">
-          为生成视频同时创建环境音效
+          Generate ambient audio with the video
         </span>
       </div>
       <Switch
@@ -379,27 +384,28 @@ function SettingControl({
 }
 
 function promptPlaceholder(kind: StudioGenerativeKind) {
-  if (kind === 'video') return '描述镜头、运动、节奏与氛围…';
-  if (kind === 'text') return '写下文案目标、语气与关键信息…';
-  return '描述画面、主体、光线与构图…';
+  if (kind === 'video') return 'Describe the shot, motion, pacing, and mood…';
+  if (kind === 'text') return 'Describe the writing goal, tone, and key details…';
+  return 'Describe the subject, lighting, composition, and style…';
 }
 
 function settingsTitle(kind: StudioGenerativeKind) {
-  if (kind === 'video') return '视频参数';
-  if (kind === 'text') return '文本参数';
-  return '图像参数';
+  if (kind === 'video') return 'Video settings';
+  if (kind === 'text') return 'Text settings';
+  return 'Image settings';
 }
 
 function settingsDescription(kind: StudioGenerativeKind) {
-  if (kind === 'video') return '调整画幅、清晰度、时长与声音';
-  if (kind === 'text') return '调整本次创作的推理强度';
-  return '设置画幅与本次生成数量';
+  if (kind === 'video') return 'Adjust aspect, resolution, duration, and audio';
+  if (kind === 'text') return 'Set the reasoning effort for this generation';
+  return 'Set the aspect ratio and number of outputs';
 }
 
 export default function NodeInspector({
   kind,
   data,
   canSubmit,
+  freeCreditModelsOnly,
   onPromptChange,
   onFieldChange,
   onAspectChange,
@@ -412,7 +418,15 @@ export default function NodeInspector({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const spec = modelForKind(kind);
   const modelOptions = modelOptionsForKind(kind);
-  const selectedModel = resolveStudioModel(kind, data.modelId);
+  const modelAvailable = hasAvailableStudioModel(
+    kind,
+    freeCreditModelsOnly,
+  );
+  const selectedModel = resolveStudioModel(
+    kind,
+    data.modelId,
+    freeCreditModelsOnly,
+  );
   const busy = data.status === 'generating';
   const values: Record<string, unknown> = {
     ...spec.defaults,
@@ -453,7 +467,7 @@ export default function NodeInspector({
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (canSubmit) onSubmit();
+            if (canSubmit && modelAvailable) onSubmit();
           }}
         >
           <div className="px-3.5 pt-3 pb-2.5">
@@ -468,13 +482,18 @@ export default function NodeInspector({
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault();
-                  if (canSubmit) onSubmit();
+                  if (canSubmit && modelAvailable) onSubmit();
                 }
               }}
             />
             {data.error ? (
               <p className="mt-1.5 text-[11px] font-medium text-destructive">
                 {data.error}
+              </p>
+            ) : null}
+            {!modelAvailable ? (
+              <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">
+                No video model is available with Vercel free credit.
               </p>
             ) : null}
           </div>
@@ -487,7 +506,7 @@ export default function NodeInspector({
                 size="icon-sm"
                 disabled={busy}
                 className="relative size-8 overflow-hidden rounded-[9px] text-muted-foreground hover:bg-[var(--studio-composer)] hover:text-foreground"
-                aria-label={data.refSrc ? '移除参考图' : '添加参考图'}
+                aria-label={data.refSrc ? 'Remove reference image' : 'Add reference image'}
                 onClick={() => {
                   if (data.refSrc) {
                     onRefChange(undefined);
@@ -522,7 +541,7 @@ export default function NodeInspector({
                   variant="ghost"
                   size="sm"
                   disabled={busy || spec.fields.length === 0}
-                  aria-label={`打开${settingsTitle(kind)}`}
+                  aria-label={`Open ${settingsTitle(kind)}`}
                   className="h-8 max-w-[148px] gap-1.5 rounded-[9px] px-2 text-[11px] font-medium text-muted-foreground hover:bg-[var(--studio-composer)] hover:text-foreground data-[state=open]:bg-[var(--studio-composer)] data-[state=open]:text-foreground"
                 >
                   <SlidersHorizontal className="size-3.5" />
@@ -567,7 +586,7 @@ export default function NodeInspector({
                   variant="ghost"
                   size="sm"
                   disabled={busy}
-                  aria-label={`选择模型，当前 ${selectedModel.label}`}
+                  aria-label={`Choose model, currently ${selectedModel.label}`}
                   className="h-8 min-w-0 max-w-[174px] gap-1.5 rounded-[9px] px-2 text-[11px] font-medium hover:bg-[var(--studio-composer)] data-[state=open]:bg-[var(--studio-composer)]"
                 >
                   <ModelMark model={selectedModel} compact />
@@ -585,26 +604,37 @@ export default function NodeInspector({
               >
                 <PopoverHeader className="gap-1 px-2 pt-1.5 pb-2.5">
                   <PopoverTitle className="text-[13px] font-semibold tracking-[-0.01em]">
-                    选择模型
+                    Choose a model
                   </PopoverTitle>
                   <PopoverDescription className="text-[10.5px]">
-                    统一通过 Vercel AI Gateway 调用
+                    {freeCreditModelsOnly
+                      ? 'Free-credit mode · unavailable models are disabled'
+                      : 'Routed through Vercel AI Gateway'}
                   </PopoverDescription>
                 </PopoverHeader>
-                <div className="grid gap-1" role="listbox" aria-label="生成模型">
+                <div className="grid gap-1" role="listbox" aria-label="Generation model">
                   {modelOptions.map((model) => {
-                    const selected = model.id === selectedModel.id;
+                    const available = isStudioModelAvailable(
+                      model,
+                      freeCreditModelsOnly,
+                    );
+                    const selected =
+                      available && model.id === selectedModel.id;
                     return (
                       <button
                         key={model.id}
                         type="button"
                         role="option"
                         aria-selected={selected}
+                        disabled={!available}
                         className={cn(
                           'flex w-full items-center gap-3 rounded-[12px] px-2.5 py-2.5 text-left outline-none transition-colors hover:bg-muted focus-visible:!outline-none focus-visible:ring-1 focus-visible:ring-foreground/20',
                           selected && 'bg-muted',
+                          !available &&
+                            'cursor-not-allowed opacity-40 hover:bg-transparent',
                         )}
                         onClick={() => {
+                          if (!available) return;
                           onFieldChange('modelId', model.id);
                           setModelOpen(false);
                         }}
@@ -641,13 +671,13 @@ export default function NodeInspector({
             <Button
               type="submit"
               size="sm"
-              disabled={!canSubmit || busy}
-              aria-label={`生成，消耗 ${creditCost} 积分`}
+              disabled={!canSubmit || busy || !modelAvailable}
+              aria-label={`Generate for ${creditCost} credits`}
               className="h-8 min-w-[124px] gap-1.5 rounded-[9px] px-3 text-[11px] !text-primary-foreground shadow-none active:translate-y-px disabled:!text-primary-foreground/45"
             >
               <Zap className="size-3.5" />
-              <span>生成</span>
-              <span className="opacity-65">· {creditCost} 积分</span>
+              <span>Generate</span>
+              <span className="opacity-65">· {creditCost} credits</span>
             </Button>
           </div>
         </form>

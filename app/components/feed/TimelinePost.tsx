@@ -114,11 +114,15 @@ export default function TimelinePost({
             aria-label="Like"
           >
             <Heart aria-hidden="true" />
-            <span>{fmtLikes(video.likes_count)}</span>
+            <span className="tabular-nums">
+              {fmtLikes(video.likes_count)}
+            </span>
           </button>
           <Link href={href} className="t-comment" aria-label="Comments">
             <MessageCircle aria-hidden="true" />
-            <span>{fmtLikes(video.comments_count)}</span>
+            <span className="tabular-nums">
+              {fmtLikes(video.comments_count)}
+            </span>
           </Link>
           <button
             type="button"

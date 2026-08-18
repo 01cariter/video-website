@@ -40,7 +40,7 @@ export default function StudioCreditPill() {
     <Link
       href="/credits"
       className="inline-flex h-6 items-center gap-1 rounded-full bg-secondary px-2 text-[11px] font-semibold tabular-nums hover:bg-accent"
-      aria-label={`${balance} 积分，前往充值`}
+      aria-label={`${balance} credits, open top-up page`}
     >
       <Coins className="size-3" />
       {balance}

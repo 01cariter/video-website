@@ -38,7 +38,7 @@ export async function storeGeneratedAsset(input: {
     cacheControl: '31536000',
     upsert: false,
   });
-  if (error) throw new Error(`保存生成素材失败：${error.message}`);
+  if (error) throw new Error(`Could not save generated asset: ${error.message}`);
   const { data } = supabase.storage.from('media').getPublicUrl(path);
   return data.publicUrl;
 }

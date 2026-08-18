@@ -16,12 +16,12 @@ interface RouteContext {
 export async function GET(_request: Request, context: RouteContext) {
   const user = await getAuthUser();
   if (!user) {
-    return NextResponse.json({ error: '请先登录。' }, { status: 401 });
+    return NextResponse.json({ error: 'Sign in first.' }, { status: 401 });
   }
   const { id } = await context.params;
   const project = await getStudioProjectForUser(user.id, id);
   if (!project) {
-    return NextResponse.json({ error: '项目不存在。' }, { status: 404 });
+    return NextResponse.json({ error: 'Project not found.' }, { status: 404 });
   }
   return NextResponse.json({ project });
 }
@@ -29,7 +29,7 @@ export async function GET(_request: Request, context: RouteContext) {
 export async function PUT(request: Request, context: RouteContext) {
   const user = await getAuthUser();
   if (!user) {
-    return NextResponse.json({ error: '请先登录。' }, { status: 401 });
+    return NextResponse.json({ error: 'Sign in first.' }, { status: 401 });
   }
   const { id } = await context.params;
   const body = (await request.json().catch(() => null)) as {
@@ -37,7 +37,7 @@ export async function PUT(request: Request, context: RouteContext) {
   } | null;
   const project = normalizeStudioProject(body?.project);
   if (!project || project.id !== id) {
-    return NextResponse.json({ error: '项目数据无效。' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid project data.' }, { status: 400 });
   }
   const saved = await saveStudioProjectForUser(user.id, project);
   return NextResponse.json({ project: saved });
@@ -46,11 +46,11 @@ export async function PUT(request: Request, context: RouteContext) {
 export async function DELETE(_request: Request, context: RouteContext) {
   const user = await getAuthUser();
   if (!user) {
-    return NextResponse.json({ error: '请先登录。' }, { status: 401 });
+    return NextResponse.json({ error: 'Sign in first.' }, { status: 401 });
   }
   const { id } = await context.params;
   const deleted = await deleteStudioProjectForUser(user.id, id);
   return deleted
     ? new NextResponse(null, { status: 204 })
-    : NextResponse.json({ error: '项目不存在。' }, { status: 404 });
+    : NextResponse.json({ error: 'Project not found.' }, { status: 404 });
 }

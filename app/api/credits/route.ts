@@ -11,7 +11,7 @@ export const runtime = 'nodejs';
 export async function GET() {
   const user = await getAuthUser();
   if (!user) {
-    return NextResponse.json({ error: '请先登录。' }, { status: 401 });
+    return NextResponse.json({ error: 'Sign in first.' }, { status: 401 });
   }
   const [wallet, packages] = await Promise.all([
     getCreditWallet(user.id),

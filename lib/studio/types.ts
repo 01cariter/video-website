@@ -59,6 +59,8 @@ export interface StudioProject {
 export interface StudioTemplate {
   id: string;
   title: string;
+  description: string;
+  category: 'Study' | 'Training';
   prompt: string;
   cover: string;
 }

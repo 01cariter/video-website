@@ -16,6 +16,10 @@
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.67",
+    "@flags-sdk/vercel": "^1.4.6",
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/instrument-sans": "^5.3.0",
+    "@fontsource-variable/space-grotesk": "^5.3.0",
     "@leafer-in/editor": "2.1.10",
     "@leafer-in/interface": "2.1.10",
     "@leafer-in/resize": "2.1.10",
@@ -37,6 +41,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "colorthief": "^3.5.0",
+    "flags": "^4.3.0",
     "leafer-editor": "2.1.10",
     "lucide-react": "^0.468.0",
     "motion": "^12.41.0",

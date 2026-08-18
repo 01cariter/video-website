@@ -8,7 +8,6 @@ import {
   FileText,
   ImageIcon,
   Layers,
-  Loader2,
   Play,
   Plus,
   Sparkles,
@@ -21,7 +20,11 @@ import type { UIMessage } from 'ai';
 import { studioItem, studioSnap, studioStagger } from '@/lib/studio/motion';
 import { cn } from '@/lib/utils';
 import { Button } from '@/app/components/ui/button';
-import { Badge } from '@/app/components/ui/badge';
+import {
+  AgentActivity,
+  AgentReasoning,
+  AgentThinking,
+} from '@/app/components/ui/agent-activity';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,45 +48,51 @@ interface AgentPanelProps {
 const SKILLS = [
   {
     id: 'seedance',
-    label: 'Seedance 视频',
+    label: 'Seedance video',
     icon: Play,
     tone: 'text-[var(--study)]',
-    prompt: '用 Seedance 在画布上做一段 5 秒产品视频：暖光、缓慢推近，突出包装材质。',
+    prompt:
+      'Create a five-second Seedance product video on the canvas with warm light, a slow push-in, and clear packaging texture.',
   },
   {
     id: 'onelong',
-    label: '一镜到底',
+    label: 'Single-take shot',
     icon: Play,
     tone: 'text-[var(--study)]',
-    prompt: '做一条一镜到底短片：从桌面空镜缓缓落到产品，不要切镜。',
+    prompt:
+      'Create a single-take clip that moves from an empty tabletop down to the product without a cut.',
   },
   {
     id: 'hero',
-    label: '包装主视觉',
+    label: 'Package hero',
     icon: ImageIcon,
     tone: 'text-[var(--orange)]',
-    prompt: '做一张能上架的包装主图：暖石色底、产品居中、留出品牌字位置。',
+    prompt:
+      'Create a production-ready package hero image with a warm stone background, centered product, and room for the brand name.',
   },
   {
     id: 'series',
-    label: '系列海报',
+    label: 'Poster series',
     icon: Layers,
     tone: 'text-[var(--orange)]',
-    prompt: '按同一风格做三张系列海报，构图略作变化，保持材质和光线一致。',
+    prompt:
+      'Create three posters in one visual system. Vary the composition while keeping materials and lighting consistent.',
   },
   {
     id: 'story',
-    label: '分镜拆解',
+    label: 'Storyboard',
     icon: Clapperboard,
     tone: 'text-[var(--orange-d)]',
-    prompt: '把当前意图拆成三个连续镜头，并在画布上排开。',
+    prompt:
+      'Break the current direction into three consecutive shots and arrange them on the canvas.',
   },
   {
     id: 'copy',
-    label: '包装文案',
+    label: 'Package copy',
     icon: Type,
     tone: 'text-muted-foreground',
-    prompt: '写一段能上包装的短文案：品名、一句卖点、一句使用场景。',
+    prompt:
+      'Write concise package copy with a product name, one benefit, and one use case.',
   },
 ] as const;
 
@@ -95,13 +104,13 @@ function textOf(message: UIMessage) {
 }
 
 function toolLabel(type: string) {
-  if (type.includes('addCanvasNode')) return '添加画布节点';
-  if (type.includes('updateCanvasNode')) return '更新画布节点';
-  if (type.includes('removeCanvasNodes')) return '删除画布节点';
-  if (type.includes('Image')) return '添加图片节点';
-  if (type.includes('Video')) return '添加视频节点';
-  if (type.includes('Text')) return '添加文本节点';
-  if (type.includes('generate')) return '正在生成';
+  if (type.includes('addCanvasNode')) return 'Add canvas node';
+  if (type.includes('updateCanvasNode')) return 'Update canvas node';
+  if (type.includes('removeCanvasNodes')) return 'Remove canvas nodes';
+  if (type.includes('Image')) return 'Add image node';
+  if (type.includes('Video')) return 'Add video node';
+  if (type.includes('Text')) return 'Add text node';
+  if (type.includes('generate')) return 'Generate content';
   return type.replace(/^tool-/, '');
 }
 
@@ -141,7 +150,7 @@ export default function AgentPanel({
         <motion.aside
           key="agent-panel"
           className="absolute inset-0 z-40 flex w-full flex-col overflow-hidden bg-card md:relative md:inset-auto md:z-10 md:w-[360px] md:shrink-0 md:border-l md:border-border"
-          aria-label="Agent 面板"
+          aria-label="Agent panel"
           initial={reduceMotion ? false : { opacity: 0, x: 18 }}
           animate={{ opacity: 1, x: 0 }}
           exit={reduceMotion ? undefined : { opacity: 0, x: 14 }}
@@ -157,11 +166,11 @@ export default function AgentPanel({
                   Agent
                 </span>
                 <span className="truncate text-[11px] text-muted-foreground">
-                  {title || '未命名项目'}
+                  {title || 'Untitled project'}
                 </span>
               </div>
             </div>
-            <Button type="button" variant="ghost" size="icon-xs" onClick={onClose} aria-label="收起 Agent">
+            <Button type="button" variant="ghost" size="icon-xs" onClick={onClose} aria-label="Collapse Agent">
               <X />
             </Button>
           </header>
@@ -181,13 +190,14 @@ export default function AgentPanel({
                   <Sparkles className="size-[18px]" />
                 </motion.span>
                 <motion.p variants={studioItem} className="text-[14px] font-semibold tracking-tight">
-                  从一个创作方向开始
+                  Start with a creative direction
                 </motion.p>
                 <motion.p
                   variants={studioItem}
                   className="mt-1.5 max-w-[260px] text-[12px] leading-5 text-muted-foreground"
                 >
-                  Agent 会理解当前画布，并直接创建、整理或修改内容。
+                  The Agent reads the current canvas and can create, organize, or
+                  revise content directly.
                 </motion.p>
                 <motion.div
                   variants={studioItem}
@@ -236,42 +246,39 @@ export default function AgentPanel({
                       }
                       if (part.type === 'reasoning' && part.text) {
                         return (
-                          <details key={`${message.id}-r-${index}`} className="text-xs text-muted-foreground">
-                            <summary>思考</summary>
-                            <pre className="mt-1.5 whitespace-pre-wrap">{part.text}</pre>
-                          </details>
+                          <AgentReasoning key={`${message.id}-r-${index}`}>
+                            {part.text}
+                          </AgentReasoning>
                         );
                       }
                       if (part.type.startsWith('tool-')) {
                         const state = 'state' in part ? String(part.state) : '';
                         return (
-                          <Badge key={`${message.id}-tool-${index}`}>
-                            {state.includes('streaming') || state === 'input-available' ? (
-                              <Loader2 className="size-3 animate-spin" />
-                            ) : null}
-                            {toolLabel(part.type)}
-                          </Badge>
+                          <AgentActivity
+                            key={`${message.id}-tool-${index}`}
+                            label={toolLabel(part.type)}
+                            state={
+                              state.includes('streaming') ||
+                              state === 'input-available'
+                                ? 'running'
+                                : state.includes('error')
+                                  ? 'error'
+                                  : 'complete'
+                            }
+                          />
                         );
                       }
                       return null;
                     })}
                     {message.role === 'assistant' && !textOf(message) && busy ? (
-                      <span className="inline-flex gap-1.5 py-1" aria-label="正在思考">
-                        <i className="size-1.5 animate-pulse rounded-full bg-primary" />
-                        <i className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:120ms]" />
-                        <i className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:240ms]" />
-                      </span>
+                      <AgentThinking label="Thinking" />
                     ) : null}
                   </motion.article>
                 ))}
                 {status === 'submitted' ? (
-                  <div className="inline-flex gap-1.5 py-1" aria-label="正在思考">
-                    <i className="size-1.5 animate-pulse rounded-full bg-primary" />
-                    <i className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:120ms]" />
-                    <i className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:240ms]" />
-                  </div>
+                  <AgentThinking label="Planning the next step" />
                 ) : null}
-                {error ? <p className="text-[12.5px] font-semibold text-destructive">生成中断了，请再试一次。</p> : null}
+                {error ? <p className="text-[12.5px] font-semibold text-destructive">Generation stopped. Try again.</p> : null}
               </div>
             )}
           </div>
@@ -286,7 +293,7 @@ export default function AgentPanel({
             <Textarea
               value={input}
               rows={3}
-              placeholder="描述想法，或让 Agent 整理当前画布…"
+              placeholder="Describe an idea or ask the Agent to organize this canvas…"
               className="min-h-[72px] resize-none border-0 bg-transparent px-1 py-1 text-[13px] leading-5 shadow-none placeholder:text-muted-foreground/70 focus-visible:ring-0"
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={(event) => {
@@ -304,25 +311,25 @@ export default function AgentPanel({
                     variant="ghost"
                     size="icon-xs"
                     className="rounded-lg bg-[var(--studio-raised)] shadow-[inset_0_0_0_1px_var(--line)] hover:bg-[var(--studio-raised)]"
-                    aria-label="在画布上添加"
+                    aria-label="Add to canvas"
                   >
                     <Plus />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" side="top">
                   <DropdownMenuItem onSelect={() => addNode('image')}>
-                    <ImageIcon /> 图片生成器
+                    <ImageIcon /> Image generator
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => addNode('video')}>
-                    <Video /> 视频生成器
+                    <Video /> Video generator
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => addNode('text')}>
-                    <FileText /> 文本
+                    <FileText /> Text
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               {busy ? (
-                <Button type="button" size="icon-sm" className="rounded-lg" onClick={onStop} aria-label="停止">
+                <Button type="button" size="icon-sm" className="rounded-lg" onClick={onStop} aria-label="Stop">
                   <Square className="size-3" />
                 </Button>
               ) : (
@@ -330,7 +337,7 @@ export default function AgentPanel({
                   type="submit"
                   size="icon-sm"
                   disabled={!canSend}
-                  aria-label="发送"
+                  aria-label="Send"
                   className="rounded-lg bg-primary !text-primary-foreground hover:bg-primary/90 disabled:bg-primary/25 disabled:!text-primary-foreground/45"
                 >
                   <ArrowUp />

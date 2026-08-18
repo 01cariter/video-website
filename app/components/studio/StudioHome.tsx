@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LayoutGroup, motion, useReducedMotion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import {
-  ArrowUp,
+  ArrowRight,
   AtSign,
+  FolderLock,
   ImagePlus,
   Mic,
   MoreHorizontal,
@@ -14,8 +16,8 @@ import {
   Search,
   Sparkles,
   Trash2,
+  Upload,
   Wand2,
-  Zap,
 } from 'lucide-react';
 import { STUDIO_TEMPLATES } from '@/lib/studio/templates';
 import {
@@ -26,7 +28,12 @@ import {
 } from '@/lib/studio/client-store';
 import { formatStudioDate } from '@/lib/studio/store';
 import type { StudioProject } from '@/lib/studio/types';
-import { studioChipSpring, studioItem, studioSnap, studioStagger, studioTween } from '@/lib/studio/motion';
+import {
+  studioItem,
+  studioSnap,
+  studioStagger,
+  studioTween,
+} from '@/lib/studio/motion';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,7 +45,6 @@ import {
   AlertDialogTitle,
 } from '@/app/components/ui/alert-dialog';
 import { Button } from '@/app/components/ui/button';
-import { Card } from '@/app/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -54,37 +60,58 @@ import {
 } from '@/app/components/ui/dropdown-menu';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
+import { MotionTabs } from '@/app/components/ui/motion-tabs';
 import { cn } from '@/lib/utils';
 
-const CHIPS = [
-  { id: 'agent', label: 'Agent 模式', icon: Sparkles },
-  { id: 'auto', label: '自动', icon: Zap },
-  { id: 'inspire', label: '灵感搜索', icon: Search },
-  { id: 'design', label: '创意设计', icon: Wand2 },
+const MODES = [
+  { value: 'agent', label: 'Plan with Agent', icon: Sparkles },
+  { value: 'inspire', label: 'Find references', icon: Search },
+  { value: 'design', label: 'Freeform', icon: Wand2 },
 ] as const;
 
-export default function StudioHome() {
+export default function StudioHome({
+  authenticated = false,
+}: {
+  authenticated?: boolean;
+}) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState('');
-  const [chip, setChip] = useState<string>('agent');
+  const [mode, setMode] =
+    useState<(typeof MODES)[number]['value']>('agent');
   const [listening, setListening] = useState(false);
   const [projects, setProjects] = useState<StudioProject[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(authenticated);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const reduceMotion = Boolean(useReducedMotion());
 
-  async function refreshProjects() {
-    setProjects(await listStudioProjectsSynced());
-  }
+  const refreshProjects = useCallback(async () => {
+    if (!authenticated) {
+      setProjects([]);
+      setProjectsLoading(false);
+      return;
+    }
+    try {
+      setProjects(await listStudioProjectsSynced());
+    } finally {
+      setProjectsLoading(false);
+    }
+  }, [authenticated]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void refreshProjects(), 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [refreshProjects]);
 
   const canSubmit = prompt.trim().length > 0;
+
+  function requireAccount() {
+    if (authenticated) return true;
+    router.push('/login?next=/studio');
+    return false;
+  }
 
   function openProject(id: string) {
     router.push(`/studio/${id}`);
@@ -92,9 +119,13 @@ export default function StudioHome() {
 
   async function createFromPrompt() {
     const text = prompt.trim();
-    if (!text) return;
+    if (!text || !requireAccount()) return;
     const prefix =
-      chip === 'inspire' ? '先搜索视觉参考，再开始创作：' : chip === 'design' ? '按创意设计方向推进：' : '';
+      mode === 'inspire'
+        ? 'Find strong visual references before creating: '
+        : mode === 'design'
+          ? 'Explore this as a freeform creative direction: '
+          : 'Plan the task and canvas structure before executing: ';
     const project = await createStudioProjectSynced({
       title: text.slice(0, 18),
       pendingPrompt: `${prefix}${text}`,
@@ -103,13 +134,15 @@ export default function StudioHome() {
   }
 
   async function createFromTemplate(templateId: string) {
+    if (!requireAccount()) return;
     const project = await createStudioProjectSynced({ templateId });
     router.push(`/studio/${project.id}`);
   }
 
   async function createBlank() {
+    if (!requireAccount()) return;
     const project = await createStudioProjectSynced({
-      title: '未命名项目',
+      title: 'Untitled project',
       blank: true,
     });
     router.push(`/studio/${project.id}`);
@@ -136,7 +169,7 @@ export default function StudioHome() {
         : undefined;
     if (!SpeechRecognition) return;
     const recognition = new SpeechRecognition();
-    recognition.lang = 'zh-CN';
+    recognition.lang = 'en-US';
     recognition.interimResults = false;
     recognition.onstart = () => setListening(true);
     recognition.onend = () => setListening(false);
@@ -149,121 +182,132 @@ export default function StudioHome() {
   }
 
   return (
-    <motion.div
-      className="min-w-0 px-8 pb-20 pt-10 max-md:px-4 max-md:pb-20 max-md:pt-7"
+    <motion.main
+      className="creator-studio-home relative min-h-full overflow-hidden"
       initial={reduceMotion ? false : 'hidden'}
       animate="show"
       variants={studioStagger}
     >
-      <motion.section
-        className="mb-14 flex w-full min-w-0 flex-col items-center"
-        variants={studioStagger}
-      >
-        <motion.p
+      <div className="creator-studio-glow" aria-hidden />
+      <div className="relative mx-auto w-full max-w-[1160px] px-8 pb-20 pt-12 max-md:px-4 max-md:pt-8">
+        <motion.header
+          className="mb-7 flex items-end justify-between gap-8 max-md:items-start"
           variants={studioItem}
-          className="mb-3 text-[11px] font-semibold tracking-[0.16em] text-muted-foreground uppercase"
         >
-          CreatorStudio
-        </motion.p>
-        <motion.h1
-          variants={studioItem}
-          className="mb-7 w-full max-w-[720px] text-center font-serif text-[clamp(28px,8vw,40px)] font-semibold leading-[1.16] tracking-[-0.028em] wrap-break-word text-balance"
-        >
-          今天想在无限画布创作什么？
-        </motion.h1>
+          <div className="max-w-[700px]">
+            <p className="mb-3 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+              Snackd / Creator Studio
+            </p>
+            <p className="max-w-[620px] text-[15px] leading-7 text-muted-foreground">
+              Describe what you want to make. The Agent can collect references,
+              organize the work, and place images, video, and text on one canvas.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 shrink-0 rounded-xl bg-card px-4 shadow-none max-md:hidden"
+            onClick={() => void createBlank()}
+          >
+            <Plus />
+            Blank canvas
+          </Button>
+        </motion.header>
 
         <motion.form
           variants={studioItem}
-          className="w-full max-w-[720px] rounded-[28px] bg-secondary/65 p-1.5 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--field)_70%,transparent)]"
+          className="creator-studio-composer rounded-[22px] border bg-card/95 p-2.5 shadow-[0_22px_60px_-42px_rgba(0,0,0,.42)]"
           onSubmit={(event) => {
             event.preventDefault();
             void createFromPrompt();
           }}
         >
-          <Card className="gap-0 rounded-[22px] border-0 px-[18px] py-[18px] max-md:px-4">
-            <div className="flex items-start gap-3.5">
+          <div className="flex items-center justify-between gap-3 px-3 pb-1 pt-2">
+            <span className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+              <span className="size-1.5 rounded-full bg-primary" />
+              New canvas
+            </span>
+            <span className="text-xs text-muted-foreground max-sm:hidden">
+              Enter to create · Shift + Enter for a new line
+            </span>
+          </div>
+          <Textarea
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                void createFromPrompt();
+              }
+            }}
+            placeholder="Describe what you want to research, plan, or create…"
+            rows={3}
+            className="min-h-[112px] resize-none border-0 bg-transparent px-3 py-4 text-[19px] leading-8 shadow-none placeholder:text-muted-foreground/65 focus-visible:ring-0"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t px-1 pb-1 pt-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               <Button
                 type="button"
-                variant="secondary"
+                variant="ghost"
                 size="icon"
-                className="size-12 shrink-0 rounded-2xl bg-[var(--input)]"
-                aria-label="上传参考图"
-                onClick={() => fileRef.current?.click()}
-              >
-                <Plus />
-              </Button>
-              <Textarea
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    void createFromPrompt();
-                  }
+                className="rounded-xl"
+                aria-label="Upload reference image"
+                onClick={() => {
+                  if (requireAccount()) fileRef.current?.click();
                 }}
-                placeholder="描述画面、镜头或品牌，也可以上传参考图"
-                rows={3}
-                className="min-h-[72px] resize-none border-0 bg-transparent px-1 shadow-none focus-visible:ring-0"
+              >
+                <Upload />
+              </Button>
+              <MotionTabs
+                value={mode}
+                items={MODES}
+                ariaLabel="Creation mode"
+                onValueChange={setMode}
               />
             </div>
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <LayoutGroup id="studio-home-chips">
-                <div className="flex min-w-0 flex-wrap items-center gap-1">
-                  {CHIPS.map(({ id, label, icon: Icon }) => (
-                    <Button
-                      key={id}
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="relative"
-                      onClick={() => setChip(id)}
-                    >
-                      {chip === id ? (
-                        <motion.span
-                          layoutId={reduceMotion ? undefined : 'studio-home-chip'}
-                          className="absolute inset-0 rounded-full bg-accent"
-                          transition={studioChipSpring}
-                        />
-                      ) : null}
-                      <Icon className={cn('relative z-[1]', chip === id && 'text-accent-foreground')} />
-                      <span className={cn('relative z-[1]', chip === id && 'text-accent-foreground')}>{label}</span>
-                    </Button>
-                  ))}
-                </div>
-              </LayoutGroup>
-              <div className="flex shrink-0 items-center gap-1.5">
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="rounded-xl max-sm:hidden"
+                aria-label="Mention an item"
+                onClick={() => setPrompt((current) => `${current}@`)}
+              >
+                <AtSign />
+              </Button>
+              <motion.div
+                animate={listening ? { scale: [1, 1.08, 1] } : { scale: 1 }}
+                transition={
+                  listening
+                    ? { repeat: Infinity, duration: 1.1, ease: 'easeInOut' }
+                    : studioTween
+                }
+              >
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-sm"
-                  aria-label="插入主体"
-                  onClick={() => setPrompt((current) => `${current}@`)}
+                  size="icon"
+                  className={cn(
+                    'rounded-xl max-sm:hidden',
+                    listening && 'bg-secondary text-foreground',
+                  )}
+                  aria-label="Voice input"
+                  onClick={startVoice}
                 >
-                  <AtSign />
+                  <Mic />
                 </Button>
-                <motion.div
-                  animate={listening ? { scale: [1, 1.08, 1] } : { scale: 1 }}
-                  transition={listening ? { repeat: Infinity, duration: 1.1, ease: 'easeInOut' } : studioTween}
-                >
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className={cn(listening && 'bg-secondary text-foreground')}
-                    aria-label="语音输入"
-                    onClick={startVoice}
-                  >
-                    <Mic />
-                  </Button>
-                </motion.div>
-                <motion.div animate={{ scale: canSubmit ? 1 : 0.94 }} transition={studioSnap}>
-                  <Button type="submit" size="icon" disabled={!canSubmit} aria-label="创建项目">
-                    <ArrowUp />
-                  </Button>
-                </motion.div>
-              </div>
+              </motion.div>
+              <Button
+                type="submit"
+                disabled={!canSubmit}
+                className="h-10 rounded-xl bg-primary px-5 text-primary-foreground hover:bg-primary/90"
+              >
+                Create
+                <ArrowRight />
+              </Button>
             </div>
-          </Card>
+          </div>
           <input
             ref={fileRef}
             type="file"
@@ -272,131 +316,244 @@ export default function StudioHome() {
             onChange={async (event) => {
               const file = event.target.files?.[0];
               event.target.value = '';
-              if (!file) return;
+              if (!file || !requireAccount()) return;
               const project = await createStudioProjectSynced({
-                title: file.name.replace(/\.[^.]+$/, '') || '参考创作',
-                pendingPrompt: prompt.trim() || `以这张参考图继续创作：${file.name}`,
+                title: file.name.replace(/\.[^.]+$/, '') || 'Reference study',
+                pendingPrompt:
+                  prompt.trim() || `Create from this reference image: ${file.name}`,
               });
               router.push(`/studio/${project.id}`);
             }}
           />
         </motion.form>
-      </motion.section>
 
-      <motion.section variants={studioItem}>
-        <h2 className="mb-3.5 px-0.5 text-[13px] font-semibold tracking-wide text-muted-foreground">快速开始</h2>
-        <div className="grid auto-cols-[minmax(196px,1fr)] grid-flow-col gap-3.5 overflow-x-auto pb-1 snap-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {STUDIO_TEMPLATES.map((template) => (
-            <motion.button
-              key={template.id}
-              type="button"
-              className="group snap-start flex flex-col gap-2.5 border-0 bg-transparent p-0 text-left text-inherit"
-              whileHover={reduceMotion ? undefined : { y: -3 }}
-              whileTap={reduceMotion ? undefined : { scale: 0.985 }}
-              transition={studioSnap}
-              onClick={() => void createFromTemplate(template.id)}
-            >
-              <Card className="gap-0 overflow-hidden rounded-[18px] border-0 py-0 shadow-sm">
-                <motion.span
-                  className="block h-[138px] bg-cover bg-center"
-                  style={{ backgroundImage: `url(${template.cover})` }}
-                  whileHover={reduceMotion ? undefined : { scale: 1.035 }}
-                  transition={studioSnap}
-                />
-              </Card>
-              <span className="px-0.5 text-[13px] font-semibold leading-snug">{template.title}</span>
-            </motion.button>
-          ))}
-        </div>
-      </motion.section>
-
-      <motion.section className="mt-10" variants={studioItem}>
-        <h2 className="mb-3.5 px-0.5 text-[13px] font-semibold tracking-wide text-muted-foreground">最近项目</h2>
-        <div className="grid grid-cols-3 gap-4 max-[1100px]:grid-cols-2 max-md:grid-cols-1">
-          <motion.button
-            type="button"
-            className="group flex min-h-44 flex-col items-center justify-center gap-3 rounded-[20px] bg-secondary/55 text-muted-foreground shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--line)_80%,transparent)] hover:bg-accent hover:text-accent-foreground"
-            whileHover={reduceMotion ? undefined : { y: -3 }}
-            whileTap={reduceMotion ? undefined : { scale: 0.985 }}
-            transition={studioSnap}
-            onClick={() => void createBlank()}
-          >
-            <span className="grid size-10 place-items-center rounded-full bg-card text-foreground shadow-[0_8px_20px_-16px_color-mix(in_srgb,var(--ink)_50%,transparent)]">
-              <Plus className="size-[18px]" />
+        <motion.section className="mt-16" variants={studioItem}>
+          <div className="mb-5 flex items-end justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold tracking-[-0.02em]">
+                Quick start
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Six original starting points for study and training workflows.
+              </p>
+            </div>
+            <span className="text-xs font-semibold tracking-[0.06em] text-muted-foreground uppercase tabular-nums max-sm:hidden">
+              06 <span className="font-sans tracking-[0.12em]">templates</span>
             </span>
-            <span className="text-[13px] font-semibold">新建空白画布</span>
-          </motion.button>
-          {projects.map((project) => (
-            <motion.div
-              key={project.id}
-              className="group relative min-w-0"
-              initial={reduceMotion ? false : { opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              whileHover={reduceMotion ? undefined : { y: -3 }}
-              transition={studioSnap}
-            >
-              <button
-                type="button"
-                className="flex w-full min-w-0 flex-col border-0 bg-transparent p-0 text-left text-inherit"
-                onClick={() => openProject(project.id)}
-              >
-                <Card
+          </div>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-12 max-sm:grid-cols-1">
+            {STUDIO_TEMPLATES.map((template, index) => {
+              const featured = index < 2;
+              return (
+                <motion.button
+                  key={template.id}
+                  type="button"
                   className={cn(
-                    'grid h-44 gap-0 overflow-hidden rounded-[20px] border-0 py-0 shadow-sm',
-                    project.coverUrls.length > 1 ? 'grid-cols-2 gap-0.5' : 'grid-cols-1',
+                    'group relative overflow-hidden rounded-[20px] border bg-muted text-left text-white shadow-[0_18px_42px_-34px_rgba(0,0,0,.7)]',
+                    featured
+                      ? 'h-[278px] lg:col-span-6'
+                      : 'h-[226px] lg:col-span-3',
                   )}
+                  whileHover={reduceMotion ? undefined : { y: -4 }}
+                  whileTap={reduceMotion ? undefined : { scale: 0.99 }}
+                  transition={studioSnap}
+                  onClick={() => void createFromTemplate(template.id)}
                 >
-                  {project.coverUrls.length ? (
-                    project.coverUrls.slice(0, 4).map((src) => (
-                      <i key={src} className="min-h-0 min-w-0 bg-cover bg-center" style={{ backgroundImage: `url(${src})` }} />
-                    ))
-                  ) : (
-                    <span className="grid place-items-center bg-muted text-muted-foreground">
-                      <ImagePlus className="size-5" />
+                  <motion.span
+                    className="absolute inset-0 bg-cover bg-center"
+                    style={{ backgroundImage: `url(${template.cover})` }}
+                    whileHover={reduceMotion ? undefined : { scale: 1.045 }}
+                    transition={studioSnap}
+                  />
+                  <span className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.04)_20%,rgba(0,0,0,.78)_100%)]" />
+                  <span className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-5">
+                    <span className="min-w-0">
+                      <span className="mb-2 inline-flex rounded-full border border-white/22 bg-black/18 px-2.5 py-1 text-[10px] font-semibold tracking-[0.12em] uppercase backdrop-blur-md">
+                        {template.category}
+                      </span>
+                      <strong
+                        className={cn(
+                          'block font-semibold leading-tight tracking-[-0.025em]',
+                          featured ? 'text-[22px]' : 'text-[17px]',
+                        )}
+                      >
+                        {template.title}
+                      </strong>
+                      <span className="mt-1.5 block max-w-[34ch] text-xs leading-5 text-white/72">
+                        {template.description}
+                      </span>
                     </span>
-                  )}
-                </Card>
-                <span className="flex flex-col gap-0.5 px-1 pt-3 pr-10">
-                  <b className="overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap">{project.title}</b>
-                  <small className="text-xs font-medium text-muted-foreground">{formatStudioDate(project.updatedAt)}</small>
-                </span>
-              </button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="icon-sm"
-                    className="absolute top-2 right-2 opacity-100 shadow-sm md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-                    aria-label={`${project.title} 更多操作`}
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <MoreHorizontal />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      setRenameId(project.id);
-                      setRenameTitle(project.title);
-                    }}
-                  >
-                    <Pencil /> 重命名
-                  </DropdownMenuItem>
-                  <DropdownMenuItem variant="destructive" onSelect={() => setDeleteId(project.id)}>
-                    <Trash2 /> 删除
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </motion.div>
-          ))}
-        </div>
-      </motion.section>
+                    <span className="grid size-9 shrink-0 place-items-center rounded-full border border-white/25 bg-white/10 backdrop-blur-md transition-colors group-hover:bg-white group-hover:text-black">
+                      <ArrowRight className="size-4" />
+                    </span>
+                  </span>
+                </motion.button>
+              );
+            })}
+          </div>
+        </motion.section>
 
-      <Dialog open={Boolean(renameId)} onOpenChange={(open) => !open && setRenameId(null)}>
-        <DialogContent>
+        <motion.section className="mt-16" variants={studioItem}>
+          <div className="mb-5 flex items-end justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold tracking-[-0.02em]">
+                Recent projects
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {authenticated
+                  ? 'Continue where you left off. Changes are saved automatically.'
+                  : 'Projects stay private to the signed-in account.'}
+              </p>
+            </div>
+            {authenticated && projects.length ? (
+              <span className="text-xs font-semibold text-muted-foreground">
+                {projects.length} {projects.length === 1 ? 'project' : 'projects'}
+              </span>
+            ) : null}
+          </div>
+
+          {!authenticated ? (
+            <div className="flex min-h-[190px] items-center justify-between gap-8 rounded-[22px] border bg-secondary/55 px-8 py-7 max-sm:flex-col max-sm:items-start max-sm:px-6">
+              <div className="flex items-start gap-4">
+                <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-card shadow-sm">
+                  <FolderLock className="size-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-semibold">
+                    Sign in to view your projects
+                  </h3>
+                  <p className="mt-1.5 max-w-lg text-sm leading-6 text-muted-foreground">
+                    Guest sessions do not load local or account data. Your cloud
+                    projects appear after you sign in.
+                  </p>
+                </div>
+              </div>
+              <Button
+                asChild
+                className="h-10 shrink-0 rounded-xl bg-primary px-5 text-primary-foreground hover:bg-primary/90"
+              >
+                <Link href="/login?next=/studio">
+                  Sign in
+                  <ArrowRight />
+                </Link>
+              </Button>
+            </div>
+          ) : projectsLoading ? (
+            <div className="grid grid-cols-3 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
+              {[0, 1, 2].map((item) => (
+                <div
+                  key={item}
+                  className="h-[230px] animate-pulse rounded-[20px] bg-secondary"
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
+              <motion.button
+                type="button"
+                className="group flex min-h-[230px] flex-col items-center justify-center gap-3 rounded-[20px] border border-dashed bg-card/55 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                whileHover={reduceMotion ? undefined : { y: -3 }}
+                whileTap={reduceMotion ? undefined : { scale: 0.985 }}
+                transition={studioSnap}
+                onClick={() => void createBlank()}
+              >
+                <span className="grid size-11 place-items-center rounded-full border bg-card text-foreground shadow-sm">
+                  <Plus className="size-[18px]" />
+                </span>
+                <span className="text-sm font-semibold">New blank canvas</span>
+              </motion.button>
+              {projects.map((project) => (
+                <motion.div
+                  key={project.id}
+                  className="group relative min-w-0"
+                  initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  whileHover={reduceMotion ? undefined : { y: -3 }}
+                  transition={studioSnap}
+                >
+                  <button
+                    type="button"
+                    className="flex w-full min-w-0 flex-col border-0 bg-transparent p-0 text-left text-inherit"
+                    onClick={() => openProject(project.id)}
+                  >
+                    <span
+                      className={cn(
+                        'grid h-[174px] gap-0.5 overflow-hidden rounded-[20px] border bg-muted shadow-sm',
+                        project.coverUrls.length > 1
+                          ? 'grid-cols-2'
+                          : 'grid-cols-1',
+                      )}
+                    >
+                      {project.coverUrls.length ? (
+                        project.coverUrls.slice(0, 4).map((src) => (
+                          <i
+                            key={src}
+                            className="min-h-0 min-w-0 bg-cover bg-center"
+                            style={{ backgroundImage: `url(${src})` }}
+                          />
+                        ))
+                      ) : (
+                        <span className="grid place-items-center text-muted-foreground">
+                          <ImagePlus className="size-5" />
+                        </span>
+                      )}
+                    </span>
+                    <span className="flex flex-col gap-0.5 px-1 pt-3 pr-10">
+                      <b className="overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap">
+                        {project.title}
+                      </b>
+                      <small className="text-xs font-medium text-muted-foreground">
+                        Updated {formatStudioDate(project.updatedAt)}
+                      </small>
+                    </span>
+                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon-sm"
+                        className="absolute top-2 right-2 rounded-xl opacity-100 shadow-sm md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+                        aria-label={`More actions for ${project.title}`}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <MoreHorizontal />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          setRenameId(project.id);
+                          setRenameTitle(project.title);
+                        }}
+                      >
+                        <Pencil /> Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onSelect={() => setDeleteId(project.id)}
+                      >
+                        <Trash2 /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </motion.section>
+      </div>
+
+      <Dialog
+        open={Boolean(renameId)}
+        onOpenChange={(open) => !open && setRenameId(null)}
+      >
+        <DialogContent className="rounded-2xl">
           <DialogHeader>
-            <DialogTitle>重命名项目</DialogTitle>
+            <DialogTitle>Rename project</DialogTitle>
           </DialogHeader>
           <Input
             value={renameTitle}
@@ -410,34 +567,43 @@ export default function StudioHome() {
             }}
           />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setRenameId(null)}>
-              取消
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRenameId(null)}
+            >
+              Cancel
             </Button>
             <Button type="button" onClick={() => void submitRename()}>
-              保存
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(deleteId)} onOpenChange={(open) => !open && setDeleteId(null)}>
+      <AlertDialog
+        open={Boolean(deleteId)}
+        onOpenChange={(open) => !open && setDeleteId(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除这个项目？</AlertDialogTitle>
-            <AlertDialogDescription>删除后无法恢复，画布上的节点也会一起清掉。</AlertDialogDescription>
+            <AlertDialogTitle>Delete this project?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This cannot be undone. Every node on the canvas will be removed.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={() => void submitDelete()}
             >
-              删除
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </motion.div>
+    </motion.main>
   );
 }
 
@@ -446,16 +612,24 @@ declare global {
     SpeechRecognition?: new () => SpeechRecognition;
     webkitSpeechRecognition?: new () => SpeechRecognition;
   }
+
+  interface SpeechRecognitionEvent extends Event {
+    results: {
+      [index: number]: {
+        [index: number]: {
+          transcript: string;
+        };
+      };
+    };
+  }
+
   interface SpeechRecognition extends EventTarget {
     lang: string;
     interimResults: boolean;
-    start: () => void;
     onstart: (() => void) | null;
     onend: (() => void) | null;
     onerror: (() => void) | null;
     onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  }
-  interface SpeechRecognitionEvent extends Event {
-    results: ArrayLike<ArrayLike<{ transcript: string }>>;
+    start(): void;
   }
 }

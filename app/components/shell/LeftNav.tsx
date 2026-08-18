@@ -83,7 +83,7 @@ export default function LeftNav({ user, onCompose, onSignIn, onSignUp, onLogout 
       ) : (
         <div className="guest">
           <button type="button" className="signin" onClick={onSignIn}>Sign in</button>
-          <button type="button" className="signup" onClick={onSignUp}>Create account</button>
+          <button type="button" className="signup" onClick={onSignUp}>Sign up</button>
         </div>
       )}
     </aside>

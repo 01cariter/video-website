@@ -4,7 +4,7 @@ import { getAuthUser } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
-// POST /api/videos/:id/save - toggle a save / favourite (收藏) for the user.
+// POST /api/videos/:id/save - toggle a saved item / favourite for the user.
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getAuthUser();
   if (!user) {

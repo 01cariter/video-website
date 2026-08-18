@@ -49,10 +49,10 @@ import type { StudioFloatingRect } from './useLeaferStudioRuntime';
 
 const KIND_META: Record<StudioNodeKind, { label: string; icon: typeof ImageIcon }> =
   {
-    image: { label: '图片生成', icon: ImageIcon },
-    video: { label: '视频生成', icon: Video },
-    text: { label: '文本', icon: Type },
-    section: { label: '分组', icon: RectangleHorizontal },
+    image: { label: 'Image generation', icon: ImageIcon },
+    video: { label: 'Video generation', icon: Video },
+    text: { label: 'Text', icon: Type },
+    section: { label: 'Group', icon: RectangleHorizontal },
   };
 
 function clamp(value: number, min: number, max: number) {
@@ -118,7 +118,7 @@ export function LeftToolbar({
         className="flex items-center gap-0.5 rounded-lg border border-border bg-card/95 p-0.5 shadow-[0_1px_2px_rgba(0,0,0,.05)] backdrop-blur-xl"
       >
         <ToolButton
-          label="选择"
+          label="Select"
           shortcut="V"
           pressed={tool === 'select'}
           onClick={() => setTool('select')}
@@ -126,7 +126,7 @@ export function LeftToolbar({
           <MousePointer2 />
         </ToolButton>
         <ToolButton
-          label="平移"
+          label="Pan"
           shortcut="H"
           pressed={tool === 'pan'}
           onClick={() => setTool('pan')}
@@ -134,17 +134,17 @@ export function LeftToolbar({
           <Hand />
         </ToolButton>
         <span className="mx-1 h-5 w-px bg-border" aria-hidden />
-        <ToolButton label="图片生成器" onClick={() => addNode('image')}>
+        <ToolButton label="Image generator" onClick={() => addNode('image')}>
           <ImageIcon />
         </ToolButton>
-        <ToolButton label="视频生成器" onClick={() => addNode('video')}>
+        <ToolButton label="Video generator" onClick={() => addNode('video')}>
           <Video />
         </ToolButton>
-        <ToolButton label="文本" onClick={() => addNode('text')}>
+        <ToolButton label="Text" onClick={() => addNode('text')}>
           <Type />
         </ToolButton>
         <ToolButton
-          label="绘制分组"
+          label="Draw group"
           shortcut="F"
           pressed={tool === 'section'}
           onClick={() => setTool('section')}
@@ -152,10 +152,10 @@ export function LeftToolbar({
           <RectangleHorizontal />
         </ToolButton>
         <span className="mx-1 h-5 w-px bg-border" aria-hidden />
-        <ToolButton label="图层" pressed={layersOpen} onClick={onToggleLayers}>
+        <ToolButton label="Layers" pressed={layersOpen} onClick={onToggleLayers}>
           <Layers3 />
         </ToolButton>
-        <ToolButton label="适应画布" onClick={() => fitView()}>
+        <ToolButton label="Fit canvas" onClick={() => fitView()}>
           <Maximize2 />
         </ToolButton>
       </div>
@@ -170,12 +170,12 @@ export function ZoomControl() {
     <div
       className="flex items-center rounded-lg border border-border bg-card/95 p-0.5 text-muted-foreground shadow-[0_1px_2px_rgba(0,0,0,.05)] backdrop-blur-xl"
       role="group"
-      aria-label="画布缩放"
+      aria-label="Canvas zoom"
     >
       <button
         type="button"
         className="grid size-8 place-items-center rounded-md hover:bg-accent hover:text-foreground"
-        aria-label="缩小"
+        aria-label="Zoom out"
         onClick={() => changeZoom(zoom * 0.88)}
       >
         <Minus className="size-3" />
@@ -183,7 +183,7 @@ export function ZoomControl() {
       <button
         type="button"
         className="min-w-12 px-1 text-center text-[11px] font-medium tabular-nums hover:text-foreground"
-        aria-label="重置为 100%"
+        aria-label="Reset zoom to 100%"
         onClick={() => changeZoom(1)}
       >
         {percent}%
@@ -191,7 +191,7 @@ export function ZoomControl() {
       <button
         type="button"
         className="grid size-8 place-items-center rounded-md hover:bg-accent hover:text-foreground"
-        aria-label="放大"
+        aria-label="Zoom in"
         onClick={() => changeZoom(zoom * 1.14)}
       >
         <Plus className="size-3" />
@@ -219,6 +219,7 @@ export function NodeOverlays({
     removeNode,
     updateNodeData,
     setNodeAspect,
+    freeCreditModelsOnly,
   } = useStudioCanvas();
   const selected =
     selectedIds.length === 1
@@ -318,6 +319,7 @@ export function NodeOverlays({
                 kind={selected.type as StudioGenerativeKind}
                 data={selected.data}
                 canSubmit={selected.data.prompt.trim().length > 0}
+                freeCreditModelsOnly={freeCreditModelsOnly}
                 onPromptChange={(value) =>
                   updateNodeData(selected.id, { prompt: value })
                 }
@@ -361,16 +363,21 @@ function SelectionToolbar({
   return (
     <div className="flex items-center gap-0.5 rounded-lg border border-border bg-card/95 p-0.5 shadow-[0_4px_18px_-12px_rgba(0,0,0,.5)] backdrop-blur-xl">
       {node.type !== 'section' ? (
-        <Button type="button" variant="ghost" size="xs" onClick={onGenerate}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          onClick={onGenerate}
+        >
           <Wand2 />
-          重新生成
+          Regenerate
         </Button>
       ) : null}
       <Button
         type="button"
         variant="ghost"
         size="icon-xs"
-        aria-label="复制"
+        aria-label="Duplicate"
         onClick={onDuplicate}
       >
         <Copy />
@@ -379,7 +386,7 @@ function SelectionToolbar({
         type="button"
         variant="ghost"
         size="icon-xs"
-        aria-label="删除"
+        aria-label="Delete"
         onClick={onDelete}
       >
         <Trash2 />
@@ -419,13 +426,13 @@ export function LayerPanel({
           transition={studioSnap}
         >
           <header className="flex h-9 items-center justify-between border-b border-border px-2.5">
-            <span className="text-xs font-semibold">图层</span>
+            <span className="text-xs font-semibold">Layers</span>
             <Button
               type="button"
               variant="ghost"
               size="icon-xs"
               onClick={onClose}
-              aria-label="关闭图层"
+              aria-label="Close layers"
             >
               <X />
             </Button>
@@ -455,7 +462,7 @@ export function LayerPanel({
                         role="button"
                         tabIndex={0}
                         className="grid size-6 place-items-center rounded hover:bg-card"
-                        aria-label={node.data.hidden ? '显示' : '隐藏'}
+                        aria-label={node.data.hidden ? 'Show' : 'Hide'}
                         onClick={(event) => {
                           event.stopPropagation();
                           toggleNodeHidden(node.id);
@@ -471,7 +478,7 @@ export function LayerPanel({
                         role="button"
                         tabIndex={0}
                         className="grid size-6 place-items-center rounded hover:bg-card"
-                        aria-label={node.data.locked ? '解锁' : '锁定'}
+                        aria-label={node.data.locked ? 'Unlock' : 'Lock'}
                         onClick={(event) => {
                           event.stopPropagation();
                           toggleNodeLocked(node.id);
@@ -489,7 +496,7 @@ export function LayerPanel({
               })
             ) : (
               <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-                画布还是空的
+                The canvas is empty
               </p>
             )}
           </div>

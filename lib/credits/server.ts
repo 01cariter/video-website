@@ -23,6 +23,10 @@ interface CreditLedgerRow extends Record<string, unknown> {
   created_at: string;
 }
 
+interface CreditLedgerCountRow extends Record<string, unknown> {
+  count: number | string;
+}
+
 export interface CreditPackage extends Record<string, unknown> {
   id: string;
   name: string;
@@ -50,6 +54,18 @@ export class InsufficientCreditsError extends Error {
 function numeric(value: number | string | null | undefined) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function mapCreditLedgerRow(entry: CreditLedgerRow) {
+  return {
+    id: entry.id,
+    amount: numeric(entry.amount),
+    balanceAfter: numeric(entry.balance_after),
+    type: entry.entry_type,
+    referenceId: entry.reference_id,
+    metadata: entry.metadata,
+    createdAt: entry.created_at,
+  };
 }
 
 function isInsufficient(error: unknown) {
@@ -112,15 +128,41 @@ export async function getCreditWallet(userId: string) {
     balance: numeric(account?.balance),
     lifetimeEarned: numeric(account?.lifetime_earned),
     lifetimeSpent: numeric(account?.lifetime_spent),
-    ledger: ledger.map((entry) => ({
-      id: entry.id,
-      amount: numeric(entry.amount),
-      balanceAfter: numeric(entry.balance_after),
-      type: entry.entry_type,
-      referenceId: entry.reference_id,
-      metadata: entry.metadata,
-      createdAt: entry.created_at,
-    })),
+    ledger: ledger.map(mapCreditLedgerRow),
+  };
+}
+
+export async function getCreditLedgerPage(
+  userId: string,
+  page: number,
+  pageSize: number,
+) {
+  await ensureCreditAccount(userId);
+  const safePage = Math.max(1, Math.floor(page));
+  const safePageSize = Math.min(50, Math.max(1, Math.floor(pageSize)));
+  const offset = (safePage - 1) * safePageSize;
+  const [[countRow], rows] = await Promise.all([
+    sql<CreditLedgerCountRow[]>`
+      SELECT count(*) AS count
+      FROM public.credit_ledger
+      WHERE user_id = ${userId}
+    `,
+    sql<CreditLedgerRow[]>`
+      SELECT id, amount, balance_after, entry_type, reference_id, metadata, created_at
+      FROM public.credit_ledger
+      WHERE user_id = ${userId}
+      ORDER BY created_at DESC
+      LIMIT ${safePageSize}
+      OFFSET ${offset}
+    `,
+  ]);
+  const total = numeric(countRow?.count);
+  return {
+    items: rows.map(mapCreditLedgerRow),
+    page: safePage,
+    pageSize: safePageSize,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / safePageSize)),
   };
 }
 

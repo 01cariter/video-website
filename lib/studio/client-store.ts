@@ -17,6 +17,7 @@ async function jsonOrNull(response: Response) {
 export async function listStudioProjectsSynced() {
   try {
     const response = await fetch('/api/studio/projects', { cache: 'no-store' });
+    if (response.status === 401) return [];
     if (response.ok) {
       const payload = await jsonOrNull(response);
       const remote = Array.isArray(payload?.projects)
@@ -28,7 +29,7 @@ export async function listStudioProjectsSynced() {
       return remote;
     }
   } catch {
-    // Offline and guest sessions keep the local cache usable.
+    // A real network failure keeps offline drafts available.
   }
   return listStudioProjects();
 }
@@ -111,6 +112,6 @@ export async function renameStudioProjectSynced(id: string, title: string) {
   if (!current) return null;
   return saveStudioProjectSynced({
     ...current,
-    title: title.trim() || '未命名项目',
+    title: title.trim() || 'Untitled project',
   });
 }

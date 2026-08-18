@@ -6,7 +6,7 @@ interface GenerationLoaderProps {
 
 export default function GenerationLoader({
   resolution = '1024 × 1024',
-  label = '正在生成',
+  label = 'Generating',
 }: GenerationLoaderProps) {
   return (
     <div className="relative h-full overflow-hidden bg-[#161412]" role="img" aria-label={label}>

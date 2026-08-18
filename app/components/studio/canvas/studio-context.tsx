@@ -8,6 +8,7 @@ export type StudioTool = 'select' | 'pan' | 'section';
 export interface StudioCanvasApi {
   nodes: StudioNode[];
   selectedIds: string[];
+  freeCreditModelsOnly: boolean;
   addNode: (
     kind: StudioNodeKind,
     extras?: {

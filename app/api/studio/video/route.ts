@@ -1,4 +1,5 @@
 import { experimental_generateVideo as generateVideo } from 'ai';
+import { freeCreditModelsOnly } from '@/flags';
 import { videoCreditCost } from '@/lib/credits/config';
 import {
   beginMeteredRequest,
@@ -9,6 +10,7 @@ import {
 import { friendlyAiError } from '@/lib/studio/errors';
 import { storeGeneratedAsset } from '@/lib/studio/generated-assets';
 import {
+  hasAvailableStudioModel,
   resolveStudioModel,
   videoPixelSize,
 } from '@/lib/studio/model-catalog';
@@ -29,7 +31,7 @@ export async function POST(request: Request) {
   const user = await getAuthUser();
   if (!user) {
     return Response.json(
-      { error: '请先登录，再生成视频。' },
+      { error: 'Sign in to generate video.' },
       { status: 401 },
     );
   }
@@ -48,10 +50,10 @@ export async function POST(request: Request) {
   const prompt = body?.prompt?.trim();
   const requestId = body?.requestId?.trim();
   if (!prompt) {
-    return Response.json({ error: '请先填写提示词。' }, { status: 400 });
+    return Response.json({ error: 'Add a prompt first.' }, { status: 400 });
   }
   if (!requestId || requestId.length > 160) {
-    return Response.json({ error: '请求标识无效。' }, { status: 400 });
+    return Response.json({ error: 'Invalid request identifier.' }, { status: 400 });
   }
 
   const aspect = body?.aspect || '16:9';
@@ -61,7 +63,18 @@ export async function POST(request: Request) {
   const seconds = Math.min(30, Math.max(4, Number(body?.duration) || 5));
   const resolution = body?.videoResolution === '480p' ? '480p' : '720p';
   const generateAudio = Boolean(body?.generateAudio);
-  const model = resolveStudioModel('video', body?.modelId);
+  const restrictToFreeCreditModels = await freeCreditModelsOnly();
+  if (!hasAvailableStudioModel('video', restrictToFreeCreditModels)) {
+    return Response.json(
+      { error: 'Video generation requires paid AI Gateway credits.' },
+      { status: 403 },
+    );
+  }
+  const model = resolveStudioModel(
+    'video',
+    body?.modelId,
+    restrictToFreeCreditModels,
+  );
 
   try {
     const metered = await beginMeteredRequest({
@@ -82,7 +95,7 @@ export async function POST(request: Request) {
       }
       return Response.json(
         {
-          error: '这条生成请求正在处理或已经失败，请重新生成。',
+          error: 'This generation is processing or failed. Generate it again.',
           balance: metered.balance,
         },
         { status: 409 },
@@ -119,11 +132,11 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
       return Response.json(
-        { error: '积分不足，请先充值。', code: 'INSUFFICIENT_CREDITS' },
+        { error: 'Not enough credits. Top up first.', code: 'INSUFFICIENT_CREDITS' },
         { status: 402 },
       );
     }
-    const message = error instanceof Error ? error.message : '视频生成失败';
+    const message = error instanceof Error ? error.message : 'Video generation failed.';
     await failMeteredRequest({
       userId: user.id,
       requestId,

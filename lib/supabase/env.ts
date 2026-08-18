@@ -1,5 +1,9 @@
 export function getSupabaseUrl() {
-  const value = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const value =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_VIDEO_WEB_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    process.env.VIDEO_WEB_SUPABASE_URL;
   if (!value) {
     throw new Error('NEXT_PUBLIC_SUPABASE_URL is not set. Pull it from the Vercel Supabase integration.');
   }
@@ -10,8 +14,12 @@ export function getSupabaseUrl() {
 export function getSupabasePublishableKey() {
   const value =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_VIDEO_WEB_SUPABASE_PUBLISHABLE_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.SUPABASE_ANON_KEY;
+    process.env.NEXT_PUBLIC_VIDEO_WEB_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.VIDEO_WEB_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.VIDEO_WEB_SUPABASE_ANON_KEY;
   if (!value) {
     throw new Error('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is not set. Pull it from the Vercel Supabase integration.');
   }

@@ -1,4 +1,5 @@
 import { generateText } from 'ai';
+import { freeCreditModelsOnly } from '@/flags';
 import { CREDIT_COSTS } from '@/lib/credits/config';
 import {
   beginMeteredRequest,
@@ -7,7 +8,10 @@ import {
   InsufficientCreditsError,
 } from '@/lib/credits/server';
 import { friendlyAiError } from '@/lib/studio/errors';
-import { resolveStudioModel } from '@/lib/studio/model-catalog';
+import {
+  hasAvailableStudioModel,
+  resolveStudioModel,
+} from '@/lib/studio/model-catalog';
 import { getAuthUser } from '@/lib/supabase/server';
 
 export const maxDuration = 45;
@@ -16,7 +20,7 @@ export async function POST(request: Request) {
   const user = await getAuthUser();
   if (!user) {
     return Response.json(
-      { error: '请先登录，再生成文本。' },
+      { error: 'Sign in to generate text.' },
       { status: 401 },
     );
   }
@@ -32,16 +36,27 @@ export async function POST(request: Request) {
   const prompt = body?.prompt?.trim();
   const requestId = body?.requestId?.trim();
   if (!prompt) {
-    return Response.json({ error: '请先填写提示词。' }, { status: 400 });
+    return Response.json({ error: 'Add a prompt first.' }, { status: 400 });
   }
   if (!requestId || requestId.length > 160) {
-    return Response.json({ error: '请求标识无效。' }, { status: 400 });
+    return Response.json({ error: 'Invalid request identifier.' }, { status: 400 });
   }
   const effort =
     body?.reasoningEffort === 'low' || body?.reasoningEffort === 'medium'
       ? body.reasoningEffort
       : 'high';
-  const model = resolveStudioModel('text', body?.modelId);
+  const restrictToFreeCreditModels = await freeCreditModelsOnly();
+  if (!hasAvailableStudioModel('text', restrictToFreeCreditModels)) {
+    return Response.json(
+      { error: 'Text generation requires paid AI Gateway credits.' },
+      { status: 403 },
+    );
+  }
+  const model = resolveStudioModel(
+    'text',
+    body?.modelId,
+    restrictToFreeCreditModels,
+  );
 
   try {
     const metered = await beginMeteredRequest({
@@ -58,7 +73,7 @@ export async function POST(request: Request) {
       }
       return Response.json(
         {
-          error: '这条生成请求正在处理或已经失败，请重新生成。',
+          error: 'This generation is processing or failed. Generate it again.',
           balance: metered.balance,
         },
         { status: 409 },
@@ -69,11 +84,13 @@ export async function POST(request: Request) {
     const result = await generateText({
       model: model.id,
       prompt: current
-        ? `根据要求改写或扩写以下文案。只输出文案本身。\n要求：${prompt}\n原文：${current}`
-        : `根据要求写一段可用于画布的中文文案。只输出文案本身。\n要求：${prompt}`,
-      providerOptions: {
-        openai: { reasoningEffort: effort },
-      },
+        ? `Rewrite or expand the following copy. Return only the finished copy.\nRequirements: ${prompt}\nOriginal: ${current}`
+        : `Write copy for a creative canvas. Return only the finished copy.\nRequirements: ${prompt}`,
+      providerOptions: model.id.startsWith('openai/')
+        ? {
+            openai: { reasoningEffort: effort },
+          }
+        : undefined,
     });
     const response = { text: result.text, balance: metered.balance };
     await completeMeteredRequest({
@@ -85,11 +102,11 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
       return Response.json(
-        { error: '积分不足，请先充值。', code: 'INSUFFICIENT_CREDITS' },
+        { error: 'Not enough credits. Top up first.', code: 'INSUFFICIENT_CREDITS' },
         { status: 402 },
       );
     }
-    const message = error instanceof Error ? error.message : '文本生成失败';
+    const message = error instanceof Error ? error.message : 'Text generation failed.';
     await failMeteredRequest({
       userId: user.id,
       requestId,

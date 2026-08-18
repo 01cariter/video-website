@@ -38,7 +38,7 @@ export default function AuthModal({
     <dialog
       ref={dialogRef}
       className="auth-modal"
-      aria-label={mode === 'login' ? 'Sign in' : 'Create account'}
+      aria-label={mode === 'login' ? 'Sign in' : 'Sign up'}
       onCancel={(event) => {
         event.preventDefault();
         onClose();

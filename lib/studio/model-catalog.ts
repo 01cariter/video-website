@@ -1,5 +1,6 @@
 import {
   STUDIO_CHAT_MODEL,
+  STUDIO_FREE_CREDIT_AGENT_MODEL,
   STUDIO_IMAGE_MODEL,
   STUDIO_TEXT_MODEL,
   STUDIO_VIDEO_MODEL,
@@ -46,6 +47,7 @@ export interface StudioModelOption {
   provider: string;
   description: string;
   tag: string;
+  freeCredit: boolean;
 }
 
 export const STUDIO_MODEL_OPTIONS: Record<
@@ -57,29 +59,33 @@ export const STUDIO_MODEL_OPTIONS: Record<
       id: STUDIO_IMAGE_MODEL,
       label: 'Grok Imagine 2.0',
       provider: 'xAI',
-      description: '写实质感与电影化画面',
-      tag: '推荐',
+      description: 'Photoreal detail and cinematic imagery',
+      tag: 'Recommended',
+      freeCredit: false,
     },
     {
       id: 'bytedance/seedream-5.0-pro',
       label: 'Seedream 5.0 Pro',
       provider: 'ByteDance',
-      description: '设计表达与复杂提示词',
-      tag: '设计',
+      description: 'Design-led output and complex prompts',
+      tag: 'Free credit',
+      freeCredit: true,
     },
     {
       id: 'openai/gpt-image-2',
       label: 'GPT Image 2',
       provider: 'OpenAI',
-      description: '稳定构图与通用创作',
-      tag: '通用',
+      description: 'Reliable composition for general use',
+      tag: 'General',
+      freeCredit: false,
     },
     {
       id: 'recraft/recraft-v4.1-pro',
       label: 'Recraft V4.1 Pro',
       provider: 'Recraft',
-      description: '品牌图形与商业视觉',
-      tag: '品牌',
+      description: 'Brand graphics and commercial visuals',
+      tag: 'Brand',
+      freeCredit: false,
     },
   ],
   video: [
@@ -87,45 +93,59 @@ export const STUDIO_MODEL_OPTIONS: Record<
       id: STUDIO_VIDEO_MODEL,
       label: 'Seedance 2.5',
       provider: 'ByteDance',
-      description: '高质量镜头与运动表现',
-      tag: '推荐',
+      description: 'High-quality shots and motion',
+      tag: 'Recommended',
+      freeCredit: false,
     },
     {
       id: 'bytedance/seedance-2.0-fast',
       label: 'Seedance 2.0 Fast',
       provider: 'ByteDance',
-      description: '快速预览与方案迭代',
-      tag: '快速',
+      description: 'Fast previews and iteration',
+      tag: 'Fast',
+      freeCredit: false,
     },
     {
       id: 'bytedance/seedance-2.0',
       label: 'Seedance 2.0',
       provider: 'ByteDance',
-      description: '稳定画质与参考图生成',
-      tag: '均衡',
+      description: 'Stable quality with image references',
+      tag: 'Balanced',
+      freeCredit: false,
     },
   ],
   text: [
     {
+      id: STUDIO_FREE_CREDIT_AGENT_MODEL,
+      label: 'Laguna S 2.1 Free',
+      provider: 'Poolside',
+      description: 'Zero-cost drafts with reasoning and tool use',
+      tag: 'Free credit',
+      freeCredit: true,
+    },
+    {
       id: STUDIO_TEXT_MODEL,
       label: 'GPT 5.6 Terra',
       provider: 'OpenAI',
-      description: '创意与速度的均衡选择',
-      tag: '推荐',
+      description: 'Balanced creativity and speed',
+      tag: 'Recommended',
+      freeCredit: false,
     },
     {
       id: 'openai/gpt-5.6-luna',
       label: 'GPT 5.6 Luna',
       provider: 'OpenAI',
-      description: '快速草拟与批量改写',
-      tag: '快速',
+      description: 'Fast drafts and batch rewrites',
+      tag: 'Fast',
+      freeCredit: false,
     },
     {
       id: 'openai/gpt-5.6-sol',
       label: 'GPT 5.6 Sol',
       provider: 'OpenAI',
-      description: '复杂创作与深度推理',
-      tag: '高质',
+      description: 'Complex creation and deeper reasoning',
+      tag: 'Quality',
+      freeCredit: false,
     },
   ],
 };
@@ -147,10 +167,10 @@ export const STUDIO_MODELS: Record<StudioGenerativeKind, StudioModelSpec> = {
       {
         type: 'aspect',
         key: 'aspect',
-        label: '宽高比',
+        label: 'Aspect ratio',
         options: ['1:1', '16:9', '9:16', '4:3', '3:4'],
       },
-      { type: 'stepper', key: 'n', label: '生成张数', min: 1, max: 4 },
+      { type: 'stepper', key: 'n', label: 'Outputs', min: 1, max: 4 },
     ],
   },
   video: {
@@ -163,20 +183,20 @@ export const STUDIO_MODELS: Record<StudioGenerativeKind, StudioModelSpec> = {
       {
         type: 'aspect',
         key: 'aspect',
-        label: '宽高比',
+        label: 'Aspect ratio',
         options: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9'],
       },
       {
         type: 'enum',
         key: 'videoResolution',
-        label: '分辨率',
+        label: 'Resolution',
         options: [
           { id: '480p', label: '480p' },
           { id: '720p', label: '720p' },
         ],
       },
-      { type: 'range', key: 'duration', label: '时长', min: 4, max: 30, step: 1, unit: '秒' },
-      { type: 'toggle', key: 'generateAudio', label: '同步音频' },
+      { type: 'range', key: 'duration', label: 'Duration', min: 4, max: 30, step: 1, unit: 'sec' },
+      { type: 'toggle', key: 'generateAudio', label: 'Generate audio' },
     ],
   },
   text: {
@@ -189,11 +209,11 @@ export const STUDIO_MODELS: Record<StudioGenerativeKind, StudioModelSpec> = {
       {
         type: 'enum',
         key: 'reasoningEffort',
-        label: '推理强度',
+        label: 'Reasoning effort',
         options: [
-          { id: 'low', label: '低' },
-          { id: 'medium', label: '中' },
-          { id: 'high', label: '高' },
+          { id: 'low', label: 'Low' },
+          { id: 'medium', label: 'Medium' },
+          { id: 'high', label: 'High' },
         ],
       },
     ],
@@ -211,20 +231,43 @@ export function modelOptionsForKind(kind: StudioGenerativeKind) {
   return STUDIO_MODEL_OPTIONS[kind];
 }
 
-export function resolveStudioModel(
-  kind: StudioGenerativeKind,
-  modelId?: unknown,
+export function isStudioModelAvailable(
+  model: StudioModelOption,
+  freeCreditModelsOnly = false,
 ) {
-  const options = modelOptionsForKind(kind);
-  return (
-    options.find((option) => option.id === modelId) ??
-    options.find((option) => option.id === modelForKind(kind).id) ??
-    options[0]
+  return !freeCreditModelsOnly || model.freeCredit;
+}
+
+export function hasAvailableStudioModel(
+  kind: StudioGenerativeKind,
+  freeCreditModelsOnly = false,
+) {
+  return modelOptionsForKind(kind).some((model) =>
+    isStudioModelAvailable(model, freeCreditModelsOnly),
   );
 }
 
-export function chatModelId() {
-  return STUDIO_CHAT_MODEL;
+export function resolveStudioModel(
+  kind: StudioGenerativeKind,
+  modelId?: unknown,
+  freeCreditModelsOnly = false,
+) {
+  const options = modelOptionsForKind(kind);
+  const available = options.filter((model) =>
+    isStudioModelAvailable(model, freeCreditModelsOnly),
+  );
+  const candidates = available.length ? available : options;
+  return (
+    candidates.find((option) => option.id === modelId) ??
+    candidates.find((option) => option.id === modelForKind(kind).id) ??
+    candidates[0]
+  );
+}
+
+export function chatModelId(freeCreditModelsOnly = false) {
+  return freeCreditModelsOnly
+    ? STUDIO_FREE_CREDIT_AGENT_MODEL
+    : STUDIO_CHAT_MODEL;
 }
 
 export function fieldSummary(kind: StudioNodeKind, values: Record<string, unknown>) {
@@ -234,7 +277,7 @@ export function fieldSummary(kind: StudioNodeKind, values: Record<string, unknow
       const raw = values[field.key] ?? spec.defaults[field.key];
       if (field.type === 'toggle') return raw ? field.label : null;
       if (field.type === 'range') return `${raw}${field.unit}`;
-      if (field.type === 'stepper') return `${raw}张`;
+      if (field.type === 'stepper') return `${raw} outputs`;
       if (field.type === 'enum') return field.options.find((item) => item.id === raw)?.label || String(raw);
       return String(raw);
     })
