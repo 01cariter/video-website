@@ -19,7 +19,6 @@ import {
   Upload,
   Wand2,
 } from 'lucide-react';
-import { STUDIO_TEMPLATES } from '@/lib/studio/templates';
 import {
   createStudioProjectSynced,
   deleteStudioProjectSynced,
@@ -130,12 +129,6 @@ export default function StudioHome({
       title: text.slice(0, 18),
       pendingPrompt: `${prefix}${text}`,
     });
-    router.push(`/studio/${project.id}`);
-  }
-
-  async function createFromTemplate(templateId: string) {
-    if (!requireAccount()) return;
-    const project = await createStudioProjectSynced({ templateId });
     router.push(`/studio/${project.id}`);
   }
 
@@ -327,73 +320,7 @@ export default function StudioHome({
           />
         </motion.form>
 
-        <motion.section className="mt-16" variants={studioItem}>
-          <div className="mb-5 flex items-end justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">
-                Quick start
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Six original starting points for study and training workflows.
-              </p>
-            </div>
-            <span className="text-xs font-semibold tracking-[0.06em] text-muted-foreground uppercase tabular-nums max-sm:hidden">
-              06 <span className="font-sans tracking-[0.12em]">templates</span>
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-12 max-sm:grid-cols-1">
-            {STUDIO_TEMPLATES.map((template, index) => {
-              const featured = index < 2;
-              return (
-                <motion.button
-                  key={template.id}
-                  type="button"
-                  className={cn(
-                    'group relative overflow-hidden rounded-[20px] border bg-muted text-left text-white shadow-[0_18px_42px_-34px_rgba(0,0,0,.7)]',
-                    featured
-                      ? 'h-[278px] lg:col-span-6'
-                      : 'h-[226px] lg:col-span-3',
-                  )}
-                  whileHover={reduceMotion ? undefined : { y: -4 }}
-                  whileTap={reduceMotion ? undefined : { scale: 0.99 }}
-                  transition={studioSnap}
-                  onClick={() => void createFromTemplate(template.id)}
-                >
-                  <motion.span
-                    className="absolute inset-0 bg-cover bg-center"
-                    style={{ backgroundImage: `url(${template.cover})` }}
-                    whileHover={reduceMotion ? undefined : { scale: 1.045 }}
-                    transition={studioSnap}
-                  />
-                  <span className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.04)_20%,rgba(0,0,0,.78)_100%)]" />
-                  <span className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-5">
-                    <span className="min-w-0">
-                      <span className="mb-2 inline-flex rounded-full border border-white/22 bg-black/18 px-2.5 py-1 text-[10px] font-semibold tracking-[0.12em] uppercase backdrop-blur-md">
-                        {template.category}
-                      </span>
-                      <strong
-                        className={cn(
-                          'block font-semibold leading-tight tracking-[-0.025em]',
-                          featured ? 'text-[22px]' : 'text-[17px]',
-                        )}
-                      >
-                        {template.title}
-                      </strong>
-                      <span className="mt-1.5 block max-w-[34ch] text-xs leading-5 text-white/72">
-                        {template.description}
-                      </span>
-                    </span>
-                    <span className="grid size-9 shrink-0 place-items-center rounded-full border border-white/25 bg-white/10 backdrop-blur-md transition-colors group-hover:bg-white group-hover:text-black">
-                      <ArrowRight className="size-4" />
-                    </span>
-                  </span>
-                </motion.button>
-              );
-            })}
-          </div>
-        </motion.section>
-
-        <motion.section className="mt-16" variants={studioItem}>
+        <motion.section className="mt-12" variants={studioItem}>
           <div className="mb-5 flex items-end justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">

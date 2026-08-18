@@ -1084,7 +1084,7 @@ a.pv-who:hover .who b{color:var(--orange-d)}
   --play-bg:#352218;
   background:#1e1814;
 }
-.creator-studio-glow,.credits-page-glow{
+.creator-studio-glow{
   position:absolute;
   inset:0 0 auto;
   height:420px;
@@ -1093,8 +1093,7 @@ a.pv-who:hover .who b{color:var(--orange-d)}
     radial-gradient(60% 110% at 72% 0%,rgba(196,93,44,.11),transparent 70%),
     radial-gradient(42% 90% at 20% 0%,rgba(47,111,126,.08),transparent 72%);
 }
-[data-theme="dark"] .creator-studio-glow,
-[data-theme="dark"] .credits-page-glow{
+[data-theme="dark"] .creator-studio-glow{
   background:
     radial-gradient(60% 110% at 72% 0%,rgba(224,106,61,.1),transparent 70%),
     radial-gradient(42% 90% at 20% 0%,rgba(95,160,178,.08),transparent 72%);
@@ -1109,105 +1108,64 @@ a.pv-who:hover .who b{color:var(--orange-d)}
 .creator-studio-home [data-slot="textarea"]:focus-visible{
   box-shadow:none;
 }
+.credits-page [data-slot="slider-track"]{
+  height:9px;
+  background:color-mix(in srgb,var(--ink) 14%,var(--field));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--line) 72%,transparent);
+}
 .credits-page [data-slot="slider-range"]{
   background:var(--orange-fill);
 }
 .credits-page [data-slot="slider-thumb"]{
+  width:20px;
+  height:20px;
   border-color:var(--orange-fill);
+  border-width:3px;
   background:var(--field);
+  box-shadow:0 3px 12px rgba(34,20,13,.2);
 }
 .credit-wallet-stage{
-  width:min(100%,760px);
+  width:min(100%,780px);
   margin-inline:auto;
-  perspective:1400px;
 }
 .credit-holo-card{
-  --wallet-rx:0deg;
-  --wallet-ry:0deg;
-  --wallet-mx:62%;
-  --wallet-my:66%;
   position:relative;
   min-height:390px;
   overflow:hidden;
   isolation:isolate;
-  border:1px solid rgba(255,255,255,.13);
+  border:1px solid rgba(255,255,255,.16);
   border-radius:34px;
-  background:#1b110c;
+  background:#130d09;
   color:#fff;
   box-shadow:
-    0 42px 90px -52px rgba(82,43,24,.9),
-    0 12px 32px -22px rgba(82,43,24,.7),
-    inset 0 1px 0 rgba(255,255,255,.16);
-  transform:rotateX(var(--wallet-rx)) rotateY(var(--wallet-ry));
-  transform-style:preserve-3d;
-  transition:transform .18s cubic-bezier(.2,.75,.25,1),box-shadow .25s ease;
-  will-change:transform;
+    0 34px 76px -48px rgba(40,22,14,.8),
+    0 12px 30px -24px rgba(40,22,14,.65);
 }
-.credit-holo-card:hover{
-  box-shadow:
-    0 52px 110px -56px rgba(82,43,24,.92),
-    0 20px 42px -28px rgba(47,111,126,.58),
-    inset 0 1px 0 rgba(255,255,255,.18);
-}
-.credit-holo-card canvas{
+.credit-holo-shader{
   position:absolute;
   inset:0;
-  width:100%;
-  height:100%;
   z-index:0;
 }
-.credit-holo-card::before{
-  content:'';
-  position:absolute;
-  inset:-25%;
-  z-index:1;
-  pointer-events:none;
-  background:
-    radial-gradient(circle at var(--wallet-mx) var(--wallet-my),rgba(255,255,255,.28),rgba(132,214,224,.13) 12%,rgba(255,170,112,.11) 24%,transparent 46%);
-  mix-blend-mode:screen;
-  opacity:.72;
-  transform:translateZ(1px);
+.credit-holo-shader>*{
+  width:100%;
+  height:100%;
 }
 .credit-holo-card::after{
   content:'';
   position:absolute;
-  inset:1px;
-  z-index:3;
-  pointer-events:none;
-  border:1px solid rgba(255,255,255,.08);
-  border-radius:32px;
-  box-shadow:inset 0 0 58px rgba(255,255,255,.035);
-}
-.credit-holo-light{
-  position:absolute;
   inset:0;
-  z-index:1;
+  z-index:2;
   pointer-events:none;
-  background:
-    linear-gradient(118deg,transparent 18%,rgba(255,255,255,.08) 37%,transparent 53%),
-    radial-gradient(80% 110% at 50% 120%,rgba(255,255,255,.09),transparent 62%);
-  mix-blend-mode:screen;
-}
-.credit-holo-grid{
-  position:absolute;
-  inset:0;
-  z-index:1;
-  pointer-events:none;
-  opacity:.1;
-  background-image:
-    linear-gradient(rgba(255,255,255,.16) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(255,255,255,.12) 1px,transparent 1px);
-  background-size:42px 42px;
-  mask-image:linear-gradient(to bottom,transparent,black 30%,black 78%,transparent);
+  border-radius:inherit;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);
 }
 .credit-wallet-content{
   position:relative;
-  z-index:2;
+  z-index:1;
   display:flex;
   min-height:390px;
   flex-direction:column;
   padding:28px 30px 26px;
-  transform:translateZ(28px);
 }
 .credit-wallet-balance{
   display:grid;
@@ -1220,9 +1178,6 @@ a.pv-who:hover .who b{color:var(--orange-d)}
   .credit-holo-card,.credit-wallet-content{min-height:340px}
   .credit-holo-card{border-radius:28px}
   .credit-wallet-content{padding:22px}
-}
-@media(prefers-reduced-motion:reduce){
-  .credit-holo-card{transform:none!important;transition:none}
 }
 .react-flow{width:100%;height:100%}
 .react-flow__node,

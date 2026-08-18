@@ -48,6 +48,7 @@ export interface StudioProject {
   title: string;
   createdAt: string;
   updatedAt: string;
+  revision: number;
   coverUrls: string[];
   nodes: StudioNode[];
   viewport: StudioViewport;

@@ -2,7 +2,9 @@
 
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
+import { LoaderCircle, UploadCloud } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import type { DragEvent as ReactDragEvent } from 'react';
 import {
   useCallback,
   useEffect,
@@ -12,7 +14,11 @@ import {
 } from 'react';
 import { Frame, Leafer } from '@/lib/leafer-react';
 import { sizeForAspect } from '@/lib/studio/geometry';
-import { createBlankNode } from '@/lib/studio/store';
+import {
+  studioMediaKind,
+  uploadStudioMedia,
+} from '@/lib/studio/media-upload';
+import { createBlankNode, saveStudioProject } from '@/lib/studio/store';
 import {
   getStudioProjectSynced,
   saveStudioProjectSynced,
@@ -55,9 +61,12 @@ interface AddNodeExtras {
   prompt?: string;
   title?: string;
   text?: string;
+  data?: Partial<StudioNodeData>;
   position?: { x: number; y: number };
   size?: { width: number; height: number };
 }
+
+const STUDIO_DROP_FILE_LIMIT = 8;
 
 const EDITOR_CONFIG = {
   hideOnMove: false,
@@ -77,6 +86,31 @@ function requestId() {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function uploadedMediaSize(
+  width: number | null,
+  height: number | null,
+  kind: 'image' | 'video',
+) {
+  if (!width || !height || width <= 0 || height <= 0) {
+    return kind === 'video'
+      ? { width: 400, height: 225 }
+      : { width: 340, height: 280 };
+  }
+  const ratio = width / height;
+  const maxWidth = 420;
+  const maxHeight = 360;
+  let nextWidth = maxWidth;
+  let nextHeight = nextWidth / ratio;
+  if (nextHeight > maxHeight) {
+    nextHeight = maxHeight;
+    nextWidth = nextHeight * ratio;
+  }
+  return {
+    width: Math.max(120, Math.round(nextWidth)),
+    height: Math.max(120, Math.round(nextHeight)),
+  };
 }
 
 function operationFromOutput(output: unknown): StudioCanvasOperation[] {
@@ -139,6 +173,8 @@ function CanvasWorkspace({
   freeCreditModelsOnly: boolean;
 }) {
   const persistTimer = useRef<number | null>(null);
+  const localPersistTimer = useRef<number | null>(null);
+  const dragDepth = useRef(0);
   const generating = useRef(new Set<string>());
   const seenTools = useRef(new Set<string>());
   const [nodes, setNodes] = useState(project.nodes);
@@ -154,7 +190,14 @@ function CanvasWorkspace({
   const [tool, setTool] = useState<StudioTool>('select');
   const [layersOpen, setLayersOpen] = useState(false);
   const [menu, setMenu] = useState<StudioCanvasMenuState | null>(null);
+  const [dropActive, setDropActive] = useState(false);
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const [uploadError, setUploadError] = useState('');
   const nodesRef = useRef(nodes);
+  const viewportRef = useRef(viewport);
+  const titleRef = useRef(title);
+  const agentOpenRef = useRef(agentOpen);
+  const messagesRef = useRef(project.messages);
   const addNodeRef = useRef<
     (kind: StudioNodeKind, extras?: AddNodeExtras) => string
   >(() => '');
@@ -164,6 +207,26 @@ function CanvasWorkspace({
     nodesRef.current = nodes;
   }, [nodes]);
 
+  const commitNodes = useCallback(
+    (update: (current: StudioNode[]) => StudioNode[]) => {
+      const next = update(nodesRef.current);
+      nodesRef.current = next;
+      setNodes(next);
+      return next;
+    },
+    [],
+  );
+
+  const updateAgentOpen = useCallback(
+    (update: boolean | ((current: boolean) => boolean)) => {
+      const next =
+        typeof update === 'function' ? update(agentOpenRef.current) : update;
+      agentOpenRef.current = next;
+      setAgentOpen(next);
+    },
+    [],
+  );
+
   const selectIds = useCallback((ids: string[]) => {
     const existing = new Set(nodesRef.current.map((node) => node.id));
     setSelectedIds(ids.filter((id, index) => existing.has(id) && ids.indexOf(id) === index));
@@ -171,7 +234,7 @@ function CanvasWorkspace({
 
   const updateNode = useCallback(
     (id: string, patch: Partial<StudioNode>) => {
-      setNodes((current) =>
+      commitNodes((current) =>
         current.map((node) =>
           node.id === id
             ? {
@@ -186,12 +249,12 @@ function CanvasWorkspace({
         ),
       );
     },
-    [],
+    [commitNodes],
   );
 
   const updateNodeData = useCallback(
     (id: string, patch: Record<string, unknown>) => {
-      setNodes((current) =>
+      commitNodes((current) =>
         current.map((node) =>
           node.id === id
             ? { ...node, data: { ...node.data, ...patch, kind: node.type } }
@@ -199,11 +262,11 @@ function CanvasWorkspace({
         ),
       );
     },
-    [],
+    [commitNodes],
   );
 
   const setNodeAspect = useCallback((id: string, aspect: string) => {
-    setNodes((current) =>
+    commitNodes((current) =>
       current.map((node) => {
         if (node.id !== id || node.type === 'section') return node;
         const next = sizeForAspect(aspect, node.type);
@@ -217,7 +280,7 @@ function CanvasWorkspace({
         };
       }),
     );
-  }, []);
+  }, [commitNodes]);
 
   const generateNode = useCallback(
     async (id: string) => {
@@ -296,7 +359,7 @@ function CanvasWorkspace({
           error: undefined,
         });
         if (urls.length > 1) {
-          setNodes((current) => {
+          commitNodes((current) => {
             const source = current.find((item) => item.id === id);
             if (!source) return current;
             const top = Math.max(0, ...current.map((item) => item.zIndex));
@@ -333,7 +396,7 @@ function CanvasWorkspace({
         generating.current.delete(id);
       }
     },
-    [project.id, updateNodeData],
+    [commitNodes, project.id, updateNodeData],
   );
 
   const addNode = useCallback(
@@ -345,6 +408,7 @@ function CanvasWorkspace({
           y: center.y - (extras.size?.height ?? 220) / 2,
         };
       const node = createBlankNode(kind, position, {
+        ...extras.data,
         prompt: extras.prompt,
         title: extras.title,
         text: extras.text,
@@ -356,8 +420,7 @@ function CanvasWorkspace({
         height: extras.size?.height ?? node.height,
         zIndex: kind === 'section' ? -1 : top + 1,
       };
-      setNodes((current) => current.concat(next));
-      nodesRef.current = nodesRef.current.concat(next);
+      commitNodes((current) => current.concat(next));
       setSelectedIds([next.id]);
       setTool('select');
       if (kind !== 'section' && extras.prompt?.trim()) {
@@ -365,7 +428,7 @@ function CanvasWorkspace({
       }
       return next.id;
     },
-    [generateNode],
+    [commitNodes, generateNode],
   );
   useEffect(() => {
     addNodeRef.current = addNode;
@@ -373,9 +436,9 @@ function CanvasWorkspace({
 
   const removeNodes = useCallback((ids: string[]) => {
     const drop = new Set(ids);
-    setNodes((current) => current.filter((node) => !drop.has(node.id)));
+    commitNodes((current) => current.filter((node) => !drop.has(node.id)));
     setSelectedIds((current) => current.filter((id) => !drop.has(id)));
-  }, []);
+  }, [commitNodes]);
 
   const removeNode = useCallback(
     (id: string) => {
@@ -404,9 +467,9 @@ function CanvasWorkspace({
         data: { ...source.data, title: `${source.data.title} copy` },
       };
     });
-    setNodes((current) => current.concat(copies));
+    commitNodes((current) => current.concat(copies));
     setSelectedIds(copies.map((node) => node.id));
-  }, []);
+  }, [commitNodes]);
 
   const duplicateNode = useCallback(
     (id: string) => duplicateNodes([id]),
@@ -451,14 +514,21 @@ function CanvasWorkspace({
     changeZoom,
     fitNodes,
     canvasCenter,
+    currentViewport,
   } = useLeaferStudioRuntime({
     nodes,
     selectedIds,
     tool,
     initialViewport: project.viewport,
     onSelectIds: selectIds,
-    onNodesChange: setNodes,
-    onViewportChange: setViewport,
+    onNodesChange: (next) => {
+      nodesRef.current = next;
+      setNodes(next);
+    },
+    onViewportChange: (next) => {
+      viewportRef.current = next;
+      setViewport(next);
+    },
     onBlankDoubleClick: (point) =>
       addNodeRef.current('image', {
         position: { x: point.x - 150, y: point.y - 150 },
@@ -476,6 +546,125 @@ function CanvasWorkspace({
   useEffect(() => {
     canvasCenterRef.current = canvasCenter;
   }, [canvasCenter]);
+
+  const addUploadedFiles = useCallback(
+    async (files: File[], point: { x: number; y: number }) => {
+      const accepted = files
+        .map((file) => ({ file, kind: studioMediaKind(file) }))
+        .filter(
+          (
+            item,
+          ): item is {
+            file: File;
+            kind: 'image' | 'video';
+          } => Boolean(item.kind),
+        )
+        .slice(0, STUDIO_DROP_FILE_LIMIT);
+
+      if (!accepted.length) {
+        setUploadError('Drop an image, MP4, WebM, or MOV file.');
+        return;
+      }
+      setUploadError(
+        files.length > STUDIO_DROP_FILE_LIMIT
+          ? `Only the first ${STUDIO_DROP_FILE_LIMIT} files were added.`
+          : '',
+      );
+      setUploadingCount((count) => count + accepted.length);
+
+      await Promise.all(
+        accepted.map(async ({ file, kind }, index) => {
+          const initialSize = uploadedMediaSize(null, null, kind);
+          const id = addNode(kind, {
+            title: file.name,
+            position: {
+              x: point.x - initialSize.width / 2 + index * 28,
+              y: point.y - initialSize.height / 2 + index * 28,
+            },
+            size: initialSize,
+            data: { status: 'generating' },
+          });
+          try {
+            const uploaded = await uploadStudioMedia(file);
+            const size = uploadedMediaSize(
+              uploaded.width,
+              uploaded.height,
+              kind,
+            );
+            updateNode(id, { width: size.width, height: size.height });
+            updateNodeData(id, {
+              src: uploaded.url,
+              status: 'ready',
+              error: undefined,
+              uploadMime: uploaded.mime,
+              sourceWidth: uploaded.width,
+              sourceHeight: uploaded.height,
+              sourceDuration: uploaded.durationSeconds,
+            });
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : 'Upload failed.';
+            updateNodeData(id, { status: 'error', error: message });
+            setUploadError(message);
+          } finally {
+            setUploadingCount((count) => Math.max(0, count - 1));
+          }
+        }),
+      );
+    },
+    [addNode, updateNode, updateNodeData],
+  );
+
+  const onCanvasDragEnter = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!event.dataTransfer.types.includes('Files')) return;
+      event.preventDefault();
+      dragDepth.current += 1;
+      setDropActive(true);
+    },
+    [],
+  );
+
+  const onCanvasDragOver = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!event.dataTransfer.types.includes('Files')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+    },
+    [],
+  );
+
+  const onCanvasDragLeave = useCallback(
+    (_event: ReactDragEvent<HTMLDivElement>) => {
+      dragDepth.current = Math.max(0, dragDepth.current - 1);
+      if (dragDepth.current === 0) setDropActive(false);
+    },
+    [],
+  );
+
+  const onCanvasDrop = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!event.dataTransfer.types.includes('Files')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dragDepth.current = 0;
+      setDropActive(false);
+      if (!event.dataTransfer.files.length) {
+        setUploadError('No media files were found in that drop.');
+        return;
+      }
+      const rect = hostRef.current?.getBoundingClientRect();
+      const viewport = currentViewport();
+      const point = {
+        x: ((rect ? event.clientX - rect.left : event.clientX) - viewport.x) /
+          viewport.zoom,
+        y: ((rect ? event.clientY - rect.top : event.clientY) - viewport.y) /
+          viewport.zoom,
+      };
+      void addUploadedFiles(Array.from(event.dataTransfer.files), point);
+    },
+    [addUploadedFiles, currentViewport, hostRef],
+  );
 
   const applyOperation = useCallback(
     (operation: StudioCanvasOperation) => {
@@ -519,6 +708,19 @@ function CanvasWorkspace({
     [addNode, removeNodes, updateNode, updateNodeData],
   );
 
+  const buildProjectSnapshot = useCallback(
+    (nextMessages = messagesRef.current): StudioProject => ({
+      ...project,
+      title: titleRef.current.trim() || 'Untitled project',
+      nodes: nodesRef.current,
+      viewport: viewportRef.current,
+      messages: nextMessages,
+      pendingPrompt: undefined,
+      agentOpen: agentOpenRef.current,
+    }),
+    [project],
+  );
+
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
@@ -549,39 +751,57 @@ function CanvasWorkspace({
     messages: project.messages,
     onFinish: ({ messages: next }) => {
       window.dispatchEvent(new Event('credits:changed'));
-      void saveStudioProjectSynced({
-        ...project,
-        title,
-        nodes,
-        viewport,
-        messages: next,
-        pendingPrompt: undefined,
-        agentOpen,
-      });
+      messagesRef.current = next;
+      void saveStudioProjectSynced(buildProjectSnapshot(next));
     },
   });
 
   useEffect(() => {
+    messagesRef.current = messages;
     applyProcessedTools(messages, seenTools.current, applyOperation);
   }, [applyOperation, messages]);
 
   useEffect(() => {
+    if (localPersistTimer.current) {
+      window.clearTimeout(localPersistTimer.current);
+    }
+    localPersistTimer.current = window.setTimeout(() => {
+      saveStudioProject(buildProjectSnapshot(messages));
+    }, 60);
     if (persistTimer.current) window.clearTimeout(persistTimer.current);
     persistTimer.current = window.setTimeout(() => {
-      void saveStudioProjectSynced({
-        ...project,
-        title: title.trim() || 'Untitled project',
-        nodes,
-        viewport,
-        messages,
-        pendingPrompt: undefined,
-        agentOpen,
-      });
-    }, 320);
+      void saveStudioProjectSynced(buildProjectSnapshot(messages));
+    }, 420);
     return () => {
+      if (localPersistTimer.current) {
+        window.clearTimeout(localPersistTimer.current);
+      }
       if (persistTimer.current) window.clearTimeout(persistTimer.current);
     };
-  }, [agentOpen, messages, nodes, project, title, viewport]);
+  }, [
+    agentOpen,
+    buildProjectSnapshot,
+    messages,
+    nodes,
+    title,
+    viewport,
+  ]);
+
+  useEffect(() => {
+    const flushLocal = () => {
+      saveStudioProject(buildProjectSnapshot());
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushLocal();
+    };
+    window.addEventListener('pagehide', flushLocal);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', flushLocal);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      flushLocal();
+    };
+  }, [buildProjectSnapshot]);
 
   const consumedPrompt = useRef(false);
   useEffect(() => {
@@ -696,15 +916,22 @@ function CanvasWorkspace({
         <div className="flex min-w-0 flex-1 flex-col">
           <StudioHeader
             title={title}
-            onTitleChange={setTitle}
+            onTitleChange={(next) => {
+              titleRef.current = next;
+              setTitle(next);
+            }}
             agentOpen={agentOpen}
-            onToggleAgent={() => setAgentOpen((open) => !open)}
+            onToggleAgent={() => updateAgentOpen((open) => !open)}
           />
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <div
               ref={hostRef}
               data-testid="studio-leafer-canvas"
               className="studio-canvas-surface absolute inset-0 overflow-hidden"
+              onDragEnter={onCanvasDragEnter}
+              onDragOver={onCanvasDragOver}
+              onDragLeave={onCanvasDragLeave}
+              onDrop={onCanvasDrop}
             >
             <Leafer
               fill="transparent"
@@ -738,6 +965,44 @@ function CanvasWorkspace({
             {!runtimeReady ? (
               <div className="pointer-events-none absolute inset-0 grid place-items-center text-xs text-muted-foreground">
                 Preparing the infinite canvas…
+              </div>
+            ) : null}
+
+            {dropActive ? (
+              <div
+                data-testid="studio-media-drop-overlay"
+                className="pointer-events-none absolute inset-3 z-40 grid place-items-center rounded-3xl border-2 border-dashed border-primary/65 bg-background/88 shadow-[0_24px_80px_-42px_rgba(0,0,0,.65)] backdrop-blur-md"
+              >
+                <div className="flex max-w-sm flex-col items-center px-6 text-center">
+                  <span className="grid size-14 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
+                    <UploadCloud className="size-6" />
+                  </span>
+                  <strong className="mt-4 text-lg tracking-[-0.02em]">
+                    Drop media onto the canvas
+                  </strong>
+                  <span className="mt-1.5 text-sm text-muted-foreground">
+                    Images and videos become editable canvas nodes.
+                  </span>
+                </div>
+              </div>
+            ) : null}
+
+            {uploadingCount || uploadError ? (
+              <div
+                className="pointer-events-none absolute top-3 left-1/2 z-30 -translate-x-1/2"
+                role={uploadError ? 'alert' : 'status'}
+              >
+                <div className="flex max-w-[min(460px,calc(100vw-32px))] items-center gap-2 rounded-full border bg-card/95 px-3.5 py-2 text-xs font-medium shadow-lg backdrop-blur-xl">
+                  {uploadingCount ? (
+                    <LoaderCircle className="size-3.5 animate-spin text-primary" />
+                  ) : null}
+                  <span className={uploadError ? 'text-destructive' : ''}>
+                    {uploadError ||
+                      `Uploading ${uploadingCount} media ${
+                        uploadingCount === 1 ? 'file' : 'files'
+                      }…`}
+                  </span>
+                </div>
               </div>
             ) : null}
 
@@ -806,7 +1071,7 @@ function CanvasWorkspace({
         </div>
         <AgentPanel
           open={agentOpen}
-          onClose={() => setAgentOpen(false)}
+          onClose={() => updateAgentOpen(false)}
           title={title}
           messages={messages}
           status={status}

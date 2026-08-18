@@ -79,6 +79,10 @@ function normalizeNode(value: unknown, index: number): StudioNode | null {
   const defaults = sizeForAspect(String(rawData.aspect || '1:1'), kind);
   const width = numberValue(legacy.width ?? style?.width, defaults.width);
   const height = numberValue(legacy.height ?? style?.height, defaults.height);
+  const normalizedStatus =
+    rawData.status === 'generating'
+      ? 'idle'
+      : rawData.status || (rawData.src || rawData.text ? 'ready' : 'idle');
   return {
     id: String(legacy.id || createStudioId('n')),
     type: kind,
@@ -89,11 +93,10 @@ function normalizeNode(value: unknown, index: number): StudioNode | null {
     rotation: 0,
     zIndex: numberValue(legacy.zIndex, index),
     data: {
-      prompt: String(rawData.prompt || ''),
-      status: (rawData.status ||
-        (rawData.src || rawData.text ? 'ready' : 'idle')) as StudioNodeData['status'],
-      aspect: String(rawData.aspect || (kind === 'video' ? '16:9' : '1:1')),
       ...rawData,
+      prompt: String(rawData.prompt || ''),
+      status: normalizedStatus as StudioNodeData['status'],
+      aspect: String(rawData.aspect || (kind === 'video' ? '16:9' : '1:1')),
       kind,
       title: normalizeNodeTitle(kind, rawData.title),
     },
@@ -113,6 +116,7 @@ export function normalizeStudioProject(value: unknown): StudioProject | null {
     title: normalizeProjectTitle(project.title),
     createdAt,
     updatedAt: String(project.updatedAt || createdAt),
+    revision: Math.max(0, Math.trunc(numberValue(project.revision, 0))),
     coverUrls: Array.isArray(project.coverUrls)
       ? project.coverUrls.filter((url): url is string => typeof url === 'string')
       : [],
@@ -238,6 +242,7 @@ function seedStore(): StudioStoreFile {
         updatedAt: new Date(
           Date.now() - 1000 * 60 * 60 * 24 * 30,
         ).toISOString(),
+        revision: 0,
         coverUrls: [
           '/studio/sky-1.jpg',
           '/studio/sky-2.jpg',
@@ -304,6 +309,8 @@ export function getStudioProject(id: string): StudioProject | null {
 
 export function saveStudioProject(next: StudioProject): StudioProject {
   const file = readStore();
+  const index = file.projects.findIndex((item) => item.id === next.id);
+  const previous = index >= 0 ? file.projects[index] : null;
   const covers = next.nodes
     .map((node) => node.data.src)
     .filter((src): src is string => Boolean(src))
@@ -312,6 +319,23 @@ export function saveStudioProject(next: StudioProject): StudioProject {
     ...next,
     coverUrls: covers.length ? covers : next.coverUrls,
     updatedAt: nowIso(),
+    revision: Math.max(next.revision, previous?.revision ?? 0) + 1,
+  };
+  if (index >= 0) file.projects[index] = project;
+  else file.projects.unshift(project);
+  writeStore(file);
+  return project;
+}
+
+export function cacheStudioProject(next: StudioProject): StudioProject {
+  const file = readStore();
+  const covers = next.nodes
+    .map((node) => node.data.src)
+    .filter((src): src is string => Boolean(src))
+    .slice(0, 4);
+  const project: StudioProject = {
+    ...next,
+    coverUrls: covers.length ? covers : next.coverUrls,
   };
   const index = file.projects.findIndex((item) => item.id === project.id);
   if (index >= 0) file.projects[index] = project;
@@ -439,6 +463,7 @@ export function createStudioProjectDraft(input: {
     title,
     createdAt: now,
     updatedAt: now,
+    revision: 0,
     coverUrls: template ? [template.cover] : [],
     nodes,
     viewport: DEFAULT_VIEWPORT,

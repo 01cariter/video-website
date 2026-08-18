@@ -10,6 +10,7 @@ interface StudioProjectRow extends Record<string, unknown> {
   document: {
     nodes?: unknown[];
     viewport?: Record<string, unknown>;
+    revision?: number;
   };
   messages: unknown[];
   cover_urls: string[];
@@ -35,6 +36,7 @@ function fromRow(row: StudioProjectRow): StudioProject {
     agentOpen: row.agent_open,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
+    revision: row.document?.revision,
   });
   if (!project) throw new Error('Stored Studio project is invalid.');
   return project;
@@ -44,6 +46,7 @@ function projectDocument(project: StudioProject) {
   return JSON.stringify({
     nodes: project.nodes,
     viewport: project.viewport,
+    revision: project.revision,
   });
 }
 
@@ -114,12 +117,21 @@ export async function saveStudioProjectForUser(
       pending_prompt = excluded.pending_prompt,
       agent_open = excluded.agent_open,
       updated_at = now()
-    WHERE public.studio_projects.owner_id = excluded.owner_id
+    WHERE
+      public.studio_projects.owner_id = excluded.owner_id
+      AND COALESCE(
+        (public.studio_projects.document ->> 'revision')::bigint,
+        0
+      ) < ${project.revision}
     RETURNING
       id, title, document, messages, cover_urls, pending_prompt, agent_open,
       created_at, updated_at
   `;
-  if (!row) throw new Error('Project id belongs to another account.');
+  if (!row) {
+    const current = await getStudioProjectForUser(userId, project.id);
+    if (current) return current;
+    throw new Error('Project id belongs to another account.');
+  }
   return fromRow(row);
 }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  cacheStudioProject,
   createStudioProjectDraft,
   deleteStudioProject,
   getStudioProject,
@@ -14,10 +15,23 @@ async function jsonOrNull(response: Response) {
   return response.json().catch(() => null) as Promise<Record<string, unknown> | null>;
 }
 
+function projectUpdatedAt(project: StudioProject) {
+  const value = Date.parse(project.updatedAt);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function isNewerProject(candidate: StudioProject, baseline: StudioProject) {
+  if (candidate.revision !== baseline.revision) {
+    return candidate.revision > baseline.revision;
+  }
+  return projectUpdatedAt(candidate) > projectUpdatedAt(baseline);
+}
+
 export async function listStudioProjectsSynced() {
+  const local = listStudioProjects();
   try {
     const response = await fetch('/api/studio/projects', { cache: 'no-store' });
-    if (response.status === 401) return [];
+    if (response.status === 401) return local;
     if (response.ok) {
       const payload = await jsonOrNull(response);
       const remote = Array.isArray(payload?.projects)
@@ -25,16 +39,29 @@ export async function listStudioProjectsSynced() {
             .map(normalizeStudioProject)
             .filter((project): project is StudioProject => Boolean(project))
         : [];
-      for (const project of remote) saveStudioProject(project);
-      return remote;
+      const localById = new Map(local.map((project) => [project.id, project]));
+      const merged = remote.map((project) => {
+        const cached = localById.get(project.id);
+        localById.delete(project.id);
+        if (cached && isNewerProject(cached, project)) {
+          void saveStudioProjectSynced(cached);
+          return cached;
+        }
+        return cacheStudioProject(project);
+      });
+      merged.push(...localById.values());
+      return merged.toSorted(
+        (a, b) => projectUpdatedAt(b) - projectUpdatedAt(a),
+      );
     }
   } catch {
     // A real network failure keeps offline drafts available.
   }
-  return listStudioProjects();
+  return local;
 }
 
 export async function getStudioProjectSynced(id: string) {
+  const cached = getStudioProject(id);
   try {
     const response = await fetch(`/api/studio/projects/${encodeURIComponent(id)}`, {
       cache: 'no-store',
@@ -42,12 +69,18 @@ export async function getStudioProjectSynced(id: string) {
     if (response.ok) {
       const payload = await jsonOrNull(response);
       const project = normalizeStudioProject(payload?.project);
-      if (project) return saveStudioProject(project);
+      if (project) {
+        if (cached && isNewerProject(cached, project)) {
+          void saveStudioProjectSynced(cached);
+          return cached;
+        }
+        return cacheStudioProject(project);
+      }
     }
   } catch {
     // Fall back to local cache.
   }
-  return getStudioProject(id);
+  return cached;
 }
 
 export async function createStudioProjectSynced(input: {
@@ -66,7 +99,7 @@ export async function createStudioProjectSynced(input: {
     if (response.ok) {
       const payload = await jsonOrNull(response);
       const project = normalizeStudioProject(payload?.project);
-      if (project) return saveStudioProject(project);
+      if (project) return cacheStudioProject(project);
     }
   } catch {
     // Local draft remains available.
@@ -88,7 +121,11 @@ export async function saveStudioProjectSynced(project: StudioProject) {
     if (response.ok) {
       const payload = await jsonOrNull(response);
       const remote = normalizeStudioProject(payload?.project);
-      return remote ? saveStudioProject(remote) : local;
+      if (remote) {
+        const latest = getStudioProject(project.id);
+        if (latest && isNewerProject(latest, remote)) return latest;
+        return cacheStudioProject(remote);
+      }
     }
   } catch {
     // Local save is the offline fallback.

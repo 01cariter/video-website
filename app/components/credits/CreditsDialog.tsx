@@ -20,7 +20,7 @@ export default function CreditsDialog({ children }: { children: ReactNode }) {
       }}
     >
       <DialogContent
-        className="h-[min(900px,calc(100dvh-32px))] max-w-[min(1120px,calc(100vw-32px))] gap-0 overflow-hidden rounded-[28px] border-border/80 bg-background p-0 shadow-[0_32px_100px_-32px_rgba(0,0,0,.6)]"
+        className="h-[calc(100dvh-24px)] w-[calc(100vw-24px)] max-w-none gap-0 overflow-hidden rounded-[24px] border-border/80 bg-background p-0 shadow-[0_32px_100px_-32px_rgba(0,0,0,.6)] sm:h-[min(1040px,calc(100dvh-40px))] sm:w-[calc(100vw-40px)] sm:max-w-[1480px]"
         aria-label="Credits"
       >
         <DialogTitle className="sr-only">Credits</DialogTitle>

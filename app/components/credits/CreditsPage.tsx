@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -13,7 +14,6 @@ import {
   Loader2,
   Minus,
   Plus,
-  ShieldCheck,
   Sparkles,
   Type,
   Video,
@@ -77,6 +77,39 @@ const TOP_UP_TABS = [
   { value: 'custom', label: 'Custom amount', icon: Coins },
 ] as const;
 
+const GENERATION_ESTIMATES = [
+  {
+    key: 'agent',
+    label: 'Agent',
+    unit: 'requests',
+    icon: Sparkles,
+  },
+  {
+    key: 'text',
+    label: 'Text',
+    unit: 'generations',
+    icon: Type,
+  },
+  {
+    key: 'image',
+    label: 'Image',
+    unit: 'images',
+    icon: ImageIcon,
+  },
+  {
+    key: 'video480PerSecond',
+    label: 'Video 480p',
+    unit: 'seconds',
+    icon: Video,
+  },
+  {
+    key: 'video720PerSecond',
+    label: 'Video 720p',
+    unit: 'seconds',
+    icon: Video,
+  },
+] as const;
+
 function money(cents: number, currency = 'usd') {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -91,6 +124,12 @@ function clampCustomCredits(value: number) {
     CUSTOM_CREDIT_MAX,
     Math.max(CUSTOM_CREDIT_MIN, Math.round(value)),
   );
+}
+
+function paymentError(message?: string) {
+  return (message || 'Could not open payment.')
+    .replaceAll('Stripe Checkout', 'payment')
+    .replaceAll('Stripe', 'Payment');
 }
 
 export default function CreditsPage() {
@@ -160,14 +199,14 @@ export default function CreditsPage() {
       });
       const result = (await response.json()) as { url?: string; error?: string };
       if (!response.ok || !result.url) {
-        throw new Error(result.error || 'Could not open Stripe Checkout.');
+        throw new Error(paymentError(result.error));
       }
       window.location.assign(result.url);
     } catch (checkoutError) {
       setError(
         checkoutError instanceof Error
           ? checkoutError.message
-          : 'Could not open Stripe Checkout.',
+          : 'Could not open payment.',
       );
       setPurchasing(null);
     }
@@ -203,25 +242,35 @@ export default function CreditsPage() {
     fixedPackages.find((item) => item.id === selectedPackageId) ??
     fixedPackages[0];
   const customPrice = customCreditPriceCents(customCredits);
+  const selectedCredits =
+    topUpMode === 'packs' ? (selectedPackage?.credits ?? 0) : customCredits;
+  const selectedPrice =
+    topUpMode === 'packs'
+      ? (selectedPackage?.price_cents ?? 0)
+      : customPrice;
+  const selectedCurrency =
+    topUpMode === 'packs' ? selectedPackage?.currency : 'usd';
+  const purchaseId =
+    topUpMode === 'packs'
+      ? selectedPackage?.id
+      : customPackage
+        ? CUSTOM_CREDIT_PACKAGE_ID
+        : undefined;
 
   return (
     <main className="credits-page relative min-h-full overflow-hidden">
-      <div className="credits-page-glow" aria-hidden />
       <div className="relative mx-auto w-full max-w-[1180px] px-8 pb-20 pt-10 max-md:px-4 max-md:pt-7">
-        <header className="flex items-center justify-between gap-5">
+        <header>
           <p className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
             Snackd / Credits
           </p>
-          <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground max-sm:hidden">
-            <ShieldCheck className="size-3.5" />
-            Checkout secured by Stripe
-          </span>
         </header>
 
         {checkoutSuccess ? (
-          <div className="mb-5 flex items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm font-medium">
+          <div className="mt-5 mb-5 flex items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm font-medium">
             <CheckCircle2 className="size-4" />
-            Payment returned. Credits will appear after Stripe confirms the webhook.
+            Payment received. Credits will appear as soon as confirmation
+            completes.
           </div>
         ) : null}
         {error ? (
@@ -329,190 +378,58 @@ export default function CreditsPage() {
                   );
                 })}
               </div>
-
-              <div className="mt-6 flex items-center justify-between gap-5 border-t pt-5 max-sm:flex-col max-sm:items-stretch">
-                <div>
-                  <span className="text-xs text-muted-foreground">
-                    Selected pack
-                  </span>
-                  <p className="mt-1 text-sm font-medium tabular-nums">
-                    {selectedPackage
-                      ? `${selectedPackage.credits.toLocaleString()} credits · ${money(
-                          selectedPackage.price_cents,
-                          selectedPackage.currency,
-                        )}`
-                      : 'No package available'}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  className="h-11 min-w-48 rounded-xl bg-primary px-5 text-primary-foreground hover:bg-primary/90"
-                  disabled={!selectedPackage || Boolean(purchasing)}
-                  onClick={() =>
-                    selectedPackage && void checkout(selectedPackage.id)
-                  }
-                >
-                  {purchasing === selectedPackage?.id ? (
-                    <Loader2 className="animate-spin" />
-                  ) : (
-                    <ArrowRight />
-                  )}
-                  Continue to Stripe
-                </Button>
-              </div>
             </div>
           ) : customPackage ? (
-            <div className="mt-7">
-              <div className="rounded-[20px] bg-secondary/65 p-6 max-sm:p-5">
-                <div className="flex items-start justify-between gap-4 max-sm:flex-col">
-                  <div>
-                    <span className="text-xs text-muted-foreground">
-                      Credit amount
-                    </span>
-                    <div className="mt-2 flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-sm"
-                        className="rounded-xl"
-                        aria-label="Decrease custom credits"
-                        onClick={() =>
-                          setCustomCredits((current) =>
-                            clampCustomCredits(current - CUSTOM_CREDIT_STEP),
-                          )
-                        }
-                      >
-                        <Minus />
-                      </Button>
-                      <div className="relative w-[240px] max-w-full">
-                        <Input
-                          type="number"
-                          min={CUSTOM_CREDIT_MIN}
-                          max={CUSTOM_CREDIT_MAX}
-                          step={CUSTOM_CREDIT_STEP}
-                          value={customCredits}
-                          className="h-11 rounded-xl pr-16 text-lg font-semibold tabular-nums"
-                          onChange={(event) =>
-                            setCustomCredits(
-                              clampCustomCredits(Number(event.target.value)),
-                            )
-                          }
-                        />
-                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                          credits
-                        </span>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-sm"
-                        className="rounded-xl"
-                        aria-label="Increase custom credits"
-                        onClick={() =>
-                          setCustomCredits((current) =>
-                            clampCustomCredits(current + CUSTOM_CREDIT_STEP),
-                          )
-                        }
-                      >
-                        <Plus />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="text-right max-sm:text-left">
-                    <span className="text-xs text-muted-foreground">Total</span>
-                    <strong className="mt-1 block text-3xl tracking-[-0.05em] tabular-nums">
-                      {money(customPrice)}
-                    </strong>
-                  </div>
-                </div>
-                <Slider
-                  className="mt-8"
-                  min={CUSTOM_CREDIT_MIN}
-                  max={CUSTOM_CREDIT_MAX}
-                  step={CUSTOM_CREDIT_STEP}
-                  value={[customCredits]}
-                  onValueChange={(value) =>
-                    setCustomCredits(clampCustomCredits(value[0] ?? 2500))
-                  }
-                />
-                <div className="mt-3 flex justify-between text-[11px] text-muted-foreground tabular-nums">
-                  <span>{CUSTOM_CREDIT_MIN.toLocaleString()}</span>
-                  <span>{CUSTOM_CREDIT_MAX.toLocaleString()}</span>
-                </div>
-              </div>
-              <div className="mt-6 flex items-center justify-between gap-5 border-t pt-5 max-sm:flex-col max-sm:items-stretch">
-                <p className="text-sm text-muted-foreground">
-                  About{' '}
-                  <span className="font-medium text-foreground tabular-nums">
-                    {Math.floor(customCredits / payload.costs.image)}
-                  </span>{' '}
-                  image generations at the current rate.
-                </p>
-                <Button
-                  type="button"
-                  className="h-11 min-w-48 rounded-xl bg-primary px-5 text-primary-foreground hover:bg-primary/90"
-                  disabled={Boolean(purchasing)}
-                  onClick={() =>
-                    void checkout(CUSTOM_CREDIT_PACKAGE_ID, customCredits)
-                  }
-                >
-                  {purchasing === CUSTOM_CREDIT_PACKAGE_ID ? (
-                    <Loader2 className="animate-spin" />
-                  ) : (
-                    <ArrowRight />
-                  )}
-                  Continue to Stripe
-                </Button>
-              </div>
-            </div>
+            <CustomAmountPanel
+              credits={customCredits}
+              price={customPrice}
+              onCreditsChange={setCustomCredits}
+            />
           ) : (
             <p className="mt-8 text-sm text-muted-foreground">
               Custom top-ups are currently unavailable.
             </p>
           )}
-        </section>
 
-        <section className="mt-5 rounded-[20px] border bg-card px-5 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <span className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-                Usage
-              </span>
-              <h2 className="mt-0.5 text-base font-semibold tracking-[-0.02em]">
-                Generation rates
-              </h2>
-            </div>
-            <span className="text-xs text-muted-foreground max-md:hidden">
-              Failed generations are refunded automatically.
-            </span>
-          </div>
-          <div className="mt-4 grid grid-cols-5 divide-x rounded-2xl bg-secondary/45 max-lg:grid-cols-3 max-lg:divide-x-0 max-sm:grid-cols-2">
-            <CostChip
-              icon={Sparkles}
-              label="Agent"
-              value={`${payload.costs.agent} / request`}
-            />
-            <CostChip
-              icon={Type}
-              label="Text"
-              value={`${payload.costs.text} / request`}
-            />
-            <CostChip
-              icon={ImageIcon}
-              label="Image"
-              value={`${payload.costs.image} / image`}
-            />
-            <CostChip
-              icon={Video}
-              label="Video 480p"
-              value={`${payload.costs.video480PerSecond} / sec`}
-            />
-            <CostChip
-              icon={Video}
-              label="Video 720p"
-              value={`${payload.costs.video720PerSecond} / sec`}
-            />
-          </div>
+          {purchaseId ? (
+            <>
+              <GenerationEstimate
+                credits={selectedCredits}
+                costs={payload.costs}
+              />
+              <div className="mt-6 flex items-center justify-between gap-5 border-t pt-5 max-sm:flex-col max-sm:items-stretch">
+                <div>
+                  <span className="text-xs text-muted-foreground">
+                    {topUpMode === 'packs'
+                      ? 'Selected pack'
+                      : 'Custom amount'}
+                  </span>
+                  <p className="mt-1 text-sm font-medium tabular-nums">
+                    {selectedCredits.toLocaleString()} credits ·{' '}
+                    {money(selectedPrice, selectedCurrency)}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  className="h-11 min-w-48 rounded-xl bg-primary px-5 text-primary-foreground hover:bg-primary/90"
+                  disabled={Boolean(purchasing)}
+                  onClick={() =>
+                    void checkout(
+                      purchaseId,
+                      topUpMode === 'custom' ? selectedCredits : undefined,
+                    )
+                  }
+                >
+                  {purchasing === purchaseId ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <ArrowRight />
+                  )}
+                  Continue to payment
+                </Button>
+              </div>
+            </>
+          ) : null}
         </section>
 
         <section className="mt-5 overflow-hidden rounded-[22px] border bg-card">
@@ -588,7 +505,6 @@ export default function CreditsPage() {
 function CreditsGuest() {
   return (
     <main className="credits-page relative min-h-[70dvh] overflow-hidden">
-      <div className="credits-page-glow" aria-hidden />
       <div className="relative mx-auto grid min-h-[70dvh] w-full max-w-[1040px] grid-cols-[minmax(0,1fr)_410px] items-center gap-14 px-8 py-14 max-lg:grid-cols-1 max-md:px-4">
         <div className="max-w-[590px]">
           <p className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
@@ -603,7 +519,7 @@ function CreditsGuest() {
           </p>
           <div className="mt-7 grid max-w-[520px] gap-2.5 text-sm">
             <GuestFeature text="One-time credit packs with no recurring charge" />
-            <GuestFeature text="Stripe-hosted checkout" />
+            <GuestFeature text="Secure one-time checkout" />
             <GuestFeature text="Automatic credit refunds for failed generations" />
           </div>
         </div>
@@ -651,26 +567,218 @@ function GuestFeature({ text }: { text: string }) {
   );
 }
 
-function CostChip({
+function CustomAmountPanel({
+  credits,
+  price,
+  onCreditsChange,
+}: {
+  credits: number;
+  price: number;
+  onCreditsChange: (credits: number) => void;
+}) {
+  return (
+    <div className="mt-7 overflow-hidden rounded-[22px] border bg-background">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(230px,0.42fr)] max-md:grid-cols-1">
+        <div className="border-r p-6 max-md:border-r-0 max-md:border-b max-sm:p-5">
+          <span className="text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+            Credit amount
+          </span>
+          <div className="mt-3 flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-12 shrink-0 rounded-2xl bg-card"
+              aria-label="Decrease custom credits"
+              onClick={() =>
+                onCreditsChange(
+                  clampCustomCredits(credits - CUSTOM_CREDIT_STEP),
+                )
+              }
+            >
+              <Minus />
+            </Button>
+            <div className="relative min-w-0 flex-1">
+              <Input
+                type="number"
+                min={CUSTOM_CREDIT_MIN}
+                max={CUSTOM_CREDIT_MAX}
+                step={CUSTOM_CREDIT_STEP}
+                value={credits}
+                className="h-12 rounded-2xl border-border bg-card pr-20 text-xl font-semibold tabular-nums shadow-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                onChange={(event) =>
+                  onCreditsChange(
+                    clampCustomCredits(Number(event.target.value)),
+                  )
+                }
+              />
+              <span className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-xs font-medium text-muted-foreground">
+                credits
+              </span>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-12 shrink-0 rounded-2xl bg-card"
+              aria-label="Increase custom credits"
+              onClick={() =>
+                onCreditsChange(
+                  clampCustomCredits(credits + CUSTOM_CREDIT_STEP),
+                )
+              }
+            >
+              <Plus />
+            </Button>
+          </div>
+
+          <Slider
+            className="mt-8"
+            min={CUSTOM_CREDIT_MIN}
+            max={CUSTOM_CREDIT_MAX}
+            step={CUSTOM_CREDIT_STEP}
+            value={[credits]}
+            onValueChange={(value) =>
+              onCreditsChange(
+                clampCustomCredits(value[0] ?? CUSTOM_CREDIT_MIN),
+              )
+            }
+          />
+          <div className="mt-3 flex justify-between text-[11px] font-medium text-muted-foreground tabular-nums">
+            <span>{CUSTOM_CREDIT_MIN.toLocaleString()}</span>
+            <span>{CUSTOM_CREDIT_MAX.toLocaleString()}</span>
+          </div>
+        </div>
+
+        <div className="flex min-h-[190px] flex-col justify-between bg-secondary/55 p-6 max-sm:min-h-[160px] max-sm:p-5">
+          <span className="text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+            Purchase total
+          </span>
+          <AnimatedValue
+            value={price}
+            format={(value) => money(value)}
+            className="text-[clamp(2.6rem,5vw,4rem)] leading-none font-semibold tracking-[-0.06em]"
+          />
+          <p className="text-xs leading-5 text-muted-foreground">
+            One-time payment. No subscription.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GenerationEstimate({
+  credits,
+  costs,
+}: {
+  credits: number;
+  costs: CreditPayload['costs'];
+}) {
+  return (
+    <div className="mt-6 rounded-[20px] border bg-secondary/45 p-4">
+      <div className="flex items-end justify-between gap-4 px-1 max-sm:items-start">
+        <div>
+          <span className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+            Estimated output
+          </span>
+          <h2 className="mt-1 text-sm font-semibold">
+            What {credits.toLocaleString()} credits can make
+          </h2>
+        </div>
+        <span className="text-xs text-muted-foreground max-sm:hidden">
+          Failed generations are refunded automatically.
+        </span>
+      </div>
+      <div className="mt-4 grid grid-cols-5 gap-2 max-lg:grid-cols-3 max-sm:grid-cols-2">
+        {GENERATION_ESTIMATES.map((item) => {
+          const count = Math.floor(credits / costs[item.key]);
+          return (
+            <GenerationEstimateItem
+              key={item.key}
+              icon={item.icon}
+              label={item.label}
+              value={count}
+              unit={item.unit}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function GenerationEstimateItem({
   icon: Icon,
   label,
+  unit,
   value,
 }: {
   icon: typeof Sparkles;
   label: string;
-  value: string;
+  unit: string;
+  value: number;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2.5 px-3 py-3">
-      <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-background">
+    <div className="min-w-0 rounded-2xl bg-background px-3 py-3">
+      <span className="grid size-7 place-items-center rounded-lg border bg-card">
         <Icon className="size-3.5" />
       </span>
-      <span className="min-w-0">
-        <span className="block truncate text-xs font-medium">{label}</span>
-        <b className="mt-0.5 block text-[11px] font-medium text-muted-foreground tabular-nums">
-          {value}
-        </b>
+      <span className="mt-3 block truncate text-xs font-medium text-muted-foreground">
+        {label}
+      </span>
+      <span className="mt-0.5 flex min-w-0 items-baseline gap-1">
+        <AnimatedValue
+          value={value}
+          format={(nextValue) => nextValue.toLocaleString()}
+          className="text-lg leading-none font-semibold tracking-[-0.03em]"
+        />
+        <span className="truncate text-[10px] text-muted-foreground">
+          {unit}
+        </span>
       </span>
     </div>
+  );
+}
+
+function AnimatedValue({
+  value,
+  format,
+  className,
+}: {
+  value: number;
+  format: (value: number) => string;
+  className?: string;
+}) {
+  const reducedMotion = Boolean(useReducedMotion());
+
+  return (
+    <span
+      className={cn(
+        'relative inline-grid overflow-hidden tabular-nums',
+        className,
+      )}
+    >
+      <AnimatePresence initial={false} mode="popLayout">
+        <motion.span
+          key={value}
+          className="col-start-1 row-start-1"
+          initial={
+            reducedMotion
+              ? false
+              : { opacity: 0, y: 12, filter: 'blur(5px)' }
+          }
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          exit={
+            reducedMotion
+              ? { opacity: 0 }
+              : { opacity: 0, y: -12, filter: 'blur(5px)' }
+          }
+          transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+        >
+          {format(value)}
+        </motion.span>
+      </AnimatePresence>
+    </span>
   );
 }
