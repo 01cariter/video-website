@@ -13,7 +13,7 @@ import {
   writeCustomTabs,
 } from '@/lib/feed-tabs';
 import { useShellSearch } from '../shell/AppShell';
-import { PUBLISHED_EVENT } from '../shell/compose-events';
+import { POST_DELETED_EVENT, PUBLISHED_EVENT } from '../shell/compose-events';
 import AuthModal from '../AuthModal';
 import FeedTabs, { type HomeTabId } from './FeedTabs';
 import TimelineFeed from './TimelineFeed';
@@ -91,6 +91,22 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
     }
     window.addEventListener(PUBLISHED_EVENT, handlePublished);
     return () => window.removeEventListener(PUBLISHED_EVENT, handlePublished);
+  }, []);
+
+  useEffect(() => {
+    function handleDeleted(event: Event) {
+      const id = (event as CustomEvent<number | undefined>).detail;
+      if (typeof id !== 'number' || !Number.isInteger(id)) return;
+      setVideos((items) => items.filter((item) => item.id !== id));
+      for (const [key, page] of feedCache.current) {
+        feedCache.current.set(key, {
+          ...page,
+          videos: page.videos.filter((item) => item.id !== id),
+        });
+      }
+    }
+    window.addEventListener(POST_DELETED_EVENT, handleDeleted);
+    return () => window.removeEventListener(POST_DELETED_EVENT, handleDeleted);
   }, []);
 
   // Non-For-You deep links remount with empty state; load the first page once.
@@ -207,6 +223,12 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
     } catch {
       // Native share sheets reject when the user cancels — nothing to do.
     }
+  }
+
+  async function deletePost(video: Video) {
+    const response = await fetch(`/api/videos/${video.id}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Post deletion failed.');
+    window.dispatchEvent(new CustomEvent(POST_DELETED_EVENT, { detail: video.id }));
   }
 
   const fetchFeedPage = useCallback(async (feedTab: HomeTabId, cursor: string | null): Promise<FeedPage> => {
@@ -328,6 +350,7 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
         onLike={(video) => void like(video)}
         onSave={(video) => void save(video)}
         onShare={(video) => void share(video)}
+        onDelete={deletePost}
         onNeedAuth={needAuth}
       />
 

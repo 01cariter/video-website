@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { AnimatePresence } from 'motion/react';
 import type { AppUser, Comment, SocialToggle, Video } from '@/lib/types';
 import AuthModal from '@/app/components/AuthModal';
 import PostDetail from '@/app/components/feed/PostDetail';
 import PostDetailSkeleton from '@/app/components/feed/PostDetailSkeleton';
+import { POST_DELETED_EVENT } from '@/app/components/shell/compose-events';
 
 interface VideoPageClientProps {
   user: AppUser | null;
@@ -30,6 +32,7 @@ interface CommentResponse {
 }
 
 export default function VideoPageClient({ user, videoId }: VideoPageClientProps) {
+  const router = useRouter();
   const [video, setVideo] = useState<Video | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(true);
@@ -264,6 +267,36 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
     }
   }
 
+  async function deletePost() {
+    if (!video) return;
+    const response = await fetch(`/api/videos/${video.id}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Post deletion failed.');
+    window.dispatchEvent(
+      new CustomEvent(POST_DELETED_EVENT, { detail: video.id }),
+    );
+    const profilePath = user?.handle
+      ? `/u/${encodeURIComponent(user.handle.replace(/^@+/, ''))}`
+      : '/';
+    router.replace(profilePath);
+    router.refresh();
+  }
+
+  async function deleteComment(comment: Comment) {
+    if (!video) return;
+    const response = await fetch(
+      `/api/videos/${video.id}/comments/${comment.id}`,
+      { method: 'DELETE' },
+    );
+    if (!response.ok) throw new Error('Comment deletion failed.');
+    const result = (await response.json()) as { comments_count: number };
+    setComments((items) => items.filter((item) => item.id !== comment.id));
+    setVideo((current) =>
+      current
+        ? { ...current, comments_count: result.comments_count }
+        : current,
+    );
+  }
+
   if (!video) {
     if (missing) {
       return (
@@ -292,6 +325,8 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
         onSave={() => void save()}
         onFollow={() => void follow()}
         onShare={() => void share()}
+        onDeletePost={deletePost}
+        onDeleteComment={deleteComment}
         onDraftChange={setDraft}
         onComment={postComment}
         onRetryComments={() => void retryComments()}

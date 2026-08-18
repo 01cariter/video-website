@@ -4,3 +4,4 @@
 // cross those boundaries via window events instead of prop drilling.
 export const OPEN_COMPOSE_EVENT = 'snackd:open-compose';
 export const PUBLISHED_EVENT = 'snackd:published';
+export const POST_DELETED_EVENT = 'snackd:post-deleted';

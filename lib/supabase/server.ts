@@ -44,3 +44,12 @@ export const getAuthUser = cache(async () => {
   if (error) return null;
   return data.session?.user ?? null;
 });
+
+// Mutations that remove user data must verify the cookie-backed session with
+// Supabase Auth instead of trusting the locally decoded session payload.
+export const getVerifiedAuthUser = cache(async () => {
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.getUser();
+  if (error) return null;
+  return data.user ?? null;
+});

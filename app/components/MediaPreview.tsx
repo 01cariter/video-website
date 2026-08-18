@@ -22,6 +22,7 @@ import {
 import type { AppUser, Comment, Video, VideoAsset } from '@/lib/types';
 import { postHeadline } from '@/lib/post-text';
 import { bg, fmtDate, fmtLikes, initials, profileHref } from './media';
+import DeleteMenu from './feed/DeleteMenu';
 
 interface MediaPreviewProps {
   video: Video;
@@ -41,6 +42,8 @@ interface MediaPreviewProps {
   onSave: (video: Video) => void;
   onFollow: (video: Video) => void;
   onShare: (video: Video) => void;
+  onDeletePost: (video: Video) => Promise<void>;
+  onDeleteComment: (comment: Comment) => Promise<void>;
   onDraftChange: (value: string) => void;
   onComment: (event: FormEvent<HTMLFormElement>) => void;
   onRetryComments: () => void;
@@ -250,6 +253,8 @@ export default function MediaPreview({
   onSave,
   onFollow,
   onShare,
+  onDeletePost,
+  onDeleteComment,
   onDraftChange,
   onComment,
   onRetryComments,
@@ -367,6 +372,13 @@ export default function MediaPreview({
                   <Share2 aria-hidden="true" />
                   <span>{shared ? 'Copied' : 'Share'}</span>
                 </button>
+                {user?.id === video.author_id && (
+                  <DeleteMenu
+                    itemLabel="post"
+                    className="pv-post-menu"
+                    onDelete={() => onDeletePost(video)}
+                  />
+                )}
               </section>
 
               <section className="pv-comments">
@@ -411,6 +423,13 @@ export default function MediaPreview({
                         <b>{comment.author_name} <small>{timeAgo(comment.created_at)}</small></b>
                         <p>{comment.body}</p>
                       </div>
+                      {user?.id === comment.user_id && (
+                        <DeleteMenu
+                          itemLabel="comment"
+                          className="citem-menu"
+                          onDelete={() => onDeleteComment(comment)}
+                        />
+                      )}
                     </article>
                   ))}
                 </div>

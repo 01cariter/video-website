@@ -1,7 +1,12 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getCurrentUser } from '@/lib/user';
-import { getProfileByHandle, getSavedVideos, getVideosByAuthor } from '@/lib/profiles';
+import {
+  getProfileByHandle,
+  getProfileFollowers,
+  getSavedVideos,
+  getVideosByAuthor,
+} from '@/lib/profiles';
 import ProfileClient from './ProfileClient';
 
 export const dynamic = 'force-dynamic';
@@ -37,9 +42,10 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
   if (!profile) notFound();
 
   const isOwner = user?.id === profile.user_id;
-  const [posts, saved] = await Promise.all([
+  const [posts, saved, followers] = await Promise.all([
     getVideosByAuthor({ authorId: profile.user_id, viewerId: user?.id ?? null }),
     isOwner ? getSavedVideos({ userId: profile.user_id }) : Promise.resolve([]),
+    getProfileFollowers({ authorId: profile.user_id, viewerId: user?.id ?? null }),
   ]);
 
   return (
@@ -48,6 +54,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
       profile={profile}
       posts={posts}
       saved={saved}
+      followers={followers}
       isOwner={isOwner}
     />
   );

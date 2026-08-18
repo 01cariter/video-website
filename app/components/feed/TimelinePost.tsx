@@ -9,6 +9,7 @@ import type { AppUser, Video } from '@/lib/types';
 import { postHeadline } from '@/lib/post-text';
 import { fmtLikes, fmtRelativeTime, initials, profileHref } from '../media';
 import { useMediaPreview } from '../shell/MediaPreviewContext';
+import DeleteMenu from './DeleteMenu';
 import MediaCarousel from './MediaCarousel';
 
 export interface TimelinePostProps {
@@ -18,6 +19,7 @@ export interface TimelinePostProps {
   onLike: (video: Video) => void;
   onSave: (video: Video) => void;
   onShare: (video: Video) => void;
+  onDelete?: (video: Video) => Promise<void>;
   onNeedAuth: () => void;
 }
 
@@ -28,6 +30,7 @@ export default function TimelinePost({
   onLike,
   onSave,
   onShare,
+  onDelete,
   onNeedAuth,
 }: TimelinePostProps) {
   const router = useRouter();
@@ -136,6 +139,13 @@ export default function TimelinePost({
           <button type="button" onClick={() => onShare(video)} aria-label={`Share ${headline}`}>
             <Share2 aria-hidden="true" />
           </button>
+          {user?.id === video.author_id && onDelete && (
+            <DeleteMenu
+              itemLabel="post"
+              className="t-post-menu"
+              onDelete={() => onDelete(video)}
+            />
+          )}
         </div>
       </div>
     </article>

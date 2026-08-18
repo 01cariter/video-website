@@ -19,6 +19,7 @@ export interface TimelineFeedProps {
   onLike: (video: Video) => void;
   onSave: (video: Video) => void;
   onShare: (video: Video) => void;
+  onDelete?: (video: Video) => Promise<void>;
   onNeedAuth: () => void;
 }
 
@@ -35,6 +36,7 @@ export default function TimelineFeed({
   onLike,
   onSave,
   onShare,
+  onDelete,
   onNeedAuth,
 }: TimelineFeedProps) {
   const loadMoreTarget = useRef<HTMLDivElement>(null);
@@ -67,6 +69,7 @@ export default function TimelineFeed({
           onLike={onLike}
           onSave={onSave}
           onShare={onShare}
+          onDelete={onDelete}
           onNeedAuth={onNeedAuth}
         />
       ))}

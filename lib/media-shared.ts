@@ -58,3 +58,15 @@ export function isOwnedStoragePath(path: string, ownerId: string) {
     !segments[1].includes('..')
   );
 }
+
+export function storagePathFromPublicUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    const marker = `/storage/v1/object/public/${MEDIA_BUCKET}/`;
+    const index = parsed.pathname.indexOf(marker);
+    if (index === -1) return null;
+    return decodeURIComponent(parsed.pathname.slice(index + marker.length));
+  } catch {
+    return null;
+  }
+}

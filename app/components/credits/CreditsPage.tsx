@@ -766,10 +766,16 @@ function AnimatedValue({
 
   return (
     <span
-      className={cn('inline-flex items-baseline whitespace-nowrap tabular-nums', className)}
+      className={cn(
+        'relative inline-block whitespace-nowrap tabular-nums',
+        className,
+      )}
       aria-label={formattedValue}
     >
-      <span className="inline-flex items-baseline" aria-hidden>
+      <span className="invisible" aria-hidden>
+        {formattedValue}
+      </span>
+      <span className="absolute inset-0 inline-flex items-baseline" aria-hidden>
         {characters.map((item) =>
           item.digit === null ? (
             <span key={item.key}>{item.character}</span>
@@ -800,11 +806,11 @@ function RollingDigit({
   reducedMotion: boolean;
 }) {
   if (reducedMotion) {
-    return <span className="inline-block w-[0.56em] text-center">{digit}</span>;
+    return <span className="inline-block w-[1ch] text-center">{digit}</span>;
   }
 
   return (
-    <span className="relative -my-[0.14em] inline-block h-[1.28em] w-[0.56em] overflow-hidden py-[0.14em] align-middle">
+    <span className="relative inline-block h-[1em] w-[1ch] self-baseline overflow-hidden">
       <AnimatePresence initial={false} custom={direction}>
         <motion.span
           key={digit}
@@ -818,7 +824,7 @@ function RollingDigit({
             delay: Math.min(place * 0.025, 0.1),
             ease: [0.16, 1, 0.3, 1],
           }}
-          className="absolute inset-x-0 top-[0.14em] flex h-[1em] items-center justify-center leading-none"
+          className="absolute inset-0 flex items-center justify-center leading-none"
         >
           {digit}
         </motion.span>
@@ -829,7 +835,7 @@ function RollingDigit({
 
 const ROLLING_DIGIT_VARIANTS = {
   enter: (direction: 1 | -1) => ({
-    y: direction > 0 ? '112%' : '-112%',
+    y: direction > 0 ? '105%' : '-105%',
     opacity: 0,
   }),
   center: {
@@ -837,7 +843,7 @@ const ROLLING_DIGIT_VARIANTS = {
     opacity: 1,
   },
   exit: (direction: 1 | -1) => ({
-    y: direction > 0 ? '-112%' : '112%',
+    y: direction > 0 ? '-105%' : '105%',
     opacity: 0,
   }),
 };

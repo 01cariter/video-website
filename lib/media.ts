@@ -10,6 +10,7 @@ import {
   extensionFor,
   isOwnedStoragePath,
   kindFromMime,
+  storagePathFromPublicUrl,
 } from './media-shared';
 import type { Media, MediaKind } from './types';
 
@@ -187,4 +188,26 @@ export async function listMedia({
     SELECT id, kind, mime, url, width, height, duration_seconds, created_at
     FROM media ORDER BY id DESC LIMIT ${limit}
   `;
+}
+
+export async function removeOwnedStorageMedia({
+  urls,
+  ownerId,
+}: {
+  urls: string[];
+  ownerId: string;
+}) {
+  const paths = [
+    ...new Set(
+      urls
+        .map(storagePathFromPublicUrl)
+        .filter((path): path is string => Boolean(path))
+        .filter((path) => isOwnedStoragePath(path, ownerId)),
+    ),
+  ];
+  if (paths.length === 0) return;
+
+  const supabase = await createSupabaseClient();
+  const { error } = await supabase.storage.from(MEDIA_BUCKET).remove(paths);
+  if (error) throw new Error(error.message);
 }

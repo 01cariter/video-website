@@ -13,6 +13,7 @@ import type { FormEvent, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { AppUser, Comment, SocialToggle, Video } from '@/lib/types';
 import MediaPreview from '../MediaPreview';
+import { POST_DELETED_EVENT } from './compose-events';
 
 interface OpenPreviewOptions {
   video: Video;
@@ -50,6 +51,7 @@ interface CommentResponse {
 
 export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPreviewProviderProps) {
   const [playlist, setPlaylist] = useState<Video[]>([]);
+  const playlistRef = useRef<Video[]>([]);
   const [index, setIndex] = useState(0);
   const [direction, setDirection] = useState(0);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -90,6 +92,24 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
   const patchVideo = useCallback((id: number, patch: Partial<Video>) => {
     setPlaylist((items) => items.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   }, []);
+
+  const removeDeletedVideo = useCallback((id: number) => {
+    const next = playlistRef.current.filter((item) => item.id !== id);
+    playlistRef.current = next;
+    setPlaylist(next);
+    setIndex((current) => Math.max(0, Math.min(current, next.length - 1)));
+    commentsCache.current.delete(id);
+  }, []);
+
+  useEffect(() => {
+    function handleDeleted(event: Event) {
+      const id = (event as CustomEvent<number | undefined>).detail;
+      if (typeof id !== 'number' || !Number.isInteger(id)) return;
+      removeDeletedVideo(id);
+    }
+    window.addEventListener(POST_DELETED_EVENT, handleDeleted);
+    return () => window.removeEventListener(POST_DELETED_EVENT, handleDeleted);
+  }, [removeDeletedVideo]);
 
   async function act<T>(url: string, body?: object): Promise<T | null> {
     const response = await fetch(url, {
@@ -156,7 +176,6 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
     };
   }, [open]);
 
-  const playlistRef = useRef(playlist);
   useEffect(() => {
     playlistRef.current = playlist;
   }, [playlist]);
@@ -323,6 +342,30 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
     }
   }
 
+  async function deletePost(target: Video) {
+    const response = await fetch(`/api/videos/${target.id}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error('Post deletion failed.');
+    window.dispatchEvent(
+      new CustomEvent(POST_DELETED_EVENT, { detail: target.id }),
+    );
+  }
+
+  async function deleteComment(comment: Comment) {
+    if (!video) return;
+    const response = await fetch(
+      `/api/videos/${video.id}/comments/${comment.id}`,
+      { method: 'DELETE' },
+    );
+    if (!response.ok) throw new Error('Comment deletion failed.');
+    const data = (await response.json()) as { comments_count: number };
+    const next = comments.filter((item) => item.id !== comment.id);
+    setComments(next);
+    commentsCache.current.set(video.id, next);
+    patchVideo(video.id, { comments_count: data.comments_count });
+  }
+
   const value = useMemo(() => ({ openPreview, closePreview }), [closePreview, openPreview]);
 
   return (
@@ -356,6 +399,8 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
               onSave={(item) => void save(item)}
               onFollow={(item) => void follow(item)}
               onShare={(item) => void share(item)}
+              onDeletePost={deletePost}
+              onDeleteComment={deleteComment}
               onDraftChange={setDraft}
               onComment={(event) => void postComment(event)}
               onRetryComments={() => void loadComments(video.id)}

@@ -79,6 +79,17 @@ export interface Profile {
   following: boolean;
 }
 
+export interface ProfileSummary {
+  user_id: string;
+  handle: string | null;
+  display_name: string;
+  bio: string | null;
+  avatar_color: string;
+  followers_count: number;
+  posts_count: number;
+  following: boolean;
+}
+
 export interface Comment {
   id: number;
   body: string;

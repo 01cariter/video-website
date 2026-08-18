@@ -7,6 +7,7 @@ import { ArrowLeft, Bookmark, Heart, MessageCircle, Share2 } from 'lucide-react'
 import type { AppUser, Comment, Video } from '@/lib/types';
 import { fmtDate, fmtLikes, fmtRelativeTime, initials, profileHref } from '../media';
 import { useMediaPreview } from '../shell/MediaPreviewContext';
+import DeleteMenu from './DeleteMenu';
 import MediaCarousel from './MediaCarousel';
 
 interface PostDetailProps {
@@ -22,6 +23,8 @@ interface PostDetailProps {
   onSave: () => void;
   onFollow: () => void;
   onShare: () => void;
+  onDeletePost: () => Promise<void>;
+  onDeleteComment: (comment: Comment) => Promise<void>;
   onDraftChange: (value: string) => void;
   onComment: (event: FormEvent<HTMLFormElement>) => void;
   onRetryComments: () => void;
@@ -41,6 +44,8 @@ export default function PostDetail({
   onSave,
   onFollow,
   onShare,
+  onDeletePost,
+  onDeleteComment,
   onDraftChange,
   onComment,
   onRetryComments,
@@ -146,6 +151,13 @@ export default function PostDetail({
           <Share2 aria-hidden="true" />
           <span>{shared ? 'Copied' : 'Share'}</span>
         </button>
+        {isOwner && (
+          <DeleteMenu
+            itemLabel="post"
+            className="pd-post-menu"
+            onDelete={onDeletePost}
+          />
+        )}
       </div>
 
       <section className="pd-comments" aria-label="Comments">
@@ -194,7 +206,7 @@ export default function PostDetail({
               <span className="t-av" style={{ background: comment.author_color }}>
                 {initials(comment.author_name)}
               </span>
-              <div>
+              <div className="pd-comment-body">
                 <header>
                   <b>{comment.author_name}</b>
                   {comment.author_handle && <span className="t-handle">{comment.author_handle}</span>}
@@ -202,6 +214,13 @@ export default function PostDetail({
                 </header>
                 <p>{comment.body}</p>
               </div>
+              {user?.id === comment.user_id && (
+                <DeleteMenu
+                  itemLabel="comment"
+                  className="pd-comment-menu"
+                  onDelete={() => onDeleteComment(comment)}
+                />
+              )}
             </li>
           ))}
         </ul>

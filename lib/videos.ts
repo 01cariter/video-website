@@ -484,6 +484,67 @@ export async function createVideo({
   return video;
 }
 
+interface DeletedMediaRow extends Record<string, unknown> {
+  id: number;
+  url: string | null;
+}
+
+export async function deleteVideo({
+  userId,
+  videoId,
+}: {
+  userId: string;
+  videoId: number;
+}): Promise<{ storageUrls: string[] } | null> {
+  const media = await sql<DeletedMediaRow[]>`
+    SELECT DISTINCT m.id, m.url
+    FROM videos v
+    JOIN media m ON (
+      m.id = v.poster_media_id
+      OR m.id = v.video_media_id
+      OR EXISTS (
+        SELECT 1 FROM video_assets va
+        WHERE va.video_id = v.id AND va.media_id = m.id
+      )
+    )
+    WHERE v.id = ${videoId}
+      AND v.author_id = ${userId}
+      AND m.owner_id = ${userId}
+  `;
+
+  const [deleted] = await sql<Array<{ id: number }>>`
+    DELETE FROM videos
+    WHERE id = ${videoId} AND author_id = ${userId}
+    RETURNING id
+  `;
+  if (!deleted) return null;
+
+  const mediaIds = media.map((item) => item.id);
+  const removedMedia =
+    mediaIds.length > 0
+      ? await sql<DeletedMediaRow[]>`
+          DELETE FROM media m
+          WHERE m.id = ANY(${mediaIds}::integer[])
+            AND m.owner_id = ${userId}
+            AND NOT EXISTS (
+              SELECT 1 FROM video_assets va WHERE va.media_id = m.id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM videos remaining
+              WHERE remaining.poster_media_id = m.id OR remaining.video_media_id = m.id
+            )
+          RETURNING m.id, m.url
+        `
+      : [];
+
+  revalidateTag('videos-feed', 'max');
+  return {
+    storageUrls: removedMedia
+      .map((item) => item.url)
+      .filter((url): url is string => Boolean(url)),
+  };
+}
+
 // `views_count` was displayed and fed the ranking but nothing ever incremented
 // it, so every post read 0 views forever. One view is one open of the player.
 // The direct connection owns the table, so this needs no migration and no
@@ -645,4 +706,34 @@ export async function addComment({
     comment: { ...row, ...author },
     comments_count: row.comments_count,
   };
+}
+
+export async function deleteComment({
+  userId,
+  videoId,
+  commentId,
+}: {
+  userId: string;
+  videoId: number;
+  commentId: number;
+}): Promise<{ comments_count: number } | null> {
+  const [deleted] = await sql<Array<{ id: number }>>`
+    DELETE FROM comments
+    WHERE id = ${commentId}
+      AND video_id = ${videoId}
+      AND user_id = ${userId}
+    RETURNING id
+  `;
+  if (!deleted) return null;
+
+  const [counted] = await sql<Array<{ comments_count: number }>>`
+    UPDATE videos SET comments_count = (
+      SELECT COUNT(*) FROM comments WHERE video_id = ${videoId}
+    )
+    WHERE id = ${videoId}
+    RETURNING comments_count
+  `;
+
+  revalidateTag('videos-feed', 'max');
+  return { comments_count: Number(counted?.comments_count ?? 0) };
 }

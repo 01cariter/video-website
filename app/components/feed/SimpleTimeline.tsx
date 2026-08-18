@@ -1,10 +1,12 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
-import type { AppUser, FeedPage, SocialToggle, Video } from '@/lib/types';
+import type { AppUser, FeedPage, ProfileSummary, SocialToggle, Video } from '@/lib/types';
 import { useShellSearch } from '../shell/AppShell';
+import { POST_DELETED_EVENT } from '../shell/compose-events';
 import AuthModal from '../AuthModal';
+import FollowingCreators from './FollowingCreators';
 import TimelineFeed from './TimelineFeed';
 
 export type SimpleTimelineSource = 'following' | 'bookmarks';
@@ -14,6 +16,7 @@ interface SimpleTimelineProps {
   source: SimpleTimelineSource;
   initialVideos: Video[];
   initialNextCursor?: string | null;
+  initialAuthors?: ProfileSummary[];
 }
 
 const NEXT_PATH: Record<SimpleTimelineSource, string> = {
@@ -21,10 +24,16 @@ const NEXT_PATH: Record<SimpleTimelineSource, string> = {
   bookmarks: '/bookmarks',
 };
 
-function defaultEmptyMessage(source: SimpleTimelineSource, user: AppUser | null): string {
+function defaultEmptyMessage(
+  source: SimpleTimelineSource,
+  user: AppUser | null,
+  followingCount: number,
+): string {
   if (source === 'bookmarks') return 'You have not bookmarked anything yet.';
   return user
-    ? 'You are not following anyone yet.'
+    ? followingCount > 0
+      ? 'The people you follow have not posted yet.'
+      : 'Follow creators to see their posts here.'
     : 'Sign in to see posts from people you follow.';
 }
 
@@ -34,7 +43,13 @@ function followingQuery(cursor: string | null): string {
   return `/api/videos?${search.toString()}`;
 }
 
-export default function SimpleTimeline({ user, source, initialVideos, initialNextCursor = null }: SimpleTimelineProps) {
+export default function SimpleTimeline({
+  user,
+  source,
+  initialVideos,
+  initialNextCursor = null,
+  initialAuthors = [],
+}: SimpleTimelineProps) {
   const { query } = useShellSearch();
   const [videos, setVideos] = useState(initialVideos);
   const [nextCursor, setNextCursor] = useState(source === 'following' ? initialNextCursor : null);
@@ -51,6 +66,16 @@ export default function SimpleTimeline({ user, source, initialVideos, initialNex
 
   const patchVideo = useCallback((id: number, patch: Partial<Video>) => {
     setVideos((items) => items.map((video) => (video.id === id ? { ...video, ...patch } : video)));
+  }, []);
+
+  useEffect(() => {
+    function handleDeleted(event: Event) {
+      const id = (event as CustomEvent<number | undefined>).detail;
+      if (typeof id !== 'number' || !Number.isInteger(id)) return;
+      setVideos((items) => items.filter((item) => item.id !== id));
+    }
+    window.addEventListener(POST_DELETED_EVENT, handleDeleted);
+    return () => window.removeEventListener(POST_DELETED_EVENT, handleDeleted);
   }, []);
 
   const act = useCallback(async <T,>(url: string): Promise<T | null> => {
@@ -167,6 +192,12 @@ export default function SimpleTimeline({ user, source, initialVideos, initialNex
     }
   }
 
+  async function deletePost(video: Video) {
+    const response = await fetch(`/api/videos/${video.id}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Post deletion failed.');
+    window.dispatchEvent(new CustomEvent(POST_DELETED_EVENT, { detail: video.id }));
+  }
+
   const fetchFollowingPage = useCallback(async (cursor: string | null): Promise<FeedPage> => {
     const response = await fetch(followingQuery(cursor));
     if (!response.ok) throw new Error('Feed request failed.');
@@ -254,10 +285,17 @@ export default function SimpleTimeline({ user, source, initialVideos, initialNex
 
   const emptyMessage = query.trim()
     ? `No posts match “${query.trim()}”.`
-    : defaultEmptyMessage(source, user);
+    : defaultEmptyMessage(source, user, initialAuthors.length);
 
   return (
     <div className="t-home">
+      {source === 'following' && <FollowingCreators authors={initialAuthors} />}
+      {source === 'following' && initialAuthors.length > 0 && (
+        <header className="fg-feed-head">
+          <span>Latest posts</span>
+          <small>From people in your circle</small>
+        </header>
+      )}
       <TimelineFeed
         videos={list}
         user={user}
@@ -271,6 +309,7 @@ export default function SimpleTimeline({ user, source, initialVideos, initialNex
         onLike={(video) => void like(video)}
         onSave={(video) => void save(video)}
         onShare={(video) => void share(video)}
+        onDelete={deletePost}
         onNeedAuth={needAuth}
       />
 

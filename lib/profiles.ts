@@ -2,7 +2,7 @@ import 'server-only';
 
 import { sql } from './db';
 import { levelFromXp } from './levels';
-import type { Profile, Video } from './types';
+import type { Profile, ProfileSummary, Video } from './types';
 import { attachVideoAssets } from './videos';
 
 // The feed projection, reused by every profile listing. `$1` is the viewer id
@@ -60,7 +60,7 @@ export async function getProfileByHandle({
       COALESCE(p.display_name, 'Creator') AS display_name,
       p.bio,
       p.avatar_color,
-      p.followers_count,
+      (SELECT COUNT(*) FROM follows f WHERE f.author_id = p.user_id)::integer AS followers_count,
       (SELECT COUNT(*) FROM videos v WHERE v.author_id = p.user_id)::integer AS posts_count,
       (SELECT COALESCE(SUM(v.likes_count), 0) FROM videos v WHERE v.author_id = p.user_id)::integer
         AS total_likes,
@@ -106,6 +106,66 @@ export async function getSavedVideos({
     [userId, userId],
   );
   return attachVideoAssets(rows.map((row) => ({ ...row, assets: row.assets ?? [] })));
+}
+
+export async function getProfileFollowers({
+  authorId,
+  viewerId = null,
+  limit = 120,
+}: {
+  authorId: string;
+  viewerId?: string | null;
+  limit?: number;
+}): Promise<ProfileSummary[]> {
+  return sql<ProfileSummary[]>`
+    SELECT
+      p.user_id,
+      p.handle,
+      COALESCE(p.display_name, 'Creator') AS display_name,
+      p.bio,
+      p.avatar_color,
+      (SELECT COUNT(*) FROM follows own_followers WHERE own_followers.author_id = p.user_id)::integer
+        AS followers_count,
+      (SELECT COUNT(*) FROM videos own_posts WHERE own_posts.author_id = p.user_id)::integer
+        AS posts_count,
+      CASE WHEN ${viewerId}::text IS NULL THEN false ELSE EXISTS (
+        SELECT 1 FROM follows viewer_follow
+        WHERE viewer_follow.author_id = p.user_id
+          AND viewer_follow.follower_id = ${viewerId}::text
+      ) END AS following
+    FROM follows profile_follow
+    JOIN profiles p ON p.user_id = profile_follow.follower_id
+    WHERE profile_follow.author_id = ${authorId}
+    ORDER BY profile_follow.created_at DESC, p.user_id
+    LIMIT ${pageSize(limit)}
+  `;
+}
+
+export async function getFollowingAuthors({
+  userId,
+  limit = 120,
+}: {
+  userId: string;
+  limit?: number;
+}): Promise<ProfileSummary[]> {
+  return sql<ProfileSummary[]>`
+    SELECT
+      p.user_id,
+      p.handle,
+      COALESCE(p.display_name, 'Creator') AS display_name,
+      p.bio,
+      p.avatar_color,
+      (SELECT COUNT(*) FROM follows own_followers WHERE own_followers.author_id = p.user_id)::integer
+        AS followers_count,
+      (SELECT COUNT(*) FROM videos own_posts WHERE own_posts.author_id = p.user_id)::integer
+        AS posts_count,
+      true AS following
+    FROM follows viewer_follow
+    JOIN profiles p ON p.user_id = viewer_follow.author_id
+    WHERE viewer_follow.follower_id = ${userId}
+    ORDER BY viewer_follow.created_at DESC, p.user_id
+    LIMIT ${pageSize(limit)}
+  `;
 }
 
 export interface SuggestedAuthor {
