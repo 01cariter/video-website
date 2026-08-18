@@ -751,34 +751,124 @@ function AnimatedValue({
   className?: string;
 }) {
   const reducedMotion = Boolean(useReducedMotion());
+  const [motionState, setMotionState] = useState<{
+    value: number;
+    direction: 1 | -1;
+  }>({ value, direction: 1 });
+  if (motionState.value !== value) {
+    setMotionState({
+      value,
+      direction: value > motionState.value ? 1 : -1,
+    });
+  }
+  const formattedValue = format(motionState.value);
+  const characters = rollingCharacters(formattedValue);
 
   return (
     <span
-      className={cn(
-        'relative inline-grid overflow-hidden tabular-nums',
-        className,
-      )}
+      className={cn('inline-flex items-baseline whitespace-nowrap tabular-nums', className)}
+      aria-label={formattedValue}
     >
-      <AnimatePresence initial={false} mode="popLayout">
+      <span className="inline-flex items-baseline" aria-hidden>
+        {characters.map((item) =>
+          item.digit === null ? (
+            <span key={item.key}>{item.character}</span>
+          ) : (
+            <RollingDigit
+              key={item.key}
+              digit={item.digit}
+              direction={motionState.direction}
+              place={item.place}
+              reducedMotion={reducedMotion}
+            />
+          ),
+        )}
+      </span>
+    </span>
+  );
+}
+
+function RollingDigit({
+  digit,
+  direction,
+  place,
+  reducedMotion,
+}: {
+  digit: number;
+  direction: 1 | -1;
+  place: number;
+  reducedMotion: boolean;
+}) {
+  if (reducedMotion) {
+    return <span className="inline-block w-[0.56em] text-center">{digit}</span>;
+  }
+
+  return (
+    <span className="relative -my-[0.14em] inline-block h-[1.28em] w-[0.56em] overflow-hidden py-[0.14em] align-middle">
+      <AnimatePresence initial={false} custom={direction}>
         <motion.span
-          key={value}
-          className="col-start-1 row-start-1"
-          initial={
-            reducedMotion
-              ? false
-              : { opacity: 0, y: 12, filter: 'blur(5px)' }
-          }
-          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-          exit={
-            reducedMotion
-              ? { opacity: 0 }
-              : { opacity: 0, y: -12, filter: 'blur(5px)' }
-          }
-          transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+          key={digit}
+          custom={direction}
+          variants={ROLLING_DIGIT_VARIANTS}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={{
+            duration: 0.34,
+            delay: Math.min(place * 0.025, 0.1),
+            ease: [0.16, 1, 0.3, 1],
+          }}
+          className="absolute inset-x-0 top-[0.14em] flex h-[1em] items-center justify-center leading-none"
         >
-          {format(value)}
+          {digit}
         </motion.span>
       </AnimatePresence>
     </span>
   );
+}
+
+const ROLLING_DIGIT_VARIANTS = {
+  enter: (direction: 1 | -1) => ({
+    y: direction > 0 ? '112%' : '-112%',
+    opacity: 0,
+  }),
+  center: {
+    y: '0%',
+    opacity: 1,
+  },
+  exit: (direction: 1 | -1) => ({
+    y: direction > 0 ? '-112%' : '112%',
+    opacity: 0,
+  }),
+};
+
+function rollingCharacters(value: string) {
+  let place = 0;
+  let symbol = 0;
+
+  return Array.from(value)
+    .reverse()
+    .map((character) => {
+      const digit =
+        character >= '0' && character <= '9' ? Number(character) : null;
+      if (digit !== null) {
+        const item = {
+          key: `digit-${place}`,
+          character,
+          digit,
+          place,
+        };
+        place += 1;
+        return item;
+      }
+      const item = {
+        key: `symbol-${place}-${symbol}-${character}`,
+        character,
+        digit: null,
+        place,
+      };
+      symbol += 1;
+      return item;
+    })
+    .reverse();
 }
