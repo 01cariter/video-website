@@ -10,6 +10,7 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Separator } from '@/app/components/ui/separator';
 import { cn } from '@/lib/utils';
+import StudioCreditPill from './StudioCreditPill';
 
 interface StudioHeaderProps {
   title: string;
@@ -23,7 +24,7 @@ export default function StudioHeader({ title, onTitleChange, agentOpen, onToggle
   const reduceMotion = Boolean(useReducedMotion());
 
   return (
-    <header className="flex h-9 items-center justify-between gap-2 border-b border-border/50 bg-card/75 px-2 backdrop-blur-xl">
+    <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-2">
       <div className="flex min-w-0 items-center gap-0.5">
         <Button asChild variant="ghost" size="icon-xs" aria-label="返回 CreatorStudio">
           <Link href="/studio">
@@ -36,13 +37,14 @@ export default function StudioHeader({ title, onTitleChange, agentOpen, onToggle
         </Link>
         <Separator className="mx-1 h-3.5" orientation="vertical" />
         <Input
-          className="h-6 w-auto max-w-64 min-w-28 border-0 bg-transparent px-1 text-[13px] font-medium shadow-none focus-visible:border-0 focus-visible:ring-0"
+          className="h-7 w-auto max-w-64 min-w-28 border-0 bg-transparent px-1 text-[13px] font-medium shadow-none focus-visible:border-0 focus-visible:ring-0"
           value={title}
           onChange={(event) => onTitleChange(event.target.value)}
           aria-label="项目名称"
         />
       </div>
       <div className="flex items-center gap-1">
+        <StudioCreditPill />
         <Button
           type="button"
           variant="ghost"
@@ -68,9 +70,13 @@ export default function StudioHeader({ title, onTitleChange, agentOpen, onToggle
         </Button>
         <Button
           type="button"
-          variant={agentOpen ? 'secondary' : 'ghost'}
+          variant="ghost"
           size="xs"
-          className={cn(agentOpen && 'bg-accent text-accent-foreground')}
+          className={cn(
+            'rounded-md',
+            agentOpen &&
+              '!bg-primary !text-primary-foreground hover:!bg-primary/90 hover:!text-primary-foreground',
+          )}
           onClick={onToggleAgent}
         >
           <PanelRight />

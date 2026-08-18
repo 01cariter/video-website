@@ -14,6 +14,13 @@
 -- ============================================================================
 
 -- Drop in dependency order so the script is re-runnable.
+DROP TABLE IF EXISTS billing_events CASCADE;
+DROP TABLE IF EXISTS ai_generation_requests CASCADE;
+DROP TABLE IF EXISTS credit_ledger CASCADE;
+DROP TABLE IF EXISTS credit_orders CASCADE;
+DROP TABLE IF EXISTS credit_packages CASCADE;
+DROP TABLE IF EXISTS credit_accounts CASCADE;
+DROP TABLE IF EXISTS studio_projects CASCADE;
 DROP TABLE IF EXISTS comments     CASCADE;
 DROP TABLE IF EXISTS agent_messages CASCADE;
 DROP TABLE IF EXISTS video_saves  CASCADE;

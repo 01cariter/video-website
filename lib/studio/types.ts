@@ -1,7 +1,7 @@
-import type { Edge, Node, Viewport } from '@xyflow/react';
 import type { UIMessage } from 'ai';
 
-export type StudioNodeKind = 'image' | 'video' | 'text';
+export type StudioNodeKind = 'image' | 'video' | 'text' | 'section';
+export type StudioGenerativeKind = Exclude<StudioNodeKind, 'section'>;
 export type StudioGenStatus = 'idle' | 'generating' | 'ready' | 'error';
 
 export interface StudioNodeData {
@@ -10,6 +10,7 @@ export interface StudioNodeData {
   prompt: string;
   status: StudioGenStatus;
   aspect: string;
+  modelId?: string;
   n?: number;
   duration?: number;
   videoResolution?: '480p' | '720p';
@@ -19,10 +20,28 @@ export interface StudioNodeData {
   src?: string;
   text?: string;
   error?: string;
+  hidden?: boolean;
+  locked?: boolean;
   [key: string]: unknown;
 }
 
-export type StudioNode = Node<StudioNodeData, StudioNodeKind>;
+export interface StudioNode {
+  id: string;
+  type: StudioNodeKind;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  zIndex: number;
+  data: StudioNodeData;
+}
+
+export interface StudioViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
 
 export interface StudioProject {
   id: string;
@@ -31,8 +50,7 @@ export interface StudioProject {
   updatedAt: string;
   coverUrls: string[];
   nodes: StudioNode[];
-  edges: Edge[];
-  viewport: Viewport;
+  viewport: StudioViewport;
   messages: UIMessage[];
   pendingPrompt?: string;
   agentOpen: boolean;
@@ -45,5 +63,33 @@ export interface StudioTemplate {
   cover: string;
 }
 
-export const STUDIO_STORAGE_KEY = 'snackd-studio-v1';
-export const STUDIO_STORE_VERSION = 1;
+export type StudioCanvasOperation =
+  | {
+      type: 'add_node';
+      node: {
+        kind: StudioNodeKind;
+        prompt?: string;
+        title?: string;
+        text?: string;
+        x?: number;
+        y?: number;
+        width?: number;
+        height?: number;
+      };
+    }
+  | {
+      type: 'update_node';
+      id: string;
+      patch: Partial<StudioNodeData> & {
+        x?: number;
+        y?: number;
+        width?: number;
+        height?: number;
+        rotation?: number;
+      };
+    }
+  | { type: 'remove_nodes'; ids: string[] };
+
+export const STUDIO_STORAGE_KEY = 'snackd-studio-v2';
+export const STUDIO_LEGACY_STORAGE_KEY = 'snackd-studio-v1';
+export const STUDIO_STORE_VERSION = 2;

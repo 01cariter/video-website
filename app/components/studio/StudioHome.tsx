@@ -19,12 +19,12 @@ import {
 } from 'lucide-react';
 import { STUDIO_TEMPLATES } from '@/lib/studio/templates';
 import {
-  createStudioProject,
-  deleteStudioProject,
-  formatStudioDate,
-  listStudioProjects,
-  renameStudioProject,
-} from '@/lib/studio/store';
+  createStudioProjectSynced,
+  deleteStudioProjectSynced,
+  listStudioProjectsSynced,
+  renameStudioProjectSynced,
+} from '@/lib/studio/client-store';
+import { formatStudioDate } from '@/lib/studio/store';
 import type { StudioProject } from '@/lib/studio/types';
 import { studioChipSpring, studioItem, studioSnap, studioStagger, studioTween } from '@/lib/studio/motion';
 import {
@@ -75,12 +75,13 @@ export default function StudioHome() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const reduceMotion = Boolean(useReducedMotion());
 
-  function refreshProjects() {
-    setProjects(listStudioProjects());
+  async function refreshProjects() {
+    setProjects(await listStudioProjectsSynced());
   }
 
   useEffect(() => {
-    refreshProjects();
+    const timer = window.setTimeout(() => void refreshProjects(), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const canSubmit = prompt.trim().length > 0;
@@ -89,38 +90,43 @@ export default function StudioHome() {
     router.push(`/studio/${id}`);
   }
 
-  function createFromPrompt() {
+  async function createFromPrompt() {
     const text = prompt.trim();
     if (!text) return;
     const prefix =
       chip === 'inspire' ? '先搜索视觉参考，再开始创作：' : chip === 'design' ? '按创意设计方向推进：' : '';
-    const project = createStudioProject({
+    const project = await createStudioProjectSynced({
       title: text.slice(0, 18),
       pendingPrompt: `${prefix}${text}`,
     });
     router.push(`/studio/${project.id}`);
   }
 
-  function createFromTemplate(templateId: string) {
-    router.push(`/studio/${createStudioProject({ templateId }).id}`);
+  async function createFromTemplate(templateId: string) {
+    const project = await createStudioProjectSynced({ templateId });
+    router.push(`/studio/${project.id}`);
   }
 
-  function createBlank() {
-    router.push(`/studio/${createStudioProject({ title: '未命名项目', blank: true }).id}`);
+  async function createBlank() {
+    const project = await createStudioProjectSynced({
+      title: '未命名项目',
+      blank: true,
+    });
+    router.push(`/studio/${project.id}`);
   }
 
-  function submitRename() {
+  async function submitRename() {
     if (!renameId) return;
-    renameStudioProject(renameId, renameTitle);
+    await renameStudioProjectSynced(renameId, renameTitle);
     setRenameId(null);
-    refreshProjects();
+    await refreshProjects();
   }
 
-  function submitDelete() {
+  async function submitDelete() {
     if (!deleteId) return;
-    deleteStudioProject(deleteId);
+    await deleteStudioProjectSynced(deleteId);
     setDeleteId(null);
-    refreshProjects();
+    await refreshProjects();
   }
 
   function startVoice() {
@@ -171,7 +177,7 @@ export default function StudioHome() {
           className="w-full max-w-[720px] rounded-[28px] bg-secondary/65 p-1.5 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--field)_70%,transparent)]"
           onSubmit={(event) => {
             event.preventDefault();
-            createFromPrompt();
+            void createFromPrompt();
           }}
         >
           <Card className="gap-0 rounded-[22px] border-0 px-[18px] py-[18px] max-md:px-4">
@@ -192,7 +198,7 @@ export default function StudioHome() {
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();
-                    createFromPrompt();
+                    void createFromPrompt();
                   }
                 }}
                 placeholder="描述画面、镜头或品牌，也可以上传参考图"
@@ -263,11 +269,11 @@ export default function StudioHome() {
             type="file"
             accept="image/*"
             hidden
-            onChange={(event) => {
+            onChange={async (event) => {
               const file = event.target.files?.[0];
               event.target.value = '';
               if (!file) return;
-              const project = createStudioProject({
+              const project = await createStudioProjectSynced({
                 title: file.name.replace(/\.[^.]+$/, '') || '参考创作',
                 pendingPrompt: prompt.trim() || `以这张参考图继续创作：${file.name}`,
               });
@@ -288,7 +294,7 @@ export default function StudioHome() {
               whileHover={reduceMotion ? undefined : { y: -3 }}
               whileTap={reduceMotion ? undefined : { scale: 0.985 }}
               transition={studioSnap}
-              onClick={() => createFromTemplate(template.id)}
+              onClick={() => void createFromTemplate(template.id)}
             >
               <Card className="gap-0 overflow-hidden rounded-[18px] border-0 py-0 shadow-sm">
                 <motion.span
@@ -313,7 +319,7 @@ export default function StudioHome() {
             whileHover={reduceMotion ? undefined : { y: -3 }}
             whileTap={reduceMotion ? undefined : { scale: 0.985 }}
             transition={studioSnap}
-            onClick={createBlank}
+            onClick={() => void createBlank()}
           >
             <span className="grid size-10 place-items-center rounded-full bg-card text-foreground shadow-[0_8px_20px_-16px_color-mix(in_srgb,var(--ink)_50%,transparent)]">
               <Plus className="size-[18px]" />
@@ -399,7 +405,7 @@ export default function StudioHome() {
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 event.preventDefault();
-                submitRename();
+                void submitRename();
               }
             }}
           />
@@ -407,7 +413,7 @@ export default function StudioHome() {
             <Button type="button" variant="outline" onClick={() => setRenameId(null)}>
               取消
             </Button>
-            <Button type="button" onClick={submitRename}>
+            <Button type="button" onClick={() => void submitRename()}>
               保存
             </Button>
           </DialogFooter>
@@ -422,7 +428,10 @@ export default function StudioHome() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={submitDelete}>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => void submitDelete()}
+            >
               删除
             </AlertDialogAction>
           </AlertDialogFooter>

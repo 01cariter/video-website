@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bookmark, Clapperboard, Home, LogOut, Moon, Plus, Sun, User, Users } from 'lucide-react';
+import { Bookmark, Clapperboard, Coins, Home, LogOut, Moon, Plus, Sun, User, Users } from 'lucide-react';
 import type { AppUser } from '@/lib/types';
 import { getThemeServerSnapshot, getThemeSnapshot, setTheme, subscribeTheme } from '@/lib/theme';
 import { initials, profileHref } from '../media';
@@ -22,6 +22,7 @@ const NAV_ITEMS = [
   { href: '/following', label: 'Following', icon: Users },
   { href: '/bookmarks', label: 'Bookmarks', icon: Bookmark },
   { href: '/studio', label: 'CreatorStudio', icon: Clapperboard },
+  { href: '/credits', label: 'Credits', icon: Coins },
   { href: '/profile', label: 'Profile', icon: User },
 ] as const;
 

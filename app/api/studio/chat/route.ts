@@ -1,85 +1,116 @@
+import { createAgentUIStreamResponse, type UIMessage } from 'ai';
 import {
-  convertToModelMessages,
-  createUIMessageStreamResponse,
-  isStepCount,
-  streamText,
-  tool,
-  toUIMessageStream,
-  type UIMessage,
-} from 'ai';
-import { z } from 'zod';
+  beginMeteredRequest,
+  completeMeteredRequest,
+  failMeteredRequest,
+  InsufficientCreditsError,
+} from '@/lib/credits/server';
+import { CREDIT_COSTS } from '@/lib/credits/config';
+import {
+  createStudioAgent,
+  type CanvasNodeSnapshot,
+} from '@/lib/studio/agent';
 import { friendlyAiError } from '@/lib/studio/errors';
-import { STUDIO_CHAT_MODEL } from '@/lib/studio/models';
+import { getAuthUser } from '@/lib/supabase/server';
 
-export const maxDuration = 60;
+export const maxDuration = 90;
 
-interface CanvasNodeSnapshot {
-  id: string;
-  kind: string;
-  title: string;
-  prompt: string;
-  status: string;
-}
+export async function POST(request: Request) {
+  const user = await getAuthUser();
+  if (!user) {
+    return Response.json(
+      { error: '请先登录，再使用 AI Agent。' },
+      { status: 401 },
+    );
+  }
 
-export async function POST(req: Request) {
-  const {
-    messages,
-    canvas = [],
-  }: { messages: UIMessage[]; canvas?: CanvasNodeSnapshot[] } = await req.json();
+  const body = (await request.json().catch(() => null)) as {
+    messages?: UIMessage[];
+    canvas?: CanvasNodeSnapshot[];
+    requestId?: string;
+    projectId?: string;
+  } | null;
+  const messages = Array.isArray(body?.messages) ? body.messages : [];
+  const canvas = Array.isArray(body?.canvas) ? body.canvas.slice(0, 200) : [];
+  const requestId = body?.requestId?.trim();
+  if (!requestId || requestId.length > 160) {
+    return Response.json({ error: '请求标识无效。' }, { status: 400 });
+  }
 
-  const inventory =
-    canvas.length === 0
-      ? '画布目前是空的。'
-      : canvas
-          .map((node) => `- ${node.kind} ${node.id}「${node.title}」状态 ${node.status} 提示：${node.prompt || '（空）'}`)
-          .join('\n');
+  try {
+    const metered = await beginMeteredRequest({
+      userId: user.id,
+      requestId,
+      kind: 'agent',
+      cost: CREDIT_COSTS.agent,
+      projectId: body?.projectId,
+    });
+    if (!metered.accepted) {
+      return Response.json(
+        {
+          error:
+            metered.status === 'completed'
+              ? '这条 Agent 请求已经完成。'
+              : '这条 Agent 请求正在处理或已经失败，请重新发送。',
+          balance: metered.balance,
+        },
+        { status: 409 },
+      );
+    }
 
-  const result = streamText({
-    model: STUDIO_CHAT_MODEL,
-    instructions: `你是 Snackd CreatorStudio 的画布 Agent。用简洁中文对话，并在需要时调用工具把节点放到无限画布上。
-原则：
-- 用户要图，调用 addImageNode。
-- 用户要视频或镜头运动，调用 addVideoNode。
-- 用户要文案、分镜字卡、品牌说明，调用 addTextNode。
-- 一次不要堆太多节点，优先给最关键的 1-3 个。
-- 工具返回后，用一两句话说明你做了什么。
-当前画布：
-${inventory}`,
-    messages: await convertToModelMessages(messages),
-    stopWhen: isStepCount(5),
-    tools: {
-      addImageNode: tool({
-        description: '在画布上添加一个图片生成节点，并立刻按 prompt 生成。',
-        inputSchema: z.object({
-          prompt: z.string().describe('图像提示词'),
-          title: z.string().optional().describe('节点名称'),
-        }),
-        execute: async ({ prompt, title }) => ({ kind: 'image' as const, prompt, title }),
-      }),
-      addVideoNode: tool({
-        description: '在画布上添加一个视频生成节点，并立刻按 prompt 生成。',
-        inputSchema: z.object({
-          prompt: z.string().describe('视频提示词，包含镜头运动'),
-          title: z.string().optional().describe('节点名称'),
-        }),
-        execute: async ({ prompt, title }) => ({ kind: 'video' as const, prompt, title }),
-      }),
-      addTextNode: tool({
-        description: '在画布上添加一个文本节点，并按 prompt 写内容。',
-        inputSchema: z.object({
-          prompt: z.string().describe('写作要求'),
-          title: z.string().optional().describe('节点名称'),
-          text: z.string().optional().describe('若已有草稿可带上'),
-        }),
-        execute: async ({ prompt, title, text }) => ({ kind: 'text' as const, prompt, title, text }),
-      }),
-    },
-  });
+    let streamFailed = false;
+    const agent = createStudioAgent(canvas);
 
-  return createUIMessageStreamResponse({
-    stream: toUIMessageStream({
-      stream: result.stream,
-      onError: (error) => friendlyAiError(error instanceof Error ? error.message : 'Agent 请求失败'),
-    }),
-  });
+    return createAgentUIStreamResponse({
+      agent,
+      uiMessages: messages,
+      abortSignal: request.signal,
+      onError: (error) => {
+        streamFailed = true;
+        const message =
+          error instanceof Error ? error.message : 'Agent 请求失败';
+        void failMeteredRequest({
+          userId: user.id,
+          requestId,
+          error: message,
+        }).catch(() => undefined);
+        return friendlyAiError(message);
+      },
+      onEnd: async ({ isAborted, finishReason }) => {
+        if (streamFailed || isAborted || finishReason === 'error') {
+          await failMeteredRequest({
+            userId: user.id,
+            requestId,
+            error: isAborted ? 'Agent request aborted' : 'Agent stream failed',
+          });
+          return;
+        }
+        await completeMeteredRequest({
+          userId: user.id,
+          requestId,
+          result: { completed: true },
+        });
+      },
+    });
+  } catch (error) {
+    if (error instanceof InsufficientCreditsError) {
+      return Response.json(
+        { error: '积分不足，请先充值。', code: 'INSUFFICIENT_CREDITS' },
+        { status: 402 },
+      );
+    }
+    await failMeteredRequest({
+      userId: user.id,
+      requestId,
+      error: error instanceof Error ? error.message : 'Agent 请求失败',
+    }).catch(() => undefined);
+    return Response.json(
+      {
+        error: friendlyAiError(
+          error instanceof Error ? error.message : 'Agent 请求失败',
+        ),
+      },
+      { status: 502 },
+    );
+  }
 }

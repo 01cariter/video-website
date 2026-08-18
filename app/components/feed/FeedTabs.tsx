@@ -29,7 +29,8 @@ export default function FeedTabs({ active, customTabs, onSelect, onAddTab, onRem
   const titleId = useId();
 
   useEffect(() => {
-    setMounted(true);
+    const timer = window.setTimeout(() => setMounted(true), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {

@@ -9,6 +9,7 @@ export function parseAspect(aspect: string): [number, number] {
 
 export function sizeForAspect(aspect: string, kind: StudioNodeKind = 'image') {
   if (kind === 'text') return { width: 280, height: 176 };
+  if (kind === 'section') return { width: 480, height: 320 };
   const [rw, rh] = parseAspect(aspect);
   const long = 300;
   if (rw >= rh) return { width: long, height: Math.max(120, Math.round((long * rh) / rw)) };

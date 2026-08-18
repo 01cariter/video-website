@@ -12,6 +12,9 @@ Supabase Integration.
 - [Supabase Postgres](https://supabase.com/database) for business data
 - [Supabase Auth](https://supabase.com/auth) for sign-up / sign-in, sessions,
   and social providers
+- [Vercel AI SDK + AI Gateway](https://vercel.com/ai-gateway) for every
+  CreatorStudio Agent, text, image, and video request
+- [Stripe Checkout](https://docs.stripe.com/checkout) for hosted credit top-ups
 
 ## Authentication (Supabase Auth)
 
@@ -54,6 +57,9 @@ NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...  # or NEXT_PUBLIC_SUPABASE_ANON_KEY
 POSTGRES_URL=...                          # or SUPABASE_DATABASE_URL
 NEXT_PUBLIC_SITE_URL=https://your-domain.example
+AI_GATEWAY_API_KEY=...
+STRIPE_SECRET_KEY=sk_...
+STRIPE_WEBHOOK_SECRET=whsec_...
 NEXT_PUBLIC_SOLO_URL=https://work-solo.ai/ # optional
 ```
 
@@ -76,8 +82,9 @@ npm start
 
 ## Database and Storage
 
-- Production: apply `supabase/migrations/20260727000100_secure_initial_schema.sql`
-  with `supabase db push` or the Supabase SQL editor.
+- Production: apply every file in `supabase/migrations/` with
+  `supabase db push`. The newest migration adds CreatorStudio projects,
+  the credit ledger, generation idempotency, orders, and Stripe event records.
 - `npm run db:setup` — destructive local setup. It is blocked for remote
   databases unless `ALLOW_DESTRUCTIVE_DB_SETUP=1` is explicitly set.
 - `npm run db:seed` — re-seed business content only (schema must already exist)
@@ -91,7 +98,9 @@ npm start
 > `media`.
 
 Schema (`db/schema.sql`): `profiles`, `media`, `videos`, `video_likes`,
-`video_saves`, `follows`, `comments`. Business tables reference the
+`video_saves`, `follows`, `comments`; migrations also add `studio_projects`,
+`credit_accounts`, `credit_ledger`, `credit_packages`, `credit_orders`,
+`billing_events`, and `ai_generation_requests`. Business tables reference the
 Supabase Auth user id via a `TEXT` `user_id` column.
 
 - **`media`** — metadata in Postgres; uploaded files are stored in the public
@@ -145,3 +154,45 @@ Supabase Auth user id via a `TEXT` `user_id` column.
   Reachable from the sidebar and from the author on any video.
 - Light / dark theme toggle
 - Self-hosted media (SVG posters by default), Lucide interface icons
+
+## CreatorStudio AI, credits, and Stripe
+
+- The infinite canvas is rendered and edited with LeaferJS. Existing
+  React Flow/localStorage projects are migrated into the new node shape on
+  first load.
+- Signed-in projects sync to Supabase; localStorage remains an offline/guest
+  cache.
+- Models are Vercel AI Gateway ids only:
+  `openai/gpt-5.6-luna`, `openai/gpt-5.6-terra`,
+  `xai/grok-imagine-image-2.0`, and `bytedance/seedance-2.5`.
+  No direct AI-provider SDK is used.
+- Each AI request has a unique request id. Postgres atomically reserves
+  credits, rejects duplicate work, stores completed results, and refunds failed
+  generations. Generated image/video bytes are persisted in the Supabase
+  `media` bucket instead of being kept as data URLs.
+- Stripe uses hosted Checkout. Prices come from the trusted
+  `credit_packages` table; successful Checkout sessions grant credits only
+  through the signed webhook.
+
+### Connect Stripe
+
+1. Create a Stripe account and copy a restricted/live secret key into
+   `STRIPE_SECRET_KEY` in Vercel.
+2. Deploy once, then create a Stripe webhook endpoint:
+   `https://YOUR_DOMAIN/api/billing/webhooks/stripe`.
+3. Subscribe to `checkout.session.completed`,
+   `checkout.session.async_payment_succeeded`, and
+   `checkout.session.async_payment_failed`, and
+   `checkout.session.expired`.
+4. Copy the endpoint signing secret into `STRIPE_WEBHOOK_SECRET` and redeploy.
+5. Run `supabase db push`. Visit `/credits` and complete a small test-mode
+   payment with Stripe's test card `4242 4242 4242 4242`.
+6. Optional: create Stripe Prices and put their ids in
+   `credit_packages.stripe_price_id`. If left null, Checkout securely builds
+   `price_data` from the server-side package row.
+
+For local webhook testing:
+
+```bash
+stripe listen --forward-to localhost:3000/api/billing/webhooks/stripe
+```

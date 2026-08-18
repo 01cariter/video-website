@@ -1,38 +1,119 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import {
-  Background,
-  Panel,
-  ReactFlow,
-  ReactFlowProvider,
-  useEdgesState,
-  useNodesState,
-  useReactFlow,
-} from '@xyflow/react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
-import '@xyflow/react/dist/style.css';
+import { useRouter } from 'next/navigation';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { Frame, Leafer } from '@/lib/leafer-react';
 import { sizeForAspect } from '@/lib/studio/geometry';
-import { createBlankNode, getStudioProject, updateStudioGraph } from '@/lib/studio/store';
-import type { StudioNode, StudioNodeKind, StudioProject } from '@/lib/studio/types';
-import AgentPanel from './AgentPanel';
-import CanvasContextMenu, { type CanvasMenuState } from './CanvasContextMenu';
-import { LeftToolbar, NodeOverlays, ZoomControl } from './CanvasChrome';
-import StudioHeader from './StudioHeader';
-import { studioNodeTypes } from './nodes';
-import { StudioCanvasProvider, type StudioCanvasApi, type StudioTool } from './studio-context';
+import { createBlankNode } from '@/lib/studio/store';
+import {
+  getStudioProjectSynced,
+  saveStudioProjectSynced,
+} from '@/lib/studio/client-store';
+import type {
+  StudioCanvasOperation,
+  StudioNode,
+  StudioNodeData,
+  StudioNodeKind,
+  StudioProject,
+  StudioViewport,
+} from '@/lib/studio/types';
 import { cn } from '@/lib/utils';
+import AgentPanel from './AgentPanel';
+import CanvasContextMenu from './CanvasContextMenu';
+import {
+  LayerPanel,
+  LeftToolbar,
+  NodeOverlays,
+  ZoomControl,
+} from './CanvasChrome';
+import StudioHeader from './StudioHeader';
+import { StudioCanvasNode } from './nodes';
+import {
+  StudioCanvasProvider,
+  type StudioCanvasApi,
+  type StudioTool,
+} from './studio-context';
+import {
+  useLeaferStudioRuntime,
+  type StudioCanvasMenuState,
+} from './useLeaferStudioRuntime';
 
 interface StudioWorkspaceProps {
   projectId: string;
 }
 
+interface AddNodeExtras {
+  prompt?: string;
+  title?: string;
+  text?: string;
+  position?: { x: number; y: number };
+  size?: { width: number; height: number };
+}
+
+const EDITOR_CONFIG = {
+  hideOnMove: false,
+  skewable: false,
+  rotateable: false,
+  flipable: false,
+  bright: true,
+  stroke: '#111110',
+  strokeWidth: 1.25,
+  pointFill: '#111110',
+  pointRadius: 2,
+  pointSize: 7,
+};
+
+function requestId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function operationFromOutput(output: unknown): StudioCanvasOperation[] {
+  if (!output || typeof output !== 'object') return [];
+  const value = output as Record<string, unknown>;
+  if (Array.isArray(value.operations)) {
+    return value.operations.filter(Boolean) as StudioCanvasOperation[];
+  }
+  if (value.operation && typeof value.operation === 'object') {
+    return [value.operation as StudioCanvasOperation];
+  }
+  if (typeof value.type === 'string') {
+    return [value as unknown as StudioCanvasOperation];
+  }
+  if (
+    typeof value.kind === 'string' &&
+    ['image', 'video', 'text', 'section'].includes(value.kind)
+  ) {
+    return [
+      {
+        type: 'add_node',
+        node: {
+          kind: value.kind as StudioNodeKind,
+          prompt:
+            typeof value.prompt === 'string' ? value.prompt : undefined,
+          title: typeof value.title === 'string' ? value.title : undefined,
+          text: typeof value.text === 'string' ? value.text : undefined,
+        },
+      },
+    ];
+  }
+  return [];
+}
+
 function applyProcessedTools(
   messages: UIMessage[],
   seen: Set<string>,
-  addNode: StudioCanvasApi['addNode'],
+  applyOperation: (operation: StudioCanvasOperation) => void,
 ) {
   for (const message of messages) {
     for (const part of message.parts) {
@@ -40,144 +121,201 @@ function applyProcessedTools(
       const id = 'toolCallId' in part ? String(part.toolCallId) : '';
       const state = 'state' in part ? String(part.state) : '';
       if (!id || seen.has(id) || state !== 'output-available') continue;
-      const output = 'output' in part ? (part.output as { kind?: StudioNodeKind; prompt?: string; title?: string; text?: string }) : null;
-      if (!output?.kind) continue;
       seen.add(id);
-      addNode(output.kind, {
-        prompt: output.prompt,
-        title: output.title,
-        text: output.text,
-      });
+      const output = 'output' in part ? part.output : null;
+      for (const operation of operationFromOutput(output)) {
+        applyOperation(operation);
+      }
     }
   }
 }
 
-function CanvasInner({ project }: { project: StudioProject }) {
-  const stageRef = useRef<HTMLDivElement>(null);
-  const seenTools = useRef(new Set<string>());
+function CanvasWorkspace({ project }: { project: StudioProject }) {
   const persistTimer = useRef<number | null>(null);
-  const { screenToFlowPosition, getViewport } = useReactFlow();
-  const [nodes, setNodes, onNodesChange] = useNodesState(project.nodes);
-  const [edges, setEdges] = useEdgesState([]);
+  const generating = useRef(new Set<string>());
+  const seenTools = useRef(new Set<string>());
+  const [nodes, setNodes] = useState(project.nodes);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [viewport, setViewport] = useState(project.viewport);
   const [title, setTitle] = useState(project.title);
   const [agentOpen, setAgentOpen] = useState(
-    () => project.agentOpen && (typeof window === 'undefined' || window.matchMedia('(min-width: 768px)').matches),
+    () =>
+      project.agentOpen &&
+      (typeof window === 'undefined' ||
+        window.matchMedia('(min-width: 768px)').matches),
   );
   const [tool, setTool] = useState<StudioTool>('select');
-  const [menu, setMenu] = useState<CanvasMenuState | null>(null);
-  const generating = useRef(new Set<string>());
+  const [layersOpen, setLayersOpen] = useState(false);
+  const [menu, setMenu] = useState<StudioCanvasMenuState | null>(null);
   const nodesRef = useRef(nodes);
-  nodesRef.current = nodes;
-
-  const persist = useCallback(
-    (patch: Partial<StudioProject>) => {
-      if (persistTimer.current) window.clearTimeout(persistTimer.current);
-      persistTimer.current = window.setTimeout(() => {
-        updateStudioGraph(project.id, {
-          nodes: nodes.map((node) => ({ ...node, selected: false })),
-          edges,
-          viewport: getViewport(),
-          title,
-          agentOpen,
-          ...patch,
-        });
-      }, 280);
-    },
-    [agentOpen, edges, getViewport, nodes, project.id, title],
-  );
+  const addNodeRef = useRef<
+    (kind: StudioNodeKind, extras?: AddNodeExtras) => string
+  >(() => '');
+  const canvasCenterRef = useRef(() => ({ x: 320, y: 240 }));
 
   useEffect(() => {
-    persist({});
-  }, [nodes, edges, title, agentOpen, persist]);
+    nodesRef.current = nodes;
+  }, [nodes]);
 
-  const updateNodeData = useCallback((id: string, patch: Record<string, unknown>) => {
-    setNodes((current) =>
-      current.map((node) =>
-        node.id === id ? { ...node, data: { ...node.data, ...patch } } : node,
-      ),
-    );
-  }, [setNodes]);
+  const selectIds = useCallback((ids: string[]) => {
+    const existing = new Set(nodesRef.current.map((node) => node.id));
+    setSelectedIds(ids.filter((id, index) => existing.has(id) && ids.indexOf(id) === index));
+  }, []);
+
+  const updateNode = useCallback(
+    (id: string, patch: Partial<StudioNode>) => {
+      setNodes((current) =>
+        current.map((node) =>
+          node.id === id
+            ? {
+                ...node,
+                ...patch,
+                rotation: 0,
+                data: patch.data
+                  ? { ...node.data, ...patch.data, kind: node.type }
+                  : node.data,
+              }
+            : node,
+        ),
+      );
+    },
+    [],
+  );
+
+  const updateNodeData = useCallback(
+    (id: string, patch: Record<string, unknown>) => {
+      setNodes((current) =>
+        current.map((node) =>
+          node.id === id
+            ? { ...node, data: { ...node.data, ...patch, kind: node.type } }
+            : node,
+        ),
+      );
+    },
+    [],
+  );
 
   const setNodeAspect = useCallback((id: string, aspect: string) => {
     setNodes((current) =>
       current.map((node) => {
-        if (node.id !== id) return node;
-        const next = sizeForAspect(aspect, node.data.kind);
-        const prevW = node.width ?? Number(node.style?.width) ?? next.width;
-        const prevH = node.height ?? Number(node.style?.height) ?? next.height;
+        if (node.id !== id || node.type === 'section') return node;
+        const next = sizeForAspect(aspect, node.type);
         return {
           ...node,
+          x: node.x + (node.width - next.width) / 2,
+          y: node.y + (node.height - next.height) / 2,
           width: next.width,
           height: next.height,
-          style: { ...node.style, width: next.width, height: next.height },
-          position: {
-            x: node.position.x + (prevW - next.width) / 2,
-            y: node.position.y + (prevH - next.height) / 2,
-          },
           data: { ...node.data, aspect },
         };
       }),
     );
-  }, [setNodes]);
+  }, []);
 
   const generateNode = useCallback(
     async (id: string) => {
       if (generating.current.has(id)) return;
       const node = nodesRef.current.find((item) => item.id === id);
-      if (!node) return;
+      if (!node || node.type === 'section') return;
+      if (!node.data.prompt.trim()) {
+        updateNodeData(id, { error: '先写下生成要求' });
+        return;
+      }
+
       generating.current.add(id);
-      nodesRef.current = nodesRef.current.map((item) =>
-        item.id === id ? { ...item, data: { ...item.data, status: 'generating', error: undefined } } : item,
-      );
-      updateNodeData(id, { status: 'generating', error: undefined });
+      updateNodeData(id, {
+        status: 'generating',
+        error: undefined,
+      });
+
       try {
-        if (node.data.kind === 'text') {
-          const response = await fetch('/api/studio/text', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              prompt: node.data.prompt,
-              current: node.data.text || '',
-              reasoningEffort: node.data.reasoningEffort,
-            }),
+        const body = {
+          projectId: project.id,
+          nodeId: node.id,
+          requestId: requestId(),
+          prompt: node.data.prompt,
+          current: node.data.text || '',
+          modelId: node.data.modelId,
+          aspect: node.data.aspect,
+          n: node.data.n,
+          refSrc: node.data.refSrc,
+          duration: node.data.duration,
+          videoResolution: node.data.videoResolution,
+          generateAudio: node.data.generateAudio,
+          reasoningEffort: node.data.reasoningEffort,
+        };
+        const endpoint =
+          node.type === 'text'
+            ? '/api/studio/text'
+            : node.type === 'video'
+              ? '/api/studio/video'
+              : '/api/studio/image';
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const payload = (await response.json()) as {
+          text?: string;
+          url?: string;
+          urls?: string[];
+          error?: string;
+          balance?: number;
+        };
+        if (!response.ok) {
+          throw new Error(payload.error || '生成失败');
+        }
+        if (typeof payload.balance === 'number') {
+          window.dispatchEvent(
+            new CustomEvent('credits:changed', { detail: payload.balance }),
+          );
+        }
+
+        if (node.type === 'text') {
+          updateNodeData(id, {
+            status: 'ready',
+            text: payload.text || '',
+            error: undefined,
           });
-          const payload = (await response.json()) as { text?: string; error?: string };
-          if (!response.ok) throw new Error(payload.error || '文本生成失败');
-          updateNodeData(id, { status: 'ready', text: payload.text || '' });
-        } else {
-          const endpoint = node.data.kind === 'video' ? '/api/studio/video' : '/api/studio/image';
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              prompt: node.data.prompt,
-              aspect: node.data.aspect,
-              n: node.data.n,
-              refSrc: node.data.refSrc,
-              duration: node.data.duration,
-              videoResolution: node.data.videoResolution,
-              generateAudio: node.data.generateAudio,
-            }),
-          });
-          const payload = (await response.json()) as { url?: string; urls?: string[]; error?: string };
-          if (!response.ok) throw new Error(payload.error || '生成失败');
-          const urls = payload.urls?.filter(Boolean) || (payload.url ? [payload.url] : []);
-          updateNodeData(id, { status: 'ready', src: urls[0] });
-          if (urls.length > 1) {
-            setNodes((current) => {
-              const source = current.find((item) => item.id === id);
-              if (!source) return current;
-              return current.concat(
-                urls.slice(1).map((url, index) =>
-                  createBlankNode(
-                    source.data.kind,
-                    { x: source.position.x + (index + 1) * 36, y: source.position.y + (index + 1) * 36 },
-                    { ...source.data, src: url, status: 'ready', title: `${source.data.title} ${index + 2}` },
-                  ),
-                ),
+          return;
+        }
+
+        const urls =
+          payload.urls?.filter(Boolean) || (payload.url ? [payload.url] : []);
+        if (!urls.length) throw new Error('生成服务没有返回素材');
+        updateNodeData(id, {
+          status: 'ready',
+          src: urls[0],
+          error: undefined,
+        });
+        if (urls.length > 1) {
+          setNodes((current) => {
+            const source = current.find((item) => item.id === id);
+            if (!source) return current;
+            const top = Math.max(0, ...current.map((item) => item.zIndex));
+            const copies = urls.slice(1).map((url, index) => {
+              const copy = createBlankNode(
+                source.type,
+                {
+                  x: source.x + (index + 1) * 36,
+                  y: source.y + (index + 1) * 36,
+                },
+                {
+                  ...source.data,
+                  src: url,
+                  status: 'ready',
+                  title: `${source.data.title} ${index + 2}`,
+                },
               );
+              return {
+                ...copy,
+                width: source.width,
+                height: source.height,
+                zIndex: top + index + 1,
+              };
             });
-          }
+            return current.concat(copies);
+          });
         }
       } catch (error) {
         updateNodeData(id, {
@@ -188,181 +326,213 @@ function CanvasInner({ project }: { project: StudioProject }) {
         generating.current.delete(id);
       }
     },
-    [setNodes, updateNodeData],
+    [project.id, updateNodeData],
   );
 
   const addNode = useCallback(
-    (kind: StudioNodeKind, extras?: { prompt?: string; title?: string; text?: string; position?: { x: number; y: number } }) => {
-      const { position: extrasPosition, ...dataExtras } = extras || {};
-      let position = extrasPosition;
-      if (!position) {
-        const stage = stageRef.current?.getBoundingClientRect();
-        const center = screenToFlowPosition({
-          x: (stage?.left ?? 0) + (stage?.width ?? 640) / 2,
-          y: (stage?.top ?? 0) + (stage?.height ?? 480) / 2,
-        });
-        position = { x: center.x - 140, y: center.y - 120 };
+    (kind: StudioNodeKind, extras: AddNodeExtras = {}) => {
+      const center = canvasCenterRef.current();
+      const position =
+        extras.position || {
+          x: center.x - (extras.size?.width ?? 280) / 2,
+          y: center.y - (extras.size?.height ?? 220) / 2,
+        };
+      const node = createBlankNode(kind, position, {
+        prompt: extras.prompt,
+        title: extras.title,
+        text: extras.text,
+      });
+      const top = Math.max(0, ...nodesRef.current.map((item) => item.zIndex));
+      const next: StudioNode = {
+        ...node,
+        width: extras.size?.width ?? node.width,
+        height: extras.size?.height ?? node.height,
+        zIndex: kind === 'section' ? -1 : top + 1,
+      };
+      setNodes((current) => current.concat(next));
+      nodesRef.current = nodesRef.current.concat(next);
+      setSelectedIds([next.id]);
+      setTool('select');
+      if (kind !== 'section' && extras.prompt?.trim()) {
+        window.setTimeout(() => void generateNode(next.id), 0);
       }
-      const node = createBlankNode(kind, position, dataExtras);
-      const next = { ...node, selected: true };
-      setNodes((current) => current.map((item) => ({ ...item, selected: false })).concat(next));
-      nodesRef.current = [...nodesRef.current.filter((item) => item.id !== next.id), next];
-      if (dataExtras.prompt) {
-        window.setTimeout(() => {
-          void generateNode(next.id);
-        }, 0);
-      }
-      return node.id;
+      return next.id;
     },
-    [generateNode, screenToFlowPosition, setNodes],
+    [generateNode],
   );
+  useEffect(() => {
+    addNodeRef.current = addNode;
+  }, [addNode]);
+
+  const removeNodes = useCallback((ids: string[]) => {
+    const drop = new Set(ids);
+    setNodes((current) => current.filter((node) => !drop.has(node.id)));
+    setSelectedIds((current) => current.filter((id) => !drop.has(id)));
+  }, []);
 
   const removeNode = useCallback(
     (id: string) => {
-      setNodes((current) => current.filter((node) => node.id !== id));
-      setEdges((current) => current.filter((edge) => edge.source !== id && edge.target !== id));
+      removeNodes([id]);
     },
-    [setEdges, setNodes],
+    [removeNodes],
   );
 
-  const removeNodes = useCallback(
-    (ids: string[]) => {
-      const drop = new Set(ids);
-      setNodes((current) => current.filter((node) => !drop.has(node.id)));
-      setEdges((current) => current.filter((edge) => !drop.has(edge.source) && !drop.has(edge.target)));
-    },
-    [setEdges, setNodes],
-  );
+  const duplicateNodes = useCallback((ids: string[]) => {
+    const pick = new Set(ids);
+    const sources = nodesRef.current.filter((node) => pick.has(node.id));
+    if (!sources.length) return;
+    const top = Math.max(0, ...nodesRef.current.map((node) => node.zIndex));
+    const copies = sources.map((source, index) => {
+      const copy = createBlankNode(
+        source.type,
+        { x: source.x + 36, y: source.y + 36 },
+        source.data,
+      );
+      return {
+        ...copy,
+        width: source.width,
+        height: source.height,
+        rotation: 0,
+        zIndex: source.type === 'section' ? source.zIndex : top + index + 1,
+        data: { ...source.data, title: `${source.data.title} 副本` },
+      };
+    });
+    setNodes((current) => current.concat(copies));
+    setSelectedIds(copies.map((node) => node.id));
+  }, []);
 
   const duplicateNode = useCallback(
+    (id: string) => duplicateNodes([id]),
+    [duplicateNodes],
+  );
+
+  const bringToFront = useCallback((id: string) => {
+    const top = Math.max(0, ...nodesRef.current.map((node) => node.zIndex));
+    updateNode(id, { zIndex: top + 1 });
+  }, [updateNode]);
+
+  const sendToBack = useCallback((id: string) => {
+    const bottom = Math.min(-1, ...nodesRef.current.map((node) => node.zIndex));
+    updateNode(id, { zIndex: bottom - 1 });
+  }, [updateNode]);
+
+  const toggleNodeHidden = useCallback(
     (id: string) => {
-      setNodes((current) => {
-        const source = current.find((node) => node.id === id);
-        if (!source) return current;
-        const copy = createBlankNode(source.data.kind, {
-          x: source.position.x + 40,
-          y: source.position.y + 40,
-        }, source.data);
-        return current.map((node) => ({ ...node, selected: false })).concat({ ...copy, selected: true });
-      });
+      const node = nodesRef.current.find((item) => item.id === id);
+      if (node) updateNodeData(id, { hidden: !node.data.hidden });
     },
-    [setNodes],
+    [updateNodeData],
   );
 
-  const duplicateNodes = useCallback(
-    (ids: string[]) => {
-      const pick = new Set(ids);
-      setNodes((current) => {
-        const copies = current
-          .filter((node) => pick.has(node.id))
-          .map((source) => ({
-            ...createBlankNode(source.data.kind, {
-              x: source.position.x + 40,
-              y: source.position.y + 40,
-            }, source.data),
-            selected: true,
-          }));
-        return current.map((node) => ({ ...node, selected: false })).concat(copies);
-      });
-    },
-    [setNodes],
-  );
-
-  const removeEdge = useCallback(
+  const toggleNodeLocked = useCallback(
     (id: string) => {
-      setEdges((current) => current.filter((edge) => edge.id !== id));
+      const node = nodesRef.current.find((item) => item.id === id);
+      if (node) updateNodeData(id, { locked: !node.data.locked });
     },
-    [setEdges],
+    [updateNodeData],
   );
 
-  const bringToFront = useCallback(
-    (id: string) => {
-      setNodes((current) => {
-        const index = current.findIndex((node) => node.id === id);
-        if (index < 0 || index === current.length - 1) return current;
-        const next = current.slice();
-        const [node] = next.splice(index, 1);
-        next.push(node);
-        return next;
-      });
+  const {
+    hostRef,
+    runtimeReady,
+    zoom,
+    selectionRect,
+    sectionDraftRect,
+    handleAppReady,
+    handleLayerCreated,
+    changeZoom,
+    fitNodes,
+    canvasCenter,
+  } = useLeaferStudioRuntime({
+    nodes,
+    selectedIds,
+    tool,
+    initialViewport: project.viewport,
+    onSelectIds: selectIds,
+    onNodesChange: setNodes,
+    onViewportChange: setViewport,
+    onBlankDoubleClick: (point) =>
+      addNodeRef.current('image', {
+        position: { x: point.x - 150, y: point.y - 150 },
+      }),
+    onSectionDraw: (rect) =>
+      addNodeRef.current('section', {
+        position: { x: rect.x, y: rect.y },
+        size: { width: rect.width, height: rect.height },
+      }),
+    onContextMenu: setMenu,
+    viewportInsets: {
+      left: layersOpen ? 264 : 0,
     },
-    [setNodes],
-  );
-
-  const sendToBack = useCallback(
-    (id: string) => {
-      setNodes((current) => {
-        const index = current.findIndex((node) => node.id === id);
-        if (index <= 0) return current;
-        const next = current.slice();
-        const [node] = next.splice(index, 1);
-        next.unshift(node);
-        return next;
-      });
-    },
-    [setNodes],
-  );
-
-  const api = useMemo<StudioCanvasApi>(
-    () => ({
-      addNode,
-      generateNode,
-      removeNode,
-      removeNodes,
-      duplicateNode,
-      duplicateNodes,
-      removeEdge,
-      bringToFront,
-      sendToBack,
-      updateNodeData,
-      setNodeAspect,
-      tool,
-      setTool,
-    }),
-    [
-      addNode,
-      bringToFront,
-      duplicateNode,
-      duplicateNodes,
-      generateNode,
-      removeEdge,
-      removeNode,
-      removeNodes,
-      sendToBack,
-      setNodeAspect,
-      tool,
-      updateNodeData,
-    ],
-  );
-
+  });
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, [contenteditable="true"]')) return;
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (event.key === 'v' || event.key === 'V') setTool('select');
-      if (event.key === 'h' || event.key === 'H') setTool('pan');
-      if (event.key === 'Escape') setMenu(null);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+    canvasCenterRef.current = canvasCenter;
+  }, [canvasCenter]);
+
+  const applyOperation = useCallback(
+    (operation: StudioCanvasOperation) => {
+      if (operation.type === 'add_node') {
+        addNode(operation.node.kind, {
+          prompt: operation.node.prompt,
+          title: operation.node.title,
+          text: operation.node.text,
+          position:
+            typeof operation.node.x === 'number' &&
+            typeof operation.node.y === 'number'
+              ? { x: operation.node.x, y: operation.node.y }
+              : undefined,
+          size:
+            typeof operation.node.width === 'number' &&
+            typeof operation.node.height === 'number'
+              ? {
+                  width: operation.node.width,
+                  height: operation.node.height,
+                }
+              : undefined,
+        });
+        return;
+      }
+      if (operation.type === 'remove_nodes') {
+        removeNodes(operation.ids);
+        return;
+      }
+      const { x, y, width, height, rotation: _rotation, ...dataPatch } =
+        operation.patch;
+      const geometry: Partial<StudioNode> = {};
+      if (typeof x === 'number') geometry.x = x;
+      if (typeof y === 'number') geometry.y = y;
+      if (typeof width === 'number') geometry.width = width;
+      if (typeof height === 'number') geometry.height = height;
+      updateNode(operation.id, geometry);
+      if (Object.keys(dataPatch).length) {
+        updateNodeData(operation.id, dataPatch);
+      }
+    },
+    [addNode, removeNodes, updateNode, updateNodeData],
+  );
 
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
         api: '/api/studio/chat',
         body: () => ({
+          requestId: requestId(),
+          projectId: project.id,
           canvas: nodes.map((node) => ({
             id: node.id,
-            kind: node.data.kind,
+            kind: node.type,
             title: node.data.title,
             prompt: node.data.prompt,
             status: node.data.status,
+            x: node.x,
+            y: node.y,
+            width: node.width,
+            height: node.height,
           })),
+          selectedIds,
         }),
       }),
-    [nodes],
+    [nodes, project.id, selectedIds],
   );
 
   const { messages, sendMessage, status, stop, error } = useChat({
@@ -370,109 +540,247 @@ function CanvasInner({ project }: { project: StudioProject }) {
     transport,
     messages: project.messages,
     onFinish: ({ messages: next }) => {
-      updateStudioGraph(project.id, { messages: next });
+      window.dispatchEvent(new Event('credits:changed'));
+      void saveStudioProjectSynced({
+        ...project,
+        title,
+        nodes,
+        viewport,
+        messages: next,
+        pendingPrompt: undefined,
+        agentOpen,
+      });
     },
   });
 
   useEffect(() => {
-    applyProcessedTools(messages, seenTools.current, addNode);
-  }, [addNode, messages]);
+    applyProcessedTools(messages, seenTools.current, applyOperation);
+  }, [applyOperation, messages]);
+
+  useEffect(() => {
+    if (persistTimer.current) window.clearTimeout(persistTimer.current);
+    persistTimer.current = window.setTimeout(() => {
+      void saveStudioProjectSynced({
+        ...project,
+        title: title.trim() || '未命名项目',
+        nodes,
+        viewport,
+        messages,
+        pendingPrompt: undefined,
+        agentOpen,
+      });
+    }, 320);
+    return () => {
+      if (persistTimer.current) window.clearTimeout(persistTimer.current);
+    };
+  }, [agentOpen, messages, nodes, project, title, viewport]);
 
   const consumedPrompt = useRef(false);
   useEffect(() => {
     if (consumedPrompt.current || !project.pendingPrompt) return;
     consumedPrompt.current = true;
-    updateStudioGraph(project.id, { pendingPrompt: undefined });
-    const kind: StudioNodeKind = /视频|video|短片|分镜/i.test(project.pendingPrompt) ? 'video' : 'image';
-    addNode(kind, { prompt: project.pendingPrompt, title: project.title });
-    void sendMessage({ text: `请围绕这个创作意图展开，并在画布上继续：${project.pendingPrompt}` });
-  }, [addNode, project.id, project.pendingPrompt, project.title, sendMessage]);
+    const kind: StudioNodeKind = /视频|video|短片|分镜/i.test(
+      project.pendingPrompt,
+    )
+      ? 'video'
+      : 'image';
+    addNode(kind, {
+      prompt: project.pendingPrompt,
+      title: project.title,
+    });
+    void sendMessage({
+      text: `请围绕这个创作意图展开，并继续组织画布：${project.pendingPrompt}`,
+    });
+  }, [
+    addNode,
+    project.pendingPrompt,
+    project.title,
+    sendMessage,
+  ]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, [contenteditable="true"]')) return;
+      const command = event.metaKey || event.ctrlKey;
+      if (command && event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        duplicateNodes(selectedIds);
+        return;
+      }
+      if (command && event.key === '0') {
+        event.preventDefault();
+        fitNodes();
+        return;
+      }
+      if (event.altKey || command) return;
+      if (event.key === 'Backspace' || event.key === 'Delete') {
+        event.preventDefault();
+        removeNodes(selectedIds);
+      } else if (event.key === 'v' || event.key === 'V') {
+        setTool('select');
+      } else if (event.key === 'h' || event.key === 'H') {
+        setTool('pan');
+      } else if (event.key === 'f' || event.key === 'F') {
+        setTool('section');
+      } else if (event.key === 'Escape') {
+        setMenu(null);
+        selectIds([]);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [duplicateNodes, fitNodes, removeNodes, selectIds, selectedIds]);
+
+  const api = useMemo<StudioCanvasApi>(
+    () => ({
+      nodes,
+      selectedIds,
+      addNode,
+      generateNode,
+      removeNode,
+      removeNodes,
+      duplicateNode,
+      duplicateNodes,
+      bringToFront,
+      sendToBack,
+      updateNodeData,
+      updateNode,
+      setNodeAspect,
+      selectIds,
+      toggleNodeHidden,
+      toggleNodeLocked,
+      tool,
+      setTool,
+      zoom,
+      changeZoom,
+      fitView: fitNodes,
+    }),
+    [
+      addNode,
+      bringToFront,
+      duplicateNode,
+      duplicateNodes,
+      generateNode,
+      nodes,
+      removeNode,
+      removeNodes,
+      changeZoom,
+      fitNodes,
+      selectIds,
+      selectedIds,
+      sendToBack,
+      setNodeAspect,
+      toggleNodeHidden,
+      toggleNodeLocked,
+      tool,
+      updateNode,
+      updateNodeData,
+      zoom,
+    ],
+  );
 
   return (
     <StudioCanvasProvider value={api}>
-      <div className="flex h-dvh flex-col bg-background text-foreground">
-        <StudioHeader
-          title={title}
-          onTitleChange={setTitle}
-          agentOpen={agentOpen}
-          onToggleAgent={() => setAgentOpen((open) => !open)}
-        />
-        <div className="relative min-h-0 flex-1">
-          <div className="absolute inset-0 bg-[radial-gradient(760px_300px_at_18%_-12%,color-mix(in_srgb,var(--orange)_7%,transparent),transparent_58%),var(--cream)]" ref={stageRef}>
-            <ReactFlow
-              className={cn('h-full w-full', tool === 'pan' && 'cursor-grab [&_.react-flow__pane]:cursor-grab')}
-              nodes={nodes}
-              edges={[]}
-              onNodesChange={onNodesChange}
-              nodeTypes={studioNodeTypes}
-              defaultViewport={project.viewport}
-              proOptions={{ hideAttribution: true }}
-              minZoom={0.2}
-              maxZoom={2.4}
-              deleteKeyCode={['Backspace', 'Delete']}
-              nodesConnectable={false}
-              elementsSelectable
-              connectOnClick={false}
-              panOnDrag={tool === 'pan' ? true : [1]}
-              selectionOnDrag={tool === 'select'}
-              nodesDraggable={tool === 'select'}
-              onMoveEnd={(_, viewport) => persist({ viewport })}
-              onPaneClick={() => {
-                setMenu(null);
-                setNodes((current) => current.map((node) => ({ ...node, selected: false })));
-              }}
-              onPaneContextMenu={(event) => {
-                event.preventDefault();
-                setMenu({
-                  type: 'pane',
-                  x: event.clientX,
-                  y: event.clientY,
-                  flow: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
-                });
-              }}
-              onNodeContextMenu={(event, node) => {
-                event.preventDefault();
-                const selectedIds = nodesRef.current.filter((item) => item.selected).map((item) => item.id);
-                if (selectedIds.length > 1 && selectedIds.includes(node.id)) {
-                  setMenu({ type: 'selection', x: event.clientX, y: event.clientY, ids: selectedIds });
-                  return;
-                }
-                setNodes((current) => current.map((item) => ({ ...item, selected: item.id === node.id })));
-                setMenu({ type: 'node', x: event.clientX, y: event.clientY, nodeId: node.id });
-              }}
-              onSelectionContextMenu={(event, selected) => {
-                event.preventDefault();
-                const ids = selected.map((item) => item.id);
-                if (ids.length > 1) {
-                  setMenu({ type: 'selection', x: event.clientX, y: event.clientY, ids });
-                }
-              }}
-            >
-              <Background gap={22} size={1} color="var(--line)" />
-              <Panel position="top-left" className="!m-0 h-full w-full pointer-events-none">
-                <NodeOverlays stageRef={stageRef} />
-              </Panel>
-              <Panel position="center-left" className="z-[6] pointer-events-none !ml-3 [&_>_*]:pointer-events-auto">
-                <LeftToolbar />
-              </Panel>
-              <Panel position="bottom-left" className="z-[6] pointer-events-none !m-3 [&_>_*]:pointer-events-auto">
-                <ZoomControl />
-              </Panel>
-            </ReactFlow>
-            <CanvasContextMenu menu={menu} onClose={() => setMenu(null)} />
-          </div>
-          <AgentPanel
-            open={agentOpen}
-            onClose={() => setAgentOpen(false)}
-            messages={messages}
-            status={status}
-            error={error}
-            onSend={(text) => {
-              void sendMessage({ text });
-            }}
-            onStop={() => stop()}
+      <div className="studio-shell relative flex h-dvh overflow-hidden bg-background text-foreground">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <StudioHeader
+            title={title}
+            onTitleChange={setTitle}
+            agentOpen={agentOpen}
+            onToggleAgent={() => setAgentOpen((open) => !open)}
           />
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            <div
+              ref={hostRef}
+              data-testid="studio-leafer-canvas"
+              className="studio-canvas-surface absolute inset-0 overflow-hidden"
+            >
+            <Leafer
+              fill="transparent"
+              editor={EDITOR_CONFIG}
+              wheel={{ preventDefault: true }}
+              move={{ dragEmpty: tool === 'pan' }}
+              zoom={{ min: 0.1, max: 4 }}
+              onAppReady={handleAppReady}
+              className={cn(
+                'h-full w-full overflow-hidden',
+                tool === 'pan' && 'cursor-grab active:cursor-grabbing',
+                tool === 'section' && 'cursor-crosshair',
+              )}
+            >
+              <Frame
+                id="studio-node-layer"
+                name="nodes"
+                fill="transparent"
+                hitSelf={false}
+                isSnap={false}
+                onCreated={handleLayerCreated}
+              >
+                {[...nodes]
+                  .sort((a, b) => a.zIndex - b.zIndex)
+                  .map((node) => (
+                    <StudioCanvasNode key={node.id} node={node} />
+                  ))}
+              </Frame>
+            </Leafer>
+
+            {!runtimeReady ? (
+              <div className="pointer-events-none absolute inset-0 grid place-items-center text-xs text-muted-foreground">
+                正在准备无限画布…
+              </div>
+            ) : null}
+
+            {sectionDraftRect ? (
+              <div
+                className="pointer-events-none absolute rounded-xl border border-dashed border-primary/70 bg-primary/5"
+                style={{
+                  left: sectionDraftRect.left,
+                  top: sectionDraftRect.top,
+                  width: sectionDraftRect.width,
+                  height: sectionDraftRect.height,
+                }}
+              />
+            ) : null}
+
+            <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2">
+              <div className="pointer-events-auto">
+                <LeftToolbar
+                  layersOpen={layersOpen}
+                  onToggleLayers={() => setLayersOpen((open) => !open)}
+                />
+              </div>
+            </div>
+            <LayerPanel
+              open={layersOpen}
+              onClose={() => setLayersOpen(false)}
+            />
+            <div className="pointer-events-none absolute right-3 bottom-3 z-20">
+              <div className="pointer-events-auto">
+                <ZoomControl />
+              </div>
+            </div>
+            <NodeOverlays
+              stageRef={hostRef}
+              selectionRect={selectionRect}
+            />
+            <CanvasContextMenu
+              menu={menu}
+              onClose={() => setMenu(null)}
+            />
+            </div>
+          </div>
         </div>
+        <AgentPanel
+          open={agentOpen}
+          onClose={() => setAgentOpen(false)}
+          title={title}
+          messages={messages}
+          status={status}
+          error={error}
+          onSend={(text) => void sendMessage({ text })}
+          onStop={() => stop()}
+        />
       </div>
     </StudioCanvasProvider>
   );
@@ -480,30 +788,40 @@ function CanvasInner({ project }: { project: StudioProject }) {
 
 export default function StudioWorkspace({ projectId }: StudioWorkspaceProps) {
   const router = useRouter();
-  const [project, setProject] = useState<StudioProject | null | undefined>(undefined);
+  const [project, setProject] = useState<StudioProject | null | undefined>();
 
   useEffect(() => {
-    setProject(getStudioProject(projectId));
+    let active = true;
+    void getStudioProjectSynced(projectId).then((value) => {
+      if (active) setProject(value);
+    });
+    return () => {
+      active = false;
+    };
   }, [projectId]);
 
   if (project === undefined) {
-    return <div className="grid min-h-dvh place-items-center text-muted-foreground">正在打开画布…</div>;
+    return (
+      <div className="grid min-h-dvh place-items-center text-muted-foreground">
+        正在打开画布…
+      </div>
+    );
   }
 
   if (!project) {
     return (
       <div className="grid min-h-dvh place-items-center gap-3 text-muted-foreground">
         <p>找不到这个项目。</p>
-        <button type="button" className="rounded-full bg-primary px-3.5 py-2 font-bold text-primary-foreground" onClick={() => router.push('/studio')}>
+        <button
+          type="button"
+          className="rounded-full bg-primary px-3.5 py-2 font-bold text-primary-foreground"
+          onClick={() => router.push('/studio')}
+        >
           返回 CreatorStudio
         </button>
       </div>
     );
   }
 
-  return (
-    <ReactFlowProvider>
-      <CanvasInner project={project} />
-    </ReactFlowProvider>
-  );
+  return <CanvasWorkspace project={project} />;
 }

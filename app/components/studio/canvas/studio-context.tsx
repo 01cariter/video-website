@@ -1,27 +1,41 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import type { StudioNodeKind } from '@/lib/studio/types';
+import type { StudioNode, StudioNodeKind } from '@/lib/studio/types';
 
-export type StudioTool = 'select' | 'pan';
+export type StudioTool = 'select' | 'pan' | 'section';
 
 export interface StudioCanvasApi {
+  nodes: StudioNode[];
+  selectedIds: string[];
   addNode: (
     kind: StudioNodeKind,
-    extras?: { prompt?: string; title?: string; text?: string; position?: { x: number; y: number } },
+    extras?: {
+      prompt?: string;
+      title?: string;
+      text?: string;
+      position?: { x: number; y: number };
+      size?: { width: number; height: number };
+    },
   ) => string;
   generateNode: (id: string) => Promise<void>;
   removeNode: (id: string) => void;
   removeNodes: (ids: string[]) => void;
   duplicateNode: (id: string) => void;
   duplicateNodes: (ids: string[]) => void;
-  removeEdge: (id: string) => void;
   bringToFront: (id: string) => void;
   sendToBack: (id: string) => void;
   updateNodeData: (id: string, patch: Record<string, unknown>) => void;
+  updateNode: (id: string, patch: Partial<StudioNode>) => void;
   setNodeAspect: (id: string, aspect: string) => void;
+  selectIds: (ids: string[]) => void;
+  toggleNodeHidden: (id: string) => void;
+  toggleNodeLocked: (id: string) => void;
   tool: StudioTool;
   setTool: (tool: StudioTool) => void;
+  zoom: number;
+  changeZoom: (zoom: number) => void;
+  fitView: (ids?: string[]) => void;
 }
 
 const StudioCanvasContext = createContext<StudioCanvasApi | null>(null);

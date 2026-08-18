@@ -11,6 +11,7 @@ import {
   Loader2,
   Play,
   Plus,
+  Sparkles,
   Square,
   Type,
   Video,
@@ -33,6 +34,7 @@ import { useStudioCanvas } from './studio-context';
 interface AgentPanelProps {
   open: boolean;
   onClose: () => void;
+  title: string;
   messages: UIMessage[];
   status: 'submitted' | 'streaming' | 'ready' | 'error';
   error?: Error | undefined;
@@ -93,6 +95,9 @@ function textOf(message: UIMessage) {
 }
 
 function toolLabel(type: string) {
+  if (type.includes('addCanvasNode')) return '添加画布节点';
+  if (type.includes('updateCanvasNode')) return '更新画布节点';
+  if (type.includes('removeCanvasNodes')) return '删除画布节点';
   if (type.includes('Image')) return '添加图片节点';
   if (type.includes('Video')) return '添加视频节点';
   if (type.includes('Text')) return '添加文本节点';
@@ -103,6 +108,7 @@ function toolLabel(type: string) {
 export default function AgentPanel({
   open,
   onClose,
+  title,
   messages,
   status,
   error,
@@ -134,15 +140,27 @@ export default function AgentPanel({
       {open ? (
         <motion.aside
           key="agent-panel"
-          className="absolute inset-y-3 right-3 z-20 flex w-[min(348px,calc(100%-24px))] flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-[0_28px_64px_-32px_color-mix(in_srgb,var(--ink)_58%,transparent)] backdrop-blur-xl"
+          className="absolute inset-0 z-40 flex w-full flex-col overflow-hidden bg-card md:relative md:inset-auto md:z-10 md:w-[360px] md:shrink-0 md:border-l md:border-border"
           aria-label="Agent 面板"
-          initial={reduceMotion ? false : { opacity: 0, x: 18, scale: 0.98 }}
-          animate={{ opacity: 1, x: 0, scale: 1 }}
-          exit={reduceMotion ? undefined : { opacity: 0, x: 12, scale: 0.985 }}
+          initial={reduceMotion ? false : { opacity: 0, x: 18 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={reduceMotion ? undefined : { opacity: 0, x: 14 }}
           transition={studioSnap}
         >
-          <header className="flex h-10 shrink-0 items-center justify-between px-3.5">
-            <span className="text-[14px] font-semibold tracking-tight">{empty ? '新对话' : 'Agent'}</span>
+          <header className="flex h-10 shrink-0 items-center justify-between border-b border-border px-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="grid size-6 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
+                <Sparkles className="size-3.5" />
+              </span>
+              <div className="flex min-w-0 items-baseline gap-2">
+                <span className="shrink-0 text-[13px] font-semibold tracking-tight">
+                  Agent
+                </span>
+                <span className="truncate text-[11px] text-muted-foreground">
+                  {title || '未命名项目'}
+                </span>
+              </div>
+            </div>
             <Button type="button" variant="ghost" size="icon-xs" onClick={onClose} aria-label="收起 Agent">
               <X />
             </Button>
@@ -151,36 +169,48 @@ export default function AgentPanel({
           <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
             {empty ? (
               <motion.div
-                className="flex h-full flex-col items-center justify-center gap-5 px-4 pb-8"
+                className="flex h-full flex-col items-center justify-center px-5 pb-8 text-center"
                 initial={reduceMotion ? false : 'hidden'}
                 animate="show"
                 variants={studioStagger}
               >
+                <motion.span
+                  variants={studioItem}
+                  className="mb-4 grid size-11 place-items-center rounded-xl bg-[var(--studio-raised)] text-primary shadow-[inset_0_0_0_1px_var(--line)]"
+                >
+                  <Sparkles className="size-[18px]" />
+                </motion.span>
+                <motion.p variants={studioItem} className="text-[14px] font-semibold tracking-tight">
+                  从一个创作方向开始
+                </motion.p>
                 <motion.p
                   variants={studioItem}
-                  className="text-center text-[15px] font-semibold tracking-tight"
+                  className="mt-1.5 max-w-[260px] text-[12px] leading-5 text-muted-foreground"
                 >
-                  试试这些做法
+                  Agent 会理解当前画布，并直接创建、整理或修改内容。
                 </motion.p>
-                <motion.div variants={studioItem} className="flex max-w-[300px] flex-wrap justify-center gap-2">
+                <motion.div
+                  variants={studioItem}
+                  className="mt-6 grid w-full max-w-[306px] grid-cols-2 gap-1.5"
+                >
                   {SKILLS.map((skill) => {
                     const Icon = skill.icon;
                     return (
                       <button
                         key={skill.id}
                         type="button"
-                        className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--field)] px-3 py-1.5 text-[12.5px] leading-none transition-colors hover:bg-accent/70"
+                        className="flex min-w-0 items-center gap-2 rounded-lg bg-[var(--studio-raised)] px-2.5 py-2 text-left text-[11.5px] font-medium shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:bg-accent/60"
                         onClick={() => onSend(skill.prompt)}
                       >
-                        <Icon className={cn('size-3.5', skill.tone)} />
-                        {skill.label}
+                        <Icon className={cn('size-3.5 shrink-0', skill.tone)} />
+                        <span className="truncate">{skill.label}</span>
                       </button>
                     );
                   })}
                 </motion.div>
               </motion.div>
             ) : (
-              <div className="flex flex-col gap-3.5 px-4 py-3 pb-4">
+              <div className="flex flex-col gap-4 px-4 py-4 pb-5">
                 {messages.map((message) => (
                   <motion.article
                     key={message.id}
@@ -189,7 +219,7 @@ export default function AgentPanel({
                     transition={studioSnap}
                     className={
                       message.role === 'user'
-                        ? 'ml-auto max-w-[88%] rounded-2xl rounded-br-md bg-accent px-3 py-2'
+                        ? 'ml-auto max-w-[88%] rounded-xl rounded-br-sm bg-accent px-3 py-2'
                         : 'flex max-w-full flex-col gap-1.5'
                     }
                   >
@@ -247,7 +277,7 @@ export default function AgentPanel({
           </div>
 
           <form
-            className="mx-2.5 mb-2.5 flex flex-col gap-2 rounded-[22px] bg-[var(--field)] px-3 pt-3 pb-2.5 shadow-[inset_0_0_0_1px_var(--line)]"
+            className="mx-3 mb-3 flex flex-col gap-1.5 rounded-[14px] bg-[var(--studio-composer)] p-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--line)_82%,transparent)]"
             onSubmit={(event) => {
               event.preventDefault();
               submit();
@@ -256,8 +286,8 @@ export default function AgentPanel({
             <Textarea
               value={input}
               rows={3}
-              placeholder="从一句想法开始…"
-              className="min-h-16 resize-none border-0 bg-transparent px-0.5 py-0 shadow-none placeholder:text-muted-foreground/80 focus-visible:ring-0"
+              placeholder="描述想法，或让 Agent 整理当前画布…"
+              className="min-h-[72px] resize-none border-0 bg-transparent px-1 py-1 text-[13px] leading-5 shadow-none placeholder:text-muted-foreground/70 focus-visible:ring-0"
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
@@ -269,7 +299,13 @@ export default function AgentPanel({
             <div className="flex items-center justify-between">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="ghost" size="icon-xs" className="rounded-full" aria-label="在画布上添加">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="rounded-lg bg-[var(--studio-raised)] shadow-[inset_0_0_0_1px_var(--line)] hover:bg-[var(--studio-raised)]"
+                    aria-label="在画布上添加"
+                  >
                     <Plus />
                   </Button>
                 </DropdownMenuTrigger>
@@ -286,7 +322,7 @@ export default function AgentPanel({
                 </DropdownMenuContent>
               </DropdownMenu>
               {busy ? (
-                <Button type="button" size="icon-sm" className="rounded-full" onClick={onStop} aria-label="停止">
+                <Button type="button" size="icon-sm" className="rounded-lg" onClick={onStop} aria-label="停止">
                   <Square className="size-3" />
                 </Button>
               ) : (
@@ -295,7 +331,7 @@ export default function AgentPanel({
                   size="icon-sm"
                   disabled={!canSend}
                   aria-label="发送"
-                  className="rounded-full bg-[var(--ink)] text-[var(--field)] hover:bg-[var(--ink)]/90 disabled:bg-[var(--ink)]/25 disabled:text-[var(--field)]"
+                  className="rounded-lg bg-primary !text-primary-foreground hover:bg-primary/90 disabled:bg-primary/25 disabled:!text-primary-foreground/45"
                 >
                   <ArrowUp />
                 </Button>

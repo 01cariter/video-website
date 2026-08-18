@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sql } from './_client';
@@ -35,14 +35,22 @@ async function applySchema() {
   console.log(`  Schema applied (${statements.length} statements).`);
 }
 
-async function applySupabaseMigration() {
-  console.log('  Applying Supabase security and storage migration...');
-  const migration = await readFile(
-    join(currentDirectory, '..', 'supabase', 'migrations', '20260727000100_secure_initial_schema.sql'),
-    'utf8',
+async function applySupabaseMigrations() {
+  console.log('  Applying Supabase migrations...');
+  const migrationsDirectory = join(
+    currentDirectory,
+    '..',
+    'supabase',
+    'migrations',
   );
-  await sql.unsafe(migration);
-  console.log('  Supabase migration applied.');
+  const files = (await readdir(migrationsDirectory))
+    .filter((file) => file.endsWith('.sql'))
+    .sort();
+  for (const file of files) {
+    const migration = await readFile(join(migrationsDirectory, file), 'utf8');
+    await sql.unsafe(migration);
+    console.log(`  Applied ${file}.`);
+  }
 }
 
 async function main() {
@@ -54,7 +62,7 @@ async function main() {
   }
   console.log('\n  Setting up the Snackd database on Supabase Postgres...\n');
   await applySchema();
-  await applySupabaseMigration();
+  await applySupabaseMigrations();
   await seed();
 }
 

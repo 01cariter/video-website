@@ -1,139 +1,322 @@
 'use client';
 
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { type NodeProps } from '@xyflow/react';
-import type { StudioNode, StudioNodeKind } from '@/lib/studio/types';
+import { useEffect, useState } from 'react';
+import { Frame, Img, Rect, Txt } from '@/lib/leafer-react';
+import type { StudioNode } from '@/lib/studio/types';
 
-import { studioSnap, studioTween } from '@/lib/studio/motion';
-import { cn } from '@/lib/utils';
-import GenerationLoader from './GenerationLoader';
+const NODE_FILL = '#f4f4f2';
+const NODE_STROKE = '#d7d7d2';
+const NODE_RADIUS = 6;
+const NODE_EDIT_CONFIG = { rotateable: false };
 
-function NodeShell({ selected, children }: { selected?: boolean; children: React.ReactNode }) {
-  const reduceMotion = Boolean(useReducedMotion());
+export function StudioCanvasNode({ node }: { node: StudioNode }) {
+  const locked = node.data.locked === true;
+  const visible = node.data.hidden !== true;
+  const data = { nodeId: node.id };
+
   return (
-    <motion.div
-      className={cn(
-        'h-full overflow-hidden rounded-[8px] shadow-none',
-        selected && 'outline-2 outline-offset-0 outline-[var(--orange)]',
-      )}
-      initial={reduceMotion ? false : { opacity: 0, scale: 0.98 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={studioSnap}
+    <Frame
+      id={node.id}
+      name={node.data.title}
+      x={node.x}
+      y={node.y}
+      width={node.width}
+      height={node.height}
+      rotation={0}
+      zIndex={node.type === 'section' ? Math.min(-1, node.zIndex) : node.zIndex}
+      visible={visible}
+      fill="transparent"
+      strokeWidth={0}
+      draggable={!locked}
+      editable={!locked}
+      editConfig={NODE_EDIT_CONFIG}
+      locked={locked}
+      isSnap
+      lockRatio={node.type === 'image' || node.type === 'video'}
+      resizeChildren
+      data={data}
     >
-      {children}
-    </motion.div>
+      <NodeBody node={node} data={data} />
+    </Frame>
   );
 }
 
-function NodeStage({ stage, children }: { stage: string; children: React.ReactNode }) {
-  const reduceMotion = Boolean(useReducedMotion());
-  return (
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={stage}
-        className="h-full"
-        initial={reduceMotion ? false : { opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={reduceMotion ? undefined : { opacity: 0 }}
-        transition={studioTween}
-      >
-        {children}
-      </motion.div>
-    </AnimatePresence>
-  );
-}
-
-const EMPTY_COPY: Record<StudioNodeKind, string> = {
-  image: '画面',
-  video: '镜头',
-  text: '文案',
-};
-
-function EmptyStage({
-  kind,
-  aspect,
-  error,
+function NodeBody({
+  node,
+  data,
 }: {
-  kind: StudioNodeKind;
-  aspect?: string;
-  error?: string;
+  node: StudioNode;
+  data: Record<string, unknown>;
+}) {
+  if (node.type === 'section') {
+    return (
+      <>
+        <Rect
+          x={0}
+          y={0}
+          width={node.width}
+          height={node.height}
+          fill="rgba(255,255,255,0.16)"
+          stroke="#bdbab1"
+          strokeWidth={1}
+          dashPattern={[8, 6]}
+          cornerRadius={4}
+          hittable
+          data={data}
+        />
+        <Txt
+          text={node.data.title || '分组'}
+          x={12}
+          y={-24}
+          width={Math.max(80, node.width - 24)}
+          fontSize={12}
+          fontWeight={600}
+          fill="#6f6b62"
+          hittable={false}
+          data={data}
+        />
+      </>
+    );
+  }
+
+  if (node.data.status === 'generating') {
+    return <GeneratingNode node={node} data={data} />;
+  }
+
+  if (node.type === 'image') {
+    return (
+      <>
+        <Rect
+          x={0}
+          y={0}
+          width={node.width}
+          height={node.height}
+          fill="#171613"
+          stroke={NODE_STROKE}
+          strokeWidth={1}
+          cornerRadius={NODE_RADIUS}
+          data={data}
+        />
+        {node.data.src ? (
+          <Img
+            url={node.data.src}
+            x={0}
+            y={0}
+            width={node.width}
+            height={node.height}
+            cornerRadius={NODE_RADIUS}
+            draggable={false}
+            data={data}
+          />
+        ) : (
+          <EmptyNode node={node} label="图片" data={data} />
+        )}
+      </>
+    );
+  }
+
+  if (node.type === 'video') {
+    return (
+      <>
+        <Rect
+          x={0}
+          y={0}
+          width={node.width}
+          height={node.height}
+          fill="#171613"
+          stroke={NODE_STROKE}
+          strokeWidth={1}
+          cornerRadius={NODE_RADIUS}
+          data={data}
+        />
+        <Txt
+          text={node.data.src ? '▶  视频已生成' : node.data.error || '视频'}
+          x={0}
+          y={Math.max(0, node.height / 2 - 11)}
+          width={node.width}
+          fontSize={13}
+          fontWeight={600}
+          textAlign="center"
+          fill={node.data.error ? '#e56969' : '#ddd8cf'}
+          hittable={false}
+          data={data}
+        />
+        {node.data.src ? (
+          <Txt
+            text="双击或使用菜单播放"
+            x={0}
+            y={Math.max(0, node.height / 2 + 14)}
+            width={node.width}
+            fontSize={10}
+            textAlign="center"
+            fill="#8d887f"
+            hittable={false}
+            data={data}
+          />
+        ) : null}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Rect
+        x={0}
+        y={0}
+        width={node.width}
+        height={node.height}
+        fill="#fff7c8"
+        stroke="#e5d981"
+        strokeWidth={1}
+        cornerRadius={NODE_RADIUS}
+        data={data}
+      />
+      <Txt
+        text={node.data.title || '文本'}
+        x={14}
+        y={12}
+        width={Math.max(24, node.width - 28)}
+        fontSize={11}
+        fontWeight={600}
+        fill="#85771b"
+        hittable={false}
+        data={data}
+      />
+      <Txt
+        text={node.data.text || node.data.error || '双击或在下方输入文案要求'}
+        x={14}
+        y={38}
+        width={Math.max(24, node.width - 28)}
+        height={Math.max(24, node.height - 52)}
+        fontSize={14}
+        lineHeight={20}
+        fill={node.data.error ? '#a63f3f' : '#292616'}
+        hittable={false}
+        data={data}
+      />
+    </>
+  );
+}
+
+function EmptyNode({
+  node,
+  label,
+  data,
+}: {
+  node: StudioNode;
+  label: string;
+  data: Record<string, unknown>;
 }) {
   return (
-    <div className="relative grid h-full place-items-center border border-[var(--line)] bg-[var(--panel)]">
-      <span aria-hidden className="pointer-events-none absolute inset-2.5 text-[var(--line)]">
-        <i className="absolute top-0 left-0 size-2.5 border-t border-l" />
-        <i className="absolute top-0 right-0 size-2.5 border-t border-r" />
-        <i className="absolute bottom-0 left-0 size-2.5 border-b border-l" />
-        <i className="absolute bottom-0 right-0 size-2.5 border-b border-r" />
-      </span>
-      <div className="grid justify-items-center gap-1 px-3 text-center">
-        {error ? (
-          <p className="max-w-[18ch] text-[11px] leading-snug font-medium text-destructive">{error}</p>
-        ) : (
-          <>
-            <span className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground">{EMPTY_COPY[kind]}</span>
-            {kind !== 'text' && aspect && aspect !== 'auto' ? (
-              <span className="text-[10px] tabular-nums text-muted-foreground/70">{aspect}</span>
-            ) : null}
-          </>
-        )}
-      </div>
-    </div>
+    <>
+      <Rect
+        x={0}
+        y={0}
+        width={node.width}
+        height={node.height}
+        fill={NODE_FILL}
+        stroke={node.data.error ? '#d76d6d' : NODE_STROKE}
+        strokeWidth={1}
+        cornerRadius={NODE_RADIUS}
+        data={data}
+      />
+      <Txt
+        text={node.data.error ? '!' : '▧'}
+        x={12}
+        y={Math.max(0, node.height / 2 - 28)}
+        width={Math.max(24, node.width - 24)}
+        fontSize={22}
+        fontWeight={500}
+        textAlign="center"
+        fill={node.data.error ? '#b94e4e' : '#c2c2bd'}
+        hittable={false}
+        data={data}
+      />
+      <Txt
+        text={node.data.error || label}
+        x={12}
+        y={Math.max(0, node.height / 2 + 8)}
+        width={Math.max(24, node.width - 24)}
+        fontSize={11}
+        fontWeight={600}
+        textAlign="center"
+        fill={node.data.error ? '#b94e4e' : '#888882'}
+        hittable={false}
+        data={data}
+      />
+    </>
   );
 }
 
-export function ImageGenNode({ data, selected }: NodeProps<StudioNode>) {
+function GeneratingNode({
+  node,
+  data,
+}: {
+  node: StudioNode;
+  data: Record<string, unknown>;
+}) {
+  const progress = useLoadingSweep();
+  const bandWidth = Math.max(72, Math.min(180, node.width * 0.42));
+  const x = Math.max(
+    0,
+    Math.min(node.width, progress * node.width) - bandWidth / 2,
+  );
   return (
-    <NodeShell selected={selected}>
-      <NodeStage stage={data.status === 'generating' ? 'generating' : data.src ? 'ready' : 'idle'}>
-        {data.status === 'generating' ? (
-          <GenerationLoader prompt={data.prompt} resolution={data.aspect || '1:1'} label="正在生成图片" />
-        ) : data.src ? (
-          <img className="block h-full w-full bg-[#171613] object-cover" src={data.src} alt={data.title} />
-        ) : (
-          <EmptyStage kind="image" aspect={data.aspect} error={data.error} />
-        )}
-      </NodeStage>
-    </NodeShell>
+    <>
+      <Rect
+        x={0}
+        y={0}
+        width={node.width}
+        height={node.height}
+        fill={NODE_FILL}
+        stroke={NODE_STROKE}
+        strokeWidth={1}
+        cornerRadius={NODE_RADIUS}
+        data={data}
+      />
+      <Rect
+        x={x}
+        y={0}
+        width={Math.min(bandWidth, node.width - x)}
+        height={node.height}
+        fill="rgba(255,255,255,0.48)"
+        cornerRadius={NODE_RADIUS}
+        hittable={false}
+        data={data}
+      />
+      <Txt
+        text={
+          node.type === 'video'
+            ? '正在生成视频'
+            : node.type === 'text'
+              ? '正在写作'
+              : '正在生成图片'
+        }
+        x={12}
+        y={Math.max(0, node.height / 2 - 10)}
+        width={Math.max(24, node.width - 24)}
+        fontSize={12}
+        fontWeight={600}
+        textAlign="center"
+        fill="#77736b"
+        hittable={false}
+        data={data}
+      />
+    </>
   );
 }
 
-export function VideoGenNode({ data, selected }: NodeProps<StudioNode>) {
-  return (
-    <NodeShell selected={selected}>
-      <NodeStage stage={data.status === 'generating' ? 'generating' : data.src ? 'ready' : 'idle'}>
-        {data.status === 'generating' ? (
-          <GenerationLoader prompt={data.prompt} resolution={`${data.videoResolution || '720p'} · ${data.duration || 5}s`} label="正在生成视频" />
-        ) : data.src ? (
-          <video className="block h-full w-full bg-[#171613] object-cover" src={data.src} controls playsInline />
-        ) : (
-          <EmptyStage kind="video" aspect={data.aspect} error={data.error} />
-        )}
-      </NodeStage>
-    </NodeShell>
-  );
+function useLoadingSweep() {
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    let frame = 0;
+    const start = performance.now();
+    const tick = (time: number) => {
+      setProgress(((time - start) % 1400) / 1400);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  return progress;
 }
-
-export function TextGenNode({ data, selected }: NodeProps<StudioNode>) {
-  return (
-    <NodeShell selected={selected}>
-      <NodeStage stage={data.status === 'generating' ? 'generating' : data.text ? 'ready' : 'idle'}>
-        {data.status === 'generating' ? (
-          <div className="grid h-full place-items-center bg-[var(--panel)] text-[13px] font-semibold text-muted-foreground">正在写…</div>
-        ) : data.text ? (
-          <div className="h-full overflow-auto border border-[var(--line)] bg-[var(--panel)] px-3.5 py-3 text-[13.5px] leading-relaxed whitespace-pre-wrap">
-            {data.text}
-          </div>
-        ) : (
-          <EmptyStage kind="text" error={data.error} />
-        )}
-      </NodeStage>
-    </NodeShell>
-  );
-}
-
-export const studioNodeTypes = {
-  image: ImageGenNode,
-  video: VideoGenNode,
-  text: TextGenNode,
-};
