@@ -55,7 +55,7 @@ Required locally:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...  # or NEXT_PUBLIC_SUPABASE_ANON_KEY
-POSTGRES_URL=...                          # or SUPABASE_DATABASE_URL
+SUPABASE_DB_URL=...                       # Integration may inject VIDEO_WEB_POSTGRES_URL_NON_POOLING
 NEXT_PUBLIC_SITE_URL=https://your-domain.example
 AI_GATEWAY_API_KEY=...
 STRIPE_SECRET_KEY=sk_...
@@ -82,9 +82,9 @@ npm start
 
 ## Database and Storage
 
-- Production: apply every file in `supabase/migrations/` with
-  `supabase db push`. The newest migration adds CreatorStudio projects,
-  the credit ledger, generation idempotency, orders, and Stripe event records.
+- Production: Vercel runs `supabase db push` before `next build`; Preview
+  deployments skip migrations. A migration failure blocks the deployment.
+- `npm run db:migrate:check` — dry-run pending migrations without applying them.
 - `npm run db:setup` — destructive local setup. It is blocked for remote
   databases unless `ALLOW_DESTRUCTIVE_DB_SETUP=1` is explicitly set.
 - `npm run db:seed` — re-seed business content only (schema must already exist)

@@ -1,16 +1,12 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getPostgresUrl } from '../lib/supabase/env';
 import { sql } from './_client';
 import { seed } from './seed';
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
-const databaseUrl =
-  process.env.POSTGRES_URL ||
-  process.env.SUPABASE_DATABASE_URL ||
-  process.env.SUPABASE_DB_URL ||
-  process.env.POSTGRES_URL_NON_POOLING ||
-  '';
+const databaseUrl = getPostgresUrl();
 
 function splitStatements(file: string) {
   return file

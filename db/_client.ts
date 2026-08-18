@@ -1,20 +1,11 @@
 import { config } from 'dotenv';
 import postgres from 'postgres';
+import { getPostgresUrl } from '../lib/supabase/env';
 
 config({ path: '.env.local' });
 config();
 
-const databaseUrl =
-  process.env.POSTGRES_URL ||
-  process.env.SUPABASE_DATABASE_URL ||
-  process.env.SUPABASE_DB_URL ||
-  process.env.POSTGRES_URL_NON_POOLING;
-
-if (!databaseUrl) {
-  throw new Error(
-    'POSTGRES_URL is not set. Pull the Vercel Supabase environment variables or add SUPABASE_DATABASE_URL.',
-  );
-}
+const databaseUrl = getPostgresUrl();
 
 const isLocal = /(?:localhost|127\.0\.0\.1)/.test(databaseUrl);
 
