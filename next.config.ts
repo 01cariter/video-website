@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
   },
+  outputFileTracingIncludes: {
+    '/api/studio/chat': ['./lib/studio/skills/builtin/**/*.md'],
+  },
   async headers() {
     return [
       {

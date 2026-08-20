@@ -1429,7 +1429,9 @@ function CanvasWorkspace({
           messages={messages}
           status={status}
           error={error}
-          onSend={(text) => void sendMessage({ text })}
+          onSend={(text, skillIds) =>
+            void sendMessage({ text }, { body: { skillIds } })
+          }
           onStop={() => stop()}
           draftRequest={agentDraftRequest}
         />

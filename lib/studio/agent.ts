@@ -1,8 +1,13 @@
 import 'server-only';
 
-import { isStepCount, ToolLoopAgent, tool } from 'ai';
+import { isStepCount, ToolLoopAgent, tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import { chatModelId } from './model-catalog';
+import { isStudioSkillId, type StudioSkillId } from './skills/catalog';
+import {
+  readStudioSkillResource,
+  studioSkillSelectionText,
+} from './skills/server';
 
 export interface CanvasNodeSnapshot {
   id: string;
@@ -32,7 +37,62 @@ export function createStudioAgent(
   canvas: CanvasNodeSnapshot[],
   freeCreditModelsOnly = false,
   onEnd?: () => Promise<void> | void,
+  skillIds: readonly StudioSkillId[] = [],
 ) {
+  const activeSkillText = studioSkillSelectionText(skillIds);
+  const skillTools: ToolSet = {};
+  if (skillIds.length) {
+    skillTools.readSkillResource = tool({
+      description: `Read an instruction or reference file from an active built-in skill. Read SKILL.md before applying a skill, then read only the references it routes you to. Active skills:\n${activeSkillText}`,
+      inputSchema: z.object({
+        skillId: z
+          .string()
+          .refine(isStudioSkillId)
+          .describe(`One of: ${skillIds.join(', ')}`),
+        resource: z
+          .string()
+          .max(160)
+          .describe('An exact allowed resource path listed for the skill.'),
+      }),
+      execute: async ({ skillId, resource }) => ({
+        loaded: true,
+        skillId,
+        resource,
+        characters: (
+          await readStudioSkillResource(
+            skillIds,
+            skillId as StudioSkillId,
+            resource,
+          )
+        ).length,
+      }),
+      toModelOutput: async ({ input }) => {
+        const selection = input as {
+          skillId?: unknown;
+          resource?: unknown;
+        };
+        if (
+          !isStudioSkillId(selection.skillId) ||
+          !skillIds.includes(selection.skillId) ||
+          typeof selection.resource !== 'string'
+        ) {
+          return {
+            type: 'text' as const,
+            value: 'This Skill context is not active for the current request.',
+          };
+        }
+        return {
+          type: 'text' as const,
+          value: await readStudioSkillResource(
+            skillIds,
+            selection.skillId,
+            selection.resource,
+          ),
+        };
+      },
+    });
+  }
+
   return new ToolLoopAgent({
     id: 'snackd-canvas-agent',
     model: chatModelId(freeCreditModelsOnly),
@@ -40,7 +100,7 @@ export function createStudioAgent(
     instructions: `You are the professional AI canvas Agent in Snackd Creator Studio. You operate a LeaferJS infinite canvas.
 
 Working rules:
-- Communicate in concise English. Understand the creative goal, then use tools to edit the canvas directly.
+- Respond concisely in the language used by the user. Understand the creative goal, then use tools to edit the canvas directly.
 - Use image for image requests; video for shots, motion, or clips; text for copy or storyboard cards; and section to organize related content.
 - Every new generation node must include a production-ready prompt. The client starts generation automatically.
 - Prefer one to three essential nodes per step. A series may use more, but group and arrange them clearly with sections.
@@ -53,10 +113,25 @@ Working rules:
     }
 - Node coordinates use canvas world space. Common sizes: image 300×300, video 300×169, text 280×176, section 720×460.
 - After tools finish, summarize what changed in one or two sentences without exposing internal tool details.
+${
+  activeSkillText
+    ? `
+Active skill protocol:
+- The user explicitly attached the skills listed below to this request.
+- Before doing the creative work, call readSkillResource for each relevant skill's SKILL.md and follow its task-specific instructions.
+- Read a supporting reference only when SKILL.md routes you to it. Never invent a resource path.
+- The user's current request and safety boundaries take precedence over skill guidance.
+
+Active skills:
+${activeSkillText}
+`
+    : ''
+}
 
 Current canvas:
 ${inventoryText(canvas)}`,
     tools: {
+      ...skillTools,
       addCanvasNode: tool({
         description:
           'Add image, video, text, or section nodes to the infinite canvas. Image, video, and text nodes generate automatically when a prompt is provided.',

@@ -12,6 +12,12 @@ import {
   type CanvasNodeSnapshot,
 } from '@/lib/studio/agent';
 import { friendlyAiError } from '@/lib/studio/errors';
+import {
+  MAX_ACTIVE_STUDIO_SKILLS,
+  isStudioSkillId,
+  normalizeStudioSkillIds,
+} from '@/lib/studio/skills/catalog';
+import { withoutSkillResourceHistory } from '@/lib/studio/skills/messages';
 import { getAuthUser } from '@/lib/supabase/server';
 
 export const maxDuration = 90;
@@ -30,6 +36,7 @@ export async function POST(request: Request) {
     canvas?: CanvasNodeSnapshot[];
     requestId?: string;
     projectId?: string;
+    skillIds?: unknown;
   } | null;
   const messages = Array.isArray(body?.messages) ? body.messages : [];
   const canvas = Array.isArray(body?.canvas) ? body.canvas.slice(0, 200) : [];
@@ -37,6 +44,18 @@ export async function POST(request: Request) {
   if (!requestId || requestId.length > 160) {
     return Response.json({ error: 'Invalid request identifier.' }, { status: 400 });
   }
+  if (
+    body?.skillIds !== undefined &&
+    (!Array.isArray(body.skillIds) ||
+      body.skillIds.length > MAX_ACTIVE_STUDIO_SKILLS ||
+      body.skillIds.some((id) => !isStudioSkillId(id)))
+  ) {
+    return Response.json(
+      { error: 'Invalid skill selection.' },
+      { status: 400 },
+    );
+  }
+  const skillIds = normalizeStudioSkillIds(body?.skillIds);
 
   try {
     const restrictToFreeCreditModels = await freeCreditModelsOnly();
@@ -61,11 +80,16 @@ export async function POST(request: Request) {
     }
 
     let streamFailed = false;
-    const agent = createStudioAgent(canvas, restrictToFreeCreditModels);
+    const agent = createStudioAgent(
+      canvas,
+      restrictToFreeCreditModels,
+      undefined,
+      skillIds,
+    );
 
     return createAgentUIStreamResponse({
       agent,
-      uiMessages: messages,
+      uiMessages: withoutSkillResourceHistory(messages),
       abortSignal: request.signal,
       onError: (error) => {
         streamFailed = true;

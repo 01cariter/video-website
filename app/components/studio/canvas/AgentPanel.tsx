@@ -1,18 +1,22 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowUp,
-  Clapperboard,
+  BookOpen,
+  Check,
   FileText,
   ImageIcon,
-  Layers,
-  Play,
   Plus,
+  Search,
   Sparkles,
   Square,
-  Type,
   Video,
   X,
 } from 'lucide-react';
@@ -25,6 +29,12 @@ import {
 } from '@/lib/studio/motion';
 import { cn } from '@/lib/utils';
 import { Button } from '@/app/components/ui/button';
+import { Input } from '@/app/components/ui/input';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/app/components/ui/popover';
 import {
   AgentActivity,
   AgentReasoning,
@@ -37,6 +47,12 @@ import {
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
 import { Textarea } from '@/app/components/ui/textarea';
+import {
+  BUILT_IN_STUDIO_SKILLS,
+  MAX_ACTIVE_STUDIO_SKILLS,
+  studioSkillById,
+  type StudioSkillId,
+} from '@/lib/studio/skills/catalog';
 import { useStudioCanvas } from './studio-context';
 
 interface AgentPanelProps {
@@ -46,61 +62,12 @@ interface AgentPanelProps {
   messages: UIMessage[];
   status: 'submitted' | 'streaming' | 'ready' | 'error';
   error?: Error | undefined;
-  onSend: (text: string) => void;
+  onSend: (text: string, skillIds: StudioSkillId[]) => void;
   onStop: () => void;
   draftRequest?: { id: number; text: string } | null;
 }
 
-const SKILLS = [
-  {
-    id: 'seedance',
-    label: 'Seedance video',
-    icon: Play,
-    tone: 'text-[var(--study)]',
-    prompt:
-      'Create a five-second Seedance product video on the canvas with warm light, a slow push-in, and clear packaging texture.',
-  },
-  {
-    id: 'onelong',
-    label: 'Single-take shot',
-    icon: Play,
-    tone: 'text-[var(--study)]',
-    prompt:
-      'Create a single-take clip that moves from an empty tabletop down to the product without a cut.',
-  },
-  {
-    id: 'hero',
-    label: 'Package hero',
-    icon: ImageIcon,
-    tone: 'text-[var(--orange)]',
-    prompt:
-      'Create a production-ready package hero image with a warm stone background, centered product, and room for the brand name.',
-  },
-  {
-    id: 'series',
-    label: 'Poster series',
-    icon: Layers,
-    tone: 'text-[var(--orange)]',
-    prompt:
-      'Create three posters in one visual system. Vary the composition while keeping materials and lighting consistent.',
-  },
-  {
-    id: 'story',
-    label: 'Storyboard',
-    icon: Clapperboard,
-    tone: 'text-[var(--orange-d)]',
-    prompt:
-      'Break the current direction into three consecutive shots and arrange them on the canvas.',
-  },
-  {
-    id: 'copy',
-    label: 'Package copy',
-    icon: Type,
-    tone: 'text-muted-foreground',
-    prompt:
-      'Write concise package copy with a product name, one benefit, and one use case.',
-  },
-] as const;
+const SKILL_LIST_ID = 'studio-agent-skill-list';
 
 function textOf(message: UIMessage) {
   return message.parts
@@ -112,6 +79,7 @@ function textOf(message: UIMessage) {
 }
 
 function toolLabel(type: string) {
+  if (type.includes('readSkillResource')) return 'Read Skill';
   if (type.includes('addCanvasNode')) return 'Add canvas node';
   if (type.includes('updateCanvasNode')) return 'Update canvas node';
   if (type.includes('removeCanvasNodes')) return 'Remove canvas nodes';
@@ -138,6 +106,10 @@ export default function AgentPanel({
     draftId: number | null;
     value: string;
   }>({ draftId: null, value: '' });
+  const [selectedSkillIds, setSelectedSkillIds] = useState<StudioSkillId[]>([]);
+  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+  const [skillQuery, setSkillQuery] = useState('');
+  const [activeSkillIndex, setActiveSkillIndex] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const reduceMotion = Boolean(useReducedMotion());
@@ -148,16 +120,43 @@ export default function AgentPanel({
     draftRequest && inputState.draftId !== activeDraftId
       ? draftRequest.text
       : inputState.value;
+  const activeMention = input.match(/(^|\s)[@/]([\w-]*)$/u);
+  const selectedSkills = selectedSkillIds.map(studioSkillById);
+  const normalizedSkillQuery = skillQuery.trim().toLowerCase();
+  const visibleSkills = BUILT_IN_STUDIO_SKILLS.filter((skill) =>
+    `${skill.name} ${skill.description} ${skill.category}`
+      .toLowerCase()
+      .includes(normalizedSkillQuery),
+  );
   const canSend = input.trim().length > 0 && status === 'ready';
 
-  const setInput = (value: string) =>
+  const setInput = (value: string) => {
     setInputState({ draftId: activeDraftId, value });
+    const mention = value.match(/(^|\s)[@/]([\w-]*)$/u);
+    if (mention) {
+      setSkillQuery(mention[2]);
+      setActiveSkillIndex(0);
+      setSkillPickerOpen(true);
+    } else if (skillPickerOpen) {
+      setSkillPickerOpen(false);
+      setSkillQuery('');
+    }
+  };
 
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [messages, status]);
+
+  useEffect(() => {
+    if (!skillPickerOpen || !visibleSkills.length) return;
+    document
+      .getElementById(
+        `${SKILL_LIST_ID}-${visibleSkills[activeSkillIndex]?.id ?? visibleSkills[0].id}`,
+      )
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [activeSkillIndex, skillPickerOpen, visibleSkills]);
 
   useEffect(() => {
     if (!open || !draftRequest) return;
@@ -174,8 +173,61 @@ export default function AgentPanel({
 
   function submit() {
     if (!canSend) return;
-    onSend(input.trim());
+    onSend(input.trim(), selectedSkillIds);
     setInput('');
+    setSelectedSkillIds([]);
+    setSkillPickerOpen(false);
+    setSkillQuery('');
+  }
+
+  function selectSkill(skillId: StudioSkillId) {
+    setSelectedSkillIds((current) => {
+      if (current.includes(skillId)) {
+        return current.filter((id) => id !== skillId);
+      }
+      if (current.length >= MAX_ACTIVE_STUDIO_SKILLS) return current;
+      return [...current, skillId];
+    });
+    if (activeMention) {
+      const next = input
+        .slice(0, input.length - activeMention[0].length)
+        .concat(activeMention[1]);
+      setInput(next);
+      setSkillPickerOpen(false);
+      setSkillQuery('');
+      window.requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }
+
+  function handleSkillPickerKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (!skillPickerOpen) return false;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setSkillPickerOpen(false);
+      setSkillQuery('');
+      return true;
+    }
+    if (!visibleSkills.length) return false;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const direction = event.key === 'ArrowDown' ? 1 : -1;
+      setActiveSkillIndex((current) =>
+        (current + direction + visibleSkills.length) % visibleSkills.length,
+      );
+      return true;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const skill = visibleSkills[activeSkillIndex] ?? visibleSkills[0];
+      if (
+        selectedSkillIds.includes(skill.id) ||
+        selectedSkillIds.length < MAX_ACTIVE_STUDIO_SKILLS
+      ) {
+        selectSkill(skill.id);
+      }
+      return true;
+    }
+    return false;
   }
 
   if (!open) return null;
@@ -239,28 +291,47 @@ export default function AgentPanel({
               variants={studioItem}
               className="mt-1.5 max-w-[260px] text-[12px] leading-5 text-muted-foreground"
             >
-              The Agent reads the current canvas and can create, organize, or
-              revise content directly.
+              Attach a built-in workflow, then ask the Agent to create,
+              organize, or revise the canvas.
             </motion.p>
             <motion.div
               variants={studioItem}
               className="mt-6 grid w-full max-w-[306px] grid-cols-2 gap-1.5"
             >
-              {SKILLS.map((skill) => {
-                const Icon = skill.icon;
+              {BUILT_IN_STUDIO_SKILLS.slice(0, 6).map((skill) => {
+                const selected = selectedSkillIds.includes(skill.id);
+                const disabled =
+                  !selected &&
+                  selectedSkillIds.length >= MAX_ACTIVE_STUDIO_SKILLS;
                 return (
                   <button
                     key={skill.id}
                     type="button"
-                    className="flex min-w-0 items-center gap-2 rounded-lg bg-[var(--studio-raised)] px-2.5 py-2 text-left text-[11.5px] font-medium shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:bg-accent/60"
-                    onClick={() => onSend(skill.prompt)}
+                    disabled={disabled}
+                    className={cn(
+                      'flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11.5px] font-medium shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:bg-accent/60 disabled:opacity-40',
+                      selected
+                        ? 'bg-accent text-accent-foreground'
+                        : 'bg-[var(--studio-raised)]',
+                    )}
+                    onClick={() => selectSkill(skill.id)}
                   >
-                    <Icon className={cn('size-3.5 shrink-0', skill.tone)} />
-                    <span className="truncate">{skill.label}</span>
+                    {selected ? (
+                      <Check className="size-3.5 shrink-0 text-primary" />
+                    ) : (
+                      <BookOpen className="size-3.5 shrink-0 text-[var(--orange-d)]" />
+                    )}
+                    <span className="truncate">{skill.name}</span>
                   </button>
                 );
               })}
             </motion.div>
+            <motion.p
+              variants={studioItem}
+              className="mt-2 text-[10.5px] text-muted-foreground"
+            >
+              Browse all 12 from Skills below · maximum 3 per request
+            </motion.p>
           </motion.div>
         ) : (
           <div className="flex flex-col gap-4 px-4 py-4 pb-5">
@@ -342,14 +413,46 @@ export default function AgentPanel({
           submit();
         }}
       >
+        {selectedSkills.length ? (
+          <div
+            className="flex flex-wrap gap-1 px-0.5 pt-0.5"
+            aria-label="Attached skills"
+          >
+            {selectedSkills.map((skill) => (
+              <button
+                key={skill.id}
+                type="button"
+                className="flex max-w-full items-center gap-1 rounded-md bg-primary/9 px-1.5 py-1 text-[10.5px] font-semibold text-primary shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--primary)_18%,transparent)]"
+                title={skill.description}
+                onClick={() => selectSkill(skill.id)}
+                aria-label={`Remove ${skill.name}`}
+              >
+                <BookOpen className="size-3" />
+                <span className="truncate">{skill.name}</span>
+                <X className="size-2.5 opacity-70" />
+              </button>
+            ))}
+          </div>
+        ) : null}
         <Textarea
           ref={inputRef}
           value={input}
           rows={3}
-          placeholder="Describe an idea or ask the Agent to organize this canvas…"
+          placeholder="Describe an idea… Type @ or / to attach a Skill"
           className="min-h-[72px] resize-none border-0 bg-transparent px-1 py-1 text-[13px] leading-5 shadow-none placeholder:text-muted-foreground/70 focus-visible:ring-0"
+          aria-autocomplete="list"
+          aria-controls={
+            activeMention && skillPickerOpen ? SKILL_LIST_ID : undefined
+          }
+          aria-expanded={Boolean(activeMention && skillPickerOpen)}
+          aria-activedescendant={
+            activeMention && skillPickerOpen && visibleSkills.length
+              ? `${SKILL_LIST_ID}-${visibleSkills[activeSkillIndex]?.id ?? visibleSkills[0].id}`
+              : undefined
+          }
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
+            if (activeMention && handleSkillPickerKeyDown(event)) return;
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
               submit();
@@ -357,30 +460,151 @@ export default function AgentPanel({
           }}
         />
         <div className="flex items-center justify-between">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                className="rounded-lg bg-[var(--studio-raised)] shadow-[inset_0_0_0_1px_var(--line)] hover:bg-[var(--studio-raised)]"
-                aria-label="Add to canvas"
+          <div className="flex items-center gap-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="rounded-lg bg-[var(--studio-raised)] shadow-[inset_0_0_0_1px_var(--line)] hover:bg-[var(--studio-raised)]"
+                  aria-label="Add to canvas"
+                >
+                  <Plus />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top">
+                <DropdownMenuItem onSelect={() => addNode('image')}>
+                  <ImageIcon /> Image generator
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => addNode('video')}>
+                  <Video /> Video generator
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => addNode('text')}>
+                  <FileText /> Text
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Popover
+              open={skillPickerOpen}
+              onOpenChange={(next) => {
+                setSkillPickerOpen(next);
+                if (next) setActiveSkillIndex(0);
+                if (!next) setSkillQuery('');
+              }}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  className="rounded-lg bg-[var(--studio-raised)] px-2 shadow-[inset_0_0_0_1px_var(--line)] hover:bg-[var(--studio-raised)]"
+                  aria-label="Attach a Skill"
+                >
+                  <BookOpen /> Skills
+                  {selectedSkillIds.length ? (
+                    <span className="tabular-nums text-primary">
+                      {selectedSkillIds.length}
+                    </span>
+                  ) : null}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                side="top"
+                className="w-[326px] overflow-hidden p-0"
+                onOpenAutoFocus={(event) => {
+                  if (activeMention) event.preventDefault();
+                }}
               >
-                <Plus />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" side="top">
-              <DropdownMenuItem onSelect={() => addNode('image')}>
-                <ImageIcon /> Image generator
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => addNode('video')}>
-                <Video /> Video generator
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => addNode('text')}>
-                <FileText /> Text
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <div className="flex items-center gap-2 border-b px-2.5 py-2">
+                  <Search className="size-3.5 shrink-0 text-muted-foreground" />
+                  <Input
+                    value={skillQuery}
+                    onChange={(event) => {
+                      setSkillQuery(event.target.value);
+                      setActiveSkillIndex(0);
+                    }}
+                    placeholder="Search 12 built-in skills"
+                    className="h-7 border-0 px-0 text-[12px] shadow-none focus-visible:ring-0"
+                    aria-label="Search skills"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={skillPickerOpen}
+                    aria-controls={SKILL_LIST_ID}
+                    aria-activedescendant={
+                      visibleSkills.length
+                        ? `${SKILL_LIST_ID}-${visibleSkills[activeSkillIndex]?.id ?? visibleSkills[0].id}`
+                        : undefined
+                    }
+                    onKeyDown={handleSkillPickerKeyDown}
+                  />
+                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                    {selectedSkillIds.length}/{MAX_ACTIVE_STUDIO_SKILLS}
+                  </span>
+                </div>
+                <div
+                  id={SKILL_LIST_ID}
+                  role="listbox"
+                  aria-multiselectable="true"
+                  aria-label="Built-in skills"
+                  className="max-h-[276px] overflow-y-auto p-1.5"
+                >
+                  {visibleSkills.length ? (
+                    visibleSkills.map((skill, index) => {
+                      const selected = selectedSkillIds.includes(skill.id);
+                      const disabled =
+                        !selected &&
+                        selectedSkillIds.length >= MAX_ACTIVE_STUDIO_SKILLS;
+                      return (
+                        <button
+                          key={skill.id}
+                          id={`${SKILL_LIST_ID}-${skill.id}`}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          disabled={disabled}
+                          className={cn(
+                            'flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent disabled:opacity-40',
+                            index === activeSkillIndex && 'bg-accent',
+                          )}
+                          onClick={() => selectSkill(skill.id)}
+                          onMouseEnter={() => setActiveSkillIndex(index)}
+                        >
+                          <span
+                            className={cn(
+                              'mt-0.5 grid size-5 shrink-0 place-items-center rounded-md',
+                              selected
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-muted text-muted-foreground',
+                            )}
+                          >
+                            {selected ? (
+                              <Check className="size-3" />
+                            ) : (
+                              <BookOpen className="size-3" />
+                            )}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[11.5px] font-semibold">
+                              {skill.name}
+                            </span>
+                            <span className="mt-0.5 block text-[10.5px] leading-4 text-muted-foreground">
+                              {skill.description}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="px-2 py-5 text-center text-[11px] text-muted-foreground">
+                      No matching skills
+                    </p>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
           {busy ? (
             <Button
               type="button"
