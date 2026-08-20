@@ -131,7 +131,7 @@ function AspectGlyph({ aspect }: { aspect: string }) {
   );
 }
 
-function ModelMark({
+export function ModelMark({
   model,
   compact = false,
 }: {
@@ -163,7 +163,7 @@ function ModelMark({
   );
 }
 
-function SettingControl({
+export function SettingControl({
   field,
   current,
   onFieldChange,
@@ -416,13 +416,13 @@ function promptPlaceholder(kind: StudioGenerativeKind) {
   return 'Describe the subject, lighting, composition, and style…';
 }
 
-function settingsTitle(kind: StudioGenerativeKind) {
+export function settingsTitle(kind: StudioGenerativeKind) {
   if (kind === 'video') return 'Video settings';
   if (kind === 'text') return 'Text settings';
   return 'Image settings';
 }
 
-function settingsDescription(kind: StudioGenerativeKind) {
+export function settingsDescription(kind: StudioGenerativeKind) {
   if (kind === 'video') return 'Adjust aspect, resolution, duration, and audio';
   if (kind === 'text') return 'Set the reasoning effort for this generation';
   return 'Set the aspect ratio and number of outputs';
@@ -677,11 +677,11 @@ export default function NodeInspector({
                       >
                         <ModelMark model={model} />
                         <span className="min-w-0 flex-1">
-                          <span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-                            <span className="truncate text-[12px] font-semibold">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className="min-w-0 truncate text-[12px] font-semibold">
                               {model.label}
                             </span>
-                            <span className="whitespace-nowrap rounded-[5px] border border-border bg-background px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+                            <span className="shrink-0 whitespace-nowrap rounded-[5px] border border-border bg-background px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
                               {model.tag}
                             </span>
                           </span>

@@ -9,7 +9,7 @@ import {
   normalizeStudioProject,
   saveStudioProject,
 } from './store';
-import type { StudioProject } from './types';
+import type { StudioPendingGeneration, StudioProject } from './types';
 
 async function jsonOrNull(response: Response) {
   return response.json().catch(() => null) as Promise<Record<string, unknown> | null>;
@@ -86,6 +86,7 @@ export async function getStudioProjectSynced(id: string) {
 export async function createStudioProjectSynced(input: {
   title?: string;
   pendingPrompt?: string;
+  pendingGeneration?: StudioPendingGeneration;
   templateId?: string;
   blank?: boolean;
 }) {

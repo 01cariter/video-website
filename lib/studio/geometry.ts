@@ -16,10 +16,151 @@ export interface StudioSnapGuide {
   end: number;
 }
 
+export type StudioArrangeAction =
+  | 'tidy'
+  | 'align-left'
+  | 'align-center-horizontal'
+  | 'align-right'
+  | 'align-top'
+  | 'align-center-vertical'
+  | 'align-bottom'
+  | 'distribute-horizontal'
+  | 'distribute-vertical';
+
 interface StudioAxisSnap {
   delta: number;
   position: number;
   target: StudioBounds;
+}
+
+export function resolveStudioResizeDirection(...candidates: unknown[]) {
+  for (const candidate of candidates) {
+    const direction = Number(candidate);
+    if (Number.isInteger(direction) && direction >= 0 && direction <= 7) {
+      return direction;
+    }
+  }
+  return null;
+}
+
+export function arrangeStudioNodes(
+  nodes: StudioNode[],
+  ids: string[],
+  action: StudioArrangeAction,
+) {
+  const selected = new Set(ids);
+  const items = nodes.filter(
+    (node) =>
+      selected.has(node.id) &&
+      node.type !== 'section' &&
+      node.data.hidden !== true &&
+      node.data.locked !== true,
+  );
+  if (items.length < 2) return nodes;
+
+  const left = Math.min(...items.map((node) => node.x));
+  const top = Math.min(...items.map((node) => node.y));
+  const right = Math.max(...items.map((node) => node.x + node.width));
+  const bottom = Math.max(...items.map((node) => node.y + node.height));
+  const patches = new Map<string, { x?: number; y?: number }>();
+
+  if (action === 'tidy') {
+    const ordered = [...items].sort((a, b) => {
+      const centerGap = Math.abs(
+        a.y + a.height / 2 - (b.y + b.height / 2),
+      );
+      const sameVisualRow = centerGap <= Math.min(a.height, b.height) / 2;
+      return sameVisualRow
+        ? a.x - b.x || a.y - b.y || a.zIndex - b.zIndex
+        : a.y - b.y || a.x - b.x || a.zIndex - b.zIndex;
+    });
+    const columns =
+      ordered.length <= 3 ? ordered.length : Math.ceil(Math.sqrt(ordered.length));
+    const rows = Math.ceil(ordered.length / columns);
+    const columnWidths = Array.from({ length: columns }, () => 0);
+    const rowHeights = Array.from({ length: rows }, () => 0);
+    const gap = 24;
+
+    ordered.forEach((node, index) => {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      columnWidths[column] = Math.max(columnWidths[column], node.width);
+      rowHeights[row] = Math.max(rowHeights[row], node.height);
+    });
+
+    const columnStarts = columnWidths.map(
+      (_, index) =>
+        left +
+        columnWidths
+          .slice(0, index)
+          .reduce((total, width) => total + width + gap, 0),
+    );
+    const rowStarts = rowHeights.map(
+      (_, index) =>
+        top +
+        rowHeights
+          .slice(0, index)
+          .reduce((total, height) => total + height + gap, 0),
+    );
+
+    ordered.forEach((node, index) => {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      patches.set(node.id, {
+        x: columnStarts[column] + (columnWidths[column] - node.width) / 2,
+        y: rowStarts[row] + (rowHeights[row] - node.height) / 2,
+      });
+    });
+  } else if (action === 'align-left') {
+    items.forEach((node) => patches.set(node.id, { x: left }));
+  } else if (action === 'align-center-horizontal') {
+    items.forEach((node) =>
+      patches.set(node.id, { x: left + (right - left - node.width) / 2 }),
+    );
+  } else if (action === 'align-right') {
+    items.forEach((node) =>
+      patches.set(node.id, { x: right - node.width }),
+    );
+  } else if (action === 'align-top') {
+    items.forEach((node) => patches.set(node.id, { y: top }));
+  } else if (action === 'align-center-vertical') {
+    items.forEach((node) =>
+      patches.set(node.id, { y: top + (bottom - top - node.height) / 2 }),
+    );
+  } else if (action === 'align-bottom') {
+    items.forEach((node) =>
+      patches.set(node.id, { y: bottom - node.height }),
+    );
+  } else if (action === 'distribute-horizontal') {
+    const ordered = [...items].sort((a, b) => a.x - b.x);
+    const totalWidth = ordered.reduce((total, node) => total + node.width, 0);
+    const gap = Math.max(8, (right - left - totalWidth) / (ordered.length - 1));
+    let cursor = left;
+    ordered.forEach((node) => {
+      patches.set(node.id, { x: cursor });
+      cursor += node.width + gap;
+    });
+  } else if (action === 'distribute-vertical') {
+    const ordered = [...items].sort((a, b) => a.y - b.y);
+    const totalHeight = ordered.reduce(
+      (total, node) => total + node.height,
+      0,
+    );
+    const gap = Math.max(
+      8,
+      (bottom - top - totalHeight) / (ordered.length - 1),
+    );
+    let cursor = top;
+    ordered.forEach((node) => {
+      patches.set(node.id, { y: cursor });
+      cursor += node.height + gap;
+    });
+  }
+
+  return nodes.map((node) => {
+    const patch = patches.get(node.id);
+    return patch ? { ...node, ...patch } : node;
+  });
 }
 
 export function nodeCenterInsideSection(

@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext } from 'react';
+import type { StudioArrangeAction } from '@/lib/studio/geometry';
 import type { StudioNode, StudioNodeKind } from '@/lib/studio/types';
 
 export type StudioTool = 'select' | 'pan' | 'section';
@@ -24,6 +25,7 @@ export interface StudioCanvasApi {
   removeNodes: (ids: string[]) => void;
   duplicateNode: (id: string) => void;
   duplicateNodes: (ids: string[]) => void;
+  arrangeNodes: (ids: string[], action: StudioArrangeAction) => void;
   bringToFront: (id: string) => void;
   sendToBack: (id: string) => void;
   updateNodeData: (id: string, patch: Record<string, unknown>) => void;

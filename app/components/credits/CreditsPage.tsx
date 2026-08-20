@@ -605,7 +605,7 @@ function CustomAmountPanel({
                 max={CUSTOM_CREDIT_MAX}
                 step={CUSTOM_CREDIT_STEP}
                 value={credits}
-                className="h-12 rounded-2xl border-border bg-card pr-20 text-xl font-semibold tabular-nums shadow-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                className="h-12 rounded-2xl border-border bg-card px-20 text-center text-xl font-semibold tabular-nums shadow-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 onChange={(event) =>
                   onCreditsChange(
                     clampCustomCredits(Number(event.target.value)),
@@ -767,29 +767,30 @@ function AnimatedValue({
   return (
     <span
       className={cn(
-        'relative inline-block whitespace-nowrap tabular-nums',
+        'inline-flex items-baseline whitespace-nowrap tabular-nums',
         className,
       )}
       aria-label={formattedValue}
     >
-      <span className="invisible" aria-hidden>
-        {formattedValue}
-      </span>
-      <span className="absolute inset-0 inline-flex items-baseline" aria-hidden>
-        {characters.map((item) =>
-          item.digit === null ? (
-            <span key={item.key}>{item.character}</span>
-          ) : (
-            <RollingDigit
-              key={item.key}
-              digit={item.digit}
-              direction={motionState.direction}
-              place={item.place}
-              reducedMotion={reducedMotion}
-            />
-          ),
-        )}
-      </span>
+      {characters.map((item) =>
+        item.digit === null ? (
+          <span
+            key={item.key}
+            className="inline-grid place-items-center leading-none"
+            aria-hidden
+          >
+            {item.character}
+          </span>
+        ) : (
+          <RollingDigit
+            key={item.key}
+            digit={item.digit}
+            direction={motionState.direction}
+            place={item.place}
+            reducedMotion={reducedMotion}
+          />
+        ),
+      )}
     </span>
   );
 }
@@ -806,29 +807,46 @@ function RollingDigit({
   reducedMotion: boolean;
 }) {
   if (reducedMotion) {
-    return <span className="inline-block w-[1ch] text-center">{digit}</span>;
+    return (
+      <span className="relative inline-grid place-items-center leading-none">
+        <span className="invisible" aria-hidden>
+          {digit}
+        </span>
+        <span className="absolute inset-0 grid place-items-center" aria-hidden>
+          {digit}
+        </span>
+      </span>
+    );
   }
 
   return (
-    <span className="relative inline-block h-[1em] w-[1ch] self-baseline overflow-hidden">
-      <AnimatePresence initial={false} custom={direction}>
-        <motion.span
-          key={digit}
-          custom={direction}
-          variants={ROLLING_DIGIT_VARIANTS}
-          initial="enter"
-          animate="center"
-          exit="exit"
-          transition={{
-            duration: 0.34,
-            delay: Math.min(place * 0.025, 0.1),
-            ease: [0.16, 1, 0.3, 1],
-          }}
-          className="absolute inset-0 flex items-center justify-center leading-none"
-        >
-          {digit}
-        </motion.span>
-      </AnimatePresence>
+    <span className="relative inline-grid place-items-center leading-none">
+      <span className="invisible" aria-hidden>
+        {digit}
+      </span>
+      <span
+        className="absolute inset-x-0 top-1/2 h-[1.12em] -translate-y-1/2 overflow-hidden"
+        aria-hidden
+      >
+        <AnimatePresence initial={false} custom={direction}>
+          <motion.span
+            key={digit}
+            custom={direction}
+            variants={ROLLING_DIGIT_VARIANTS}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{
+              duration: 0.34,
+              delay: Math.min(place * 0.025, 0.1),
+              ease: [0.16, 1, 0.3, 1],
+            }}
+            className="absolute inset-0 grid place-items-center leading-none"
+          >
+            {digit}
+          </motion.span>
+        </AnimatePresence>
+      </span>
     </span>
   );
 }

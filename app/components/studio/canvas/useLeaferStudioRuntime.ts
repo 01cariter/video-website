@@ -23,6 +23,7 @@ import {
 } from 'react';
 import {
   containedNodeIdsForSection,
+  resolveStudioResizeDirection,
   resolveStudioResizeSnap,
   resolveStudioSnap,
   type StudioBounds,
@@ -325,6 +326,12 @@ export function useLeaferStudioRuntime({
   });
   const sectionStartRef = useRef<{ x: number; y: number } | null>(null);
   const sectionHandledRef = useRef(false);
+  const selectionGestureRef = useRef<{
+    ids: string[];
+    additive: boolean;
+    targetId?: string;
+  } | null>(null);
+  const resizeDirectionRef = useRef<number | null>(null);
   const sectionChildrenDragRef = useRef<{
     sectionId: string;
     childIds: string[];
@@ -640,10 +647,20 @@ export function useLeaferStudioRuntime({
       ) {
         return;
       }
-      const direction = Number(
-        (event as { direction?: number } | undefined)?.direction,
+      const source = event as
+        | {
+            direction?: unknown;
+            current?: { direction?: unknown };
+            target?: { direction?: unknown };
+          }
+        | undefined;
+      const direction = resolveStudioResizeDirection(
+        source?.direction,
+        source?.current?.direction,
+        source?.target?.direction,
+        resizeDirectionRef.current,
       );
-      if (!Number.isInteger(direction) || direction < 0 || direction > 7) {
+      if (direction == null) {
         clearSnapGuides();
         return;
       }
@@ -808,6 +825,7 @@ export function useLeaferStudioRuntime({
       scrollBarRef.current = null;
       appRef.current = null;
       layerRef.current = null;
+      resizeDirectionRef.current = null;
       sectionChildrenDragRef.current = null;
       snapGuideKeyRef.current = '';
       if (frameRef.current != null) {
@@ -829,6 +847,14 @@ export function useLeaferStudioRuntime({
     }) | null;
     const editor = app?.editor;
     if (!runtimeReady || !app || !editor) return;
+    const host = hostRef.current;
+
+    const onNativePointerDown = (event: globalThis.PointerEvent) => {
+      selectionGestureRef.current = {
+        ids: [...selectedIdsRef.current],
+        additive: event.metaKey || event.ctrlKey || event.shiftKey,
+      };
+    };
 
     const syncSelection = () => {
       const ids = nodeIdsFromTarget(editor.target);
@@ -844,6 +870,16 @@ export function useLeaferStudioRuntime({
     };
     const onDragStart = (event: unknown) => {
       clearSnapGuides();
+      const source = event as {
+        direction?: unknown;
+        current?: { direction?: unknown };
+        target?: { direction?: unknown };
+      };
+      resizeDirectionRef.current = resolveStudioResizeDirection(
+        source.direction,
+        source.current?.direction,
+        source.target?.direction,
+      );
       beginSectionChildrenDrag(event);
       beginTransform();
     };
@@ -872,6 +908,7 @@ export function useLeaferStudioRuntime({
       scheduleSelectionRect();
     };
     const onPointerUp = () => {
+      resizeDirectionRef.current = null;
       clearSnapGuides();
     };
     const onPointerDown = (event: unknown) => {
@@ -886,17 +923,39 @@ export function useLeaferStudioRuntime({
         return;
       }
       if (toolRef.current === 'select' && targetId) {
-        const source = (event as {
-          origin?: { metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean };
+        if (selectionGestureRef.current) {
+          selectionGestureRef.current.targetId = targetId;
+        }
+        const source = event as {
+          metaKey?: boolean;
+          ctrlKey?: boolean;
+          shiftKey?: boolean;
+          origin?: {
+            metaKey?: boolean;
+            ctrlKey?: boolean;
+            shiftKey?: boolean;
+          };
           nativeEvent?: {
             metaKey?: boolean;
             ctrlKey?: boolean;
             shiftKey?: boolean;
           };
-        });
-        const keys = source.origin || source.nativeEvent || {};
-        const additive = Boolean(keys.metaKey || keys.ctrlKey || keys.shiftKey);
-        const current = selectedIdsRef.current;
+        };
+        const gesture = selectionGestureRef.current;
+        const additive =
+          gesture?.additive ??
+          Boolean(
+            source.metaKey ||
+              source.ctrlKey ||
+              source.shiftKey ||
+              source.origin?.metaKey ||
+              source.origin?.ctrlKey ||
+              source.origin?.shiftKey ||
+              source.nativeEvent?.metaKey ||
+              source.nativeEvent?.ctrlKey ||
+              source.nativeEvent?.shiftKey,
+          );
+        const current = gesture?.ids ?? selectedIdsRef.current;
         const next = additive
           ? current.includes(targetId)
             ? current.filter((id) => id !== targetId)
@@ -931,6 +990,7 @@ export function useLeaferStudioRuntime({
       scheduleSelectionRect();
     };
     const onDragEnd = (event: unknown) => {
+      resizeDirectionRef.current = null;
       if (toolRef.current === 'section' && sectionStartRef.current) {
         const current = eventCanvasPoint(event as never);
         const start = sectionStartRef.current;
@@ -955,11 +1015,16 @@ export function useLeaferStudioRuntime({
       callbacksRef.current.onBlankDoubleClick(eventCanvasPoint(event as never));
     };
     const onTap = (event: unknown) => {
+      const targetId = nodeIdFromTarget(
+        (event as { target?: unknown } | undefined)?.target,
+      );
+      const startedOnNode = Boolean(selectionGestureRef.current?.targetId);
+      selectionGestureRef.current = null;
       if (sectionHandledRef.current) {
         sectionHandledRef.current = false;
         return;
       }
-      if (!nodeIdFromTarget((event as { target?: unknown })?.target)) {
+      if (!targetId && !startedOnNode) {
         callbacksRef.current.onContextMenu(null);
         if (toolRef.current === 'select') {
           selectAppNodes(appRef.current, []);
@@ -1001,6 +1066,7 @@ export function useLeaferStudioRuntime({
       }
     };
 
+    host?.addEventListener('pointerdown', onNativePointerDown, true);
     app.on(PointerEvent.DOWN, onPointerDown);
     app.on(PointerEvent.TAP, onTap);
     app.on(PointerEvent.DOUBLE_TAP, onDoubleTap);
@@ -1020,6 +1086,7 @@ export function useLeaferStudioRuntime({
     editor.on(EditorScaleEvent.SCALE, syncEditorScaleGeometry);
 
     return () => {
+      host?.removeEventListener('pointerdown', onNativePointerDown, true);
       app.off(PointerEvent.DOWN, onPointerDown);
       app.off(PointerEvent.TAP, onTap);
       app.off(PointerEvent.DOUBLE_TAP, onDoubleTap);

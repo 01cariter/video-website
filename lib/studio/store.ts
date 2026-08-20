@@ -5,6 +5,7 @@ import type {
   StudioNode,
   StudioNodeData,
   StudioNodeKind,
+  StudioPendingGeneration,
   StudioProject,
   StudioViewport,
 } from './types';
@@ -120,6 +121,30 @@ export function normalizeStudioProject(value: unknown): StudioProject | null {
   };
   if (!project.id) return null;
   const createdAt = String(project.createdAt || nowIso());
+  const pendingGenerationValue =
+    project.pendingGeneration &&
+    typeof project.pendingGeneration === 'object'
+      ? (project.pendingGeneration as Partial<StudioPendingGeneration>)
+      : undefined;
+  const pendingGenerationKind = String(
+    pendingGenerationValue?.kind || '',
+  ) as StudioPendingGeneration['kind'];
+  const pendingGenerationPrompt = String(
+    pendingGenerationValue?.prompt || '',
+  ).trim();
+  const pendingGeneration =
+    ['image', 'video', 'text'].includes(pendingGenerationKind) &&
+    pendingGenerationPrompt
+      ? {
+          kind: pendingGenerationKind,
+          prompt: pendingGenerationPrompt,
+          data:
+            pendingGenerationValue?.data &&
+            typeof pendingGenerationValue.data === 'object'
+              ? pendingGenerationValue.data
+              : undefined,
+        }
+      : undefined;
   return {
     id: String(project.id),
     title: normalizeProjectTitle(project.title),
@@ -142,6 +167,7 @@ export function normalizeStudioProject(value: unknown): StudioProject | null {
     messages: Array.isArray(project.messages) ? project.messages : [],
     pendingPrompt:
       typeof project.pendingPrompt === 'string' ? project.pendingPrompt : undefined,
+    pendingGeneration,
     agentOpen: project.agentOpen !== false,
   };
 }
@@ -458,6 +484,7 @@ export function createBlankNode(
 export function createStudioProjectDraft(input: {
   title?: string;
   pendingPrompt?: string;
+  pendingGeneration?: StudioPendingGeneration;
   templateId?: string;
   blank?: boolean;
 }): StudioProject {
@@ -493,7 +520,9 @@ export function createStudioProjectDraft(input: {
     nodes,
     viewport: DEFAULT_VIEWPORT,
     messages: [],
-    pendingPrompt: input.blank ? undefined : pendingPrompt,
+    pendingPrompt:
+      input.blank || input.pendingGeneration ? undefined : pendingPrompt,
+    pendingGeneration: input.blank ? undefined : input.pendingGeneration,
     agentOpen: true,
   };
 }
@@ -501,6 +530,7 @@ export function createStudioProjectDraft(input: {
 export function createStudioProject(input: {
   title?: string;
   pendingPrompt?: string;
+  pendingGeneration?: StudioPendingGeneration;
   templateId?: string;
   blank?: boolean;
 }): StudioProject {

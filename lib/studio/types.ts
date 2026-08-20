@@ -50,6 +50,12 @@ export interface StudioViewport {
   zoom: number;
 }
 
+export interface StudioPendingGeneration {
+  kind: StudioGenerativeKind;
+  prompt: string;
+  data?: Partial<StudioNodeData>;
+}
+
 export interface StudioProject {
   id: string;
   title: string;
@@ -61,6 +67,7 @@ export interface StudioProject {
   viewport: StudioViewport;
   messages: UIMessage[];
   pendingPrompt?: string;
+  pendingGeneration?: StudioPendingGeneration;
   agentOpen: boolean;
 }
 

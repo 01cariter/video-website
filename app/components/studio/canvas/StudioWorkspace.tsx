@@ -2,7 +2,7 @@
 
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
-import { LoaderCircle, UploadCloud } from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { DragEvent as ReactDragEvent } from 'react';
 import {
@@ -14,8 +14,10 @@ import {
 } from 'react';
 import { Frame, Leafer } from '@/lib/leafer-react';
 import {
+  arrangeStudioNodes,
   sizeForAspect,
   sizeForMediaDimensions,
+  type StudioArrangeAction,
 } from '@/lib/studio/geometry';
 import {
   probeStudioMediaUrl,
@@ -153,7 +155,6 @@ function CanvasWorkspace({
 }) {
   const persistTimer = useRef<number | null>(null);
   const localPersistTimer = useRef<number | null>(null);
-  const dragDepth = useRef(0);
   const generating = useRef(new Set<string>());
   const videoPosterProbes = useRef(new Set<string>());
   const seenTools = useRef(new Set<string>());
@@ -170,7 +171,6 @@ function CanvasWorkspace({
   const [tool, setTool] = useState<StudioTool>('select');
   const [layersOpen, setLayersOpen] = useState(false);
   const [menu, setMenu] = useState<StudioCanvasMenuState | null>(null);
-  const [dropActive, setDropActive] = useState(false);
   const [uploadingCount, setUploadingCount] = useState(0);
   const [uploadError, setUploadError] = useState('');
   const nodesRef = useRef(nodes);
@@ -500,6 +500,13 @@ function CanvasWorkspace({
     [duplicateNodes],
   );
 
+  const arrangeNodes = useCallback(
+    (ids: string[], action: StudioArrangeAction) => {
+      commitNodes((current) => arrangeStudioNodes(current, ids, action));
+    },
+    [commitNodes],
+  );
+
   const bringToFront = useCallback((id: string) => {
     const top = Math.max(0, ...nodesRef.current.map((node) => node.zIndex));
     updateNode(id, { zIndex: top + 1 });
@@ -667,16 +674,6 @@ function CanvasWorkspace({
     [addNode, updateNode, updateNodeData],
   );
 
-  const onCanvasDragEnter = useCallback(
-    (event: ReactDragEvent<HTMLDivElement>) => {
-      if (!event.dataTransfer.types.includes('Files')) return;
-      event.preventDefault();
-      dragDepth.current += 1;
-      setDropActive(true);
-    },
-    [],
-  );
-
   const onCanvasDragOver = useCallback(
     (event: ReactDragEvent<HTMLDivElement>) => {
       if (!event.dataTransfer.types.includes('Files')) return;
@@ -686,21 +683,11 @@ function CanvasWorkspace({
     [],
   );
 
-  const onCanvasDragLeave = useCallback(
-    (_event: ReactDragEvent<HTMLDivElement>) => {
-      dragDepth.current = Math.max(0, dragDepth.current - 1);
-      if (dragDepth.current === 0) setDropActive(false);
-    },
-    [],
-  );
-
   const onCanvasDrop = useCallback(
     (event: ReactDragEvent<HTMLDivElement>) => {
       if (!event.dataTransfer.types.includes('Files')) return;
       event.preventDefault();
       event.stopPropagation();
-      dragDepth.current = 0;
-      setDropActive(false);
       if (!event.dataTransfer.files.length) {
         setUploadError('No media files were found in that drop.');
         return;
@@ -768,6 +755,7 @@ function CanvasWorkspace({
       viewport: viewportRef.current,
       messages: nextMessages,
       pendingPrompt: undefined,
+      pendingGeneration: undefined,
       agentOpen: agentOpenRef.current,
     }),
     [project],
@@ -857,8 +845,22 @@ function CanvasWorkspace({
 
   const consumedPrompt = useRef(false);
   useEffect(() => {
-    if (consumedPrompt.current || !project.pendingPrompt) return;
+    if (
+      consumedPrompt.current ||
+      (!project.pendingPrompt && !project.pendingGeneration)
+    ) {
+      return;
+    }
     consumedPrompt.current = true;
+    if (project.pendingGeneration) {
+      addNode(project.pendingGeneration.kind, {
+        prompt: project.pendingGeneration.prompt,
+        title: project.title,
+        data: project.pendingGeneration.data,
+      });
+      return;
+    }
+    if (!project.pendingPrompt) return;
     const kind: StudioNodeKind = /video|clip|shot|storyboard/i.test(
       project.pendingPrompt,
     )
@@ -873,6 +875,7 @@ function CanvasWorkspace({
     });
   }, [
     addNode,
+    project.pendingGeneration,
     project.pendingPrompt,
     project.title,
     sendMessage,
@@ -923,6 +926,7 @@ function CanvasWorkspace({
       removeNodes,
       duplicateNode,
       duplicateNodes,
+      arrangeNodes,
       bringToFront,
       sendToBack,
       updateNodeData,
@@ -939,6 +943,7 @@ function CanvasWorkspace({
     }),
     [
       addNode,
+      arrangeNodes,
       bringToFront,
       duplicateNode,
       duplicateNodes,
@@ -980,9 +985,7 @@ function CanvasWorkspace({
               ref={hostRef}
               data-testid="studio-leafer-canvas"
               className="studio-canvas-surface absolute inset-0 overflow-hidden"
-              onDragEnter={onCanvasDragEnter}
               onDragOver={onCanvasDragOver}
-              onDragLeave={onCanvasDragLeave}
               onDrop={onCanvasDrop}
             >
             <Leafer
@@ -1014,28 +1017,34 @@ function CanvasWorkspace({
               </Frame>
             </Leafer>
 
+            {nodes
+              .filter((node) => node.data.status === 'uploading')
+              .map((node) => {
+                const iconSize = Math.max(10, 18 * viewport.zoom);
+                return (
+                  <LoaderCircle
+                    key={`upload-spinner-${node.id}`}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute z-10 animate-spin text-[#52746d] motion-reduce:animate-none"
+                    strokeWidth={2}
+                    style={{
+                      left:
+                        viewport.x +
+                        (node.x + node.width / 2) * viewport.zoom,
+                      top:
+                        viewport.y +
+                        (node.y + node.height / 2 - 22) * viewport.zoom,
+                      width: iconSize,
+                      height: iconSize,
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                  />
+                );
+              })}
+
             {!runtimeReady ? (
               <div className="pointer-events-none absolute inset-0 grid place-items-center text-xs text-muted-foreground">
                 Preparing the infinite canvas…
-              </div>
-            ) : null}
-
-            {dropActive ? (
-              <div
-                data-testid="studio-media-drop-overlay"
-                className="pointer-events-none absolute inset-3 z-40 grid place-items-center rounded-3xl border-2 border-dashed border-primary/65 bg-background/88 shadow-[0_24px_80px_-42px_rgba(0,0,0,.65)] backdrop-blur-md"
-              >
-                <div className="flex max-w-sm flex-col items-center px-6 text-center">
-                  <span className="grid size-14 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
-                    <UploadCloud className="size-6" />
-                  </span>
-                  <strong className="mt-4 text-lg tracking-[-0.02em]">
-                    Drop media onto the canvas
-                  </strong>
-                  <span className="mt-1.5 text-sm text-muted-foreground">
-                    Images and videos become editable canvas nodes.
-                  </span>
-                </div>
               </div>
             ) : null}
 

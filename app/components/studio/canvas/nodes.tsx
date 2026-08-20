@@ -440,18 +440,6 @@ function UploadingNode({
         </>
       ) : null}
       <Txt
-        text="↑"
-        x={12}
-        y={Math.max(0, node.height / 2 - 31)}
-        width={Math.max(24, node.width - 24)}
-        fontSize={22}
-        fontWeight={500}
-        textAlign="center"
-        fill="#52746d"
-        hittable={false}
-        data={data}
-      />
-      <Txt
         text={`Uploading ${node.type === 'video' ? 'video' : 'image'}`}
         x={12}
         y={Math.max(0, node.height / 2 + 6)}

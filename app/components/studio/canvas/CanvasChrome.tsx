@@ -1,12 +1,22 @@
 'use client';
 
 import {
+  AlignHorizontalJustifyCenter,
+  AlignHorizontalJustifyEnd,
+  AlignHorizontalJustifyStart,
+  AlignHorizontalSpaceBetween,
+  AlignVerticalJustifyCenter,
+  AlignVerticalJustifyEnd,
+  AlignVerticalJustifyStart,
+  AlignVerticalSpaceBetween,
+  ChevronDown,
   Copy,
   Hand,
   ImageIcon,
   Layers3,
   Lock,
   LockOpen,
+  LayoutGrid,
   Maximize2,
   Minus,
   MousePointer2,
@@ -37,6 +47,15 @@ import { isGeneratorNode } from '@/lib/studio/geometry';
 import { studioSnap } from '@/lib/studio/motion';
 import { cn } from '@/lib/utils';
 import { Button } from '@/app/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/app/components/ui/dropdown-menu';
 import {
   Tooltip,
   TooltipContent,
@@ -216,7 +235,10 @@ export function NodeOverlays({
     selectedIds,
     generateNode,
     duplicateNode,
+    duplicateNodes,
     removeNode,
+    removeNodes,
+    arrangeNodes,
     updateNodeData,
     setNodeAspect,
     freeCreditModelsOnly,
@@ -225,6 +247,14 @@ export function NodeOverlays({
     selectedIds.length === 1
       ? nodes.find((node) => node.id === selectedIds[0]) ?? null
       : null;
+  const selectedNodes = useMemo(() => {
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    return selectedIds
+      .map((id) => byId.get(id))
+      .filter((node): node is StudioNode => Boolean(node));
+  }, [nodes, selectedIds]);
+  const multiSelected = selectedNodes.length > 1;
+  const selectionKey = selectedIds.join(':');
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [surfaceSize, setSurfaceSize] = useState({ width: 560, height: 116 });
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
@@ -255,10 +285,15 @@ export function NodeOverlays({
     const observer = new ResizeObserver(update);
     observer.observe(surface);
     return () => observer.disconnect();
-  }, [selected?.id, selected?.data.status]);
+  }, [selected?.id, selected?.data.status, selectionKey]);
 
   const chrome = useMemo(() => {
-    if (!selectionRect || !selected || !stageSize.width || !stageSize.height) {
+    if (
+      !selectionRect ||
+      (!selected && !multiSelected) ||
+      !stageSize.width ||
+      !stageSize.height
+    ) {
       return { left: 0, top: 0, visible: false };
     }
     const padding = 10;
@@ -266,7 +301,9 @@ export function NodeOverlays({
     const maxLeft =
       stageSize.width - rightInset - surfaceSize.width - padding;
     const generator =
-      selected.type !== 'section' && isGeneratorNode(selected.data);
+      selected &&
+      selected.type !== 'section' &&
+      isGeneratorNode(selected.data);
     const preferredTop = generator
       ? selectionRect.bottom + 10
       : selectionRect.top - surfaceSize.height - 10;
@@ -287,6 +324,7 @@ export function NodeOverlays({
     };
   }, [
     leftInset,
+    multiSelected,
     rightInset,
     selected,
     selectionRect,
@@ -299,11 +337,12 @@ export function NodeOverlays({
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
       <AnimatePresence>
-        {selected &&
-        selected.data.status !== 'generating' &&
-        selected.data.status !== 'uploading' ? (
+        {multiSelected ||
+        (selected &&
+          selected.data.status !== 'generating' &&
+          selected.data.status !== 'uploading') ? (
           <motion.div
-            key={selected.id}
+            key={multiSelected ? `multi:${selectionKey}` : selected?.id}
             ref={surfaceRef}
             className="pointer-events-auto absolute top-0 left-0 will-change-transform"
             style={{
@@ -316,7 +355,17 @@ export function NodeOverlays({
             exit={reduceMotion ? undefined : { opacity: 0, y: 4, scale: 0.985 }}
             transition={studioSnap}
           >
-            {selected.type !== 'section' && isGeneratorNode(selected.data) ? (
+            {multiSelected ? (
+              <MultiSelectionToolbar
+                count={selectedNodes.length}
+                onOrganize={() => arrangeNodes(selectedIds, 'tidy')}
+                onArrange={(action) => arrangeNodes(selectedIds, action)}
+                onDuplicate={() => duplicateNodes(selectedIds)}
+                onDelete={() => removeNodes(selectedIds)}
+              />
+            ) : selected &&
+              selected.type !== 'section' &&
+              isGeneratorNode(selected.data) ? (
               <NodeInspector
                 kind={selected.type as StudioGenerativeKind}
                 data={selected.data}
@@ -339,18 +388,121 @@ export function NodeOverlays({
                 }
                 onSubmit={() => void generateNode(selected.id)}
               />
-            ) : (
+            ) : selected ? (
               <SelectionToolbar
                 node={selected}
                 onGenerate={() => void generateNode(selected.id)}
                 onDuplicate={() => duplicateNode(selected.id)}
                 onDelete={() => removeNode(selected.id)}
               />
-            )}
+            ) : null}
           </motion.div>
         ) : null}
       </AnimatePresence>
     </div>
+  );
+}
+
+function MultiSelectionToolbar({
+  count,
+  onOrganize,
+  onArrange,
+  onDuplicate,
+  onDelete,
+}: {
+  count: number;
+  onOrganize: () => void;
+  onArrange: (
+    action:
+      | 'align-left'
+      | 'align-center-horizontal'
+      | 'align-right'
+      | 'align-top'
+      | 'align-center-vertical'
+      | 'align-bottom'
+      | 'distribute-horizontal'
+      | 'distribute-vertical',
+  ) => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <TooltipProvider delayDuration={160}>
+      <div
+        data-testid="studio-multi-selection-toolbar"
+        data-moodboard-floating-occluder
+        className="flex items-center gap-0.5 rounded-lg border border-border bg-card/95 p-0.5 shadow-[0_4px_18px_-12px_rgba(0,0,0,.5)] backdrop-blur-xl"
+        role="toolbar"
+        aria-label={`${count} selected items`}
+      >
+        <span className="px-2 text-[11px] font-medium text-muted-foreground tabular-nums">
+          {count} selected
+        </span>
+        <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
+        <Button type="button" variant="ghost" size="xs" onClick={onOrganize}>
+          <LayoutGrid />
+          Organize
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="xs">
+              <AlignHorizontalJustifyCenter />
+              Align
+              <ChevronDown className="size-3 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="center" side="top" sideOffset={8}>
+            <DropdownMenuLabel>Horizontal</DropdownMenuLabel>
+            <DropdownMenuGroup>
+              <DropdownMenuItem onSelect={() => onArrange('align-left')}>
+                <AlignHorizontalJustifyStart /> Align left
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => onArrange('align-center-horizontal')}
+              >
+                <AlignHorizontalJustifyCenter /> Align center
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onArrange('align-right')}>
+                <AlignHorizontalJustifyEnd /> Align right
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Vertical</DropdownMenuLabel>
+            <DropdownMenuGroup>
+              <DropdownMenuItem onSelect={() => onArrange('align-top')}>
+                <AlignVerticalJustifyStart /> Align top
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => onArrange('align-center-vertical')}
+              >
+                <AlignVerticalJustifyCenter /> Align middle
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onArrange('align-bottom')}>
+                <AlignVerticalJustifyEnd /> Align bottom
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() => onArrange('distribute-horizontal')}
+            >
+              <AlignHorizontalSpaceBetween /> Distribute horizontally
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => onArrange('distribute-vertical')}
+            >
+              <AlignVerticalSpaceBetween /> Distribute vertically
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
+        <ToolButton label="Duplicate selected" onClick={onDuplicate}>
+          <Copy />
+        </ToolButton>
+        <ToolButton label="Delete selected" onClick={onDelete}>
+          <Trash2 />
+        </ToolButton>
+      </div>
+    </TooltipProvider>
   );
 }
 

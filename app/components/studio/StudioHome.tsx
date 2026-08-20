@@ -7,13 +7,15 @@ import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowRight,
   AtSign,
+  Check,
+  ChevronDown,
   FolderLock,
   ImagePlus,
   Mic,
   MoreHorizontal,
   Pencil,
   Plus,
-  Search,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   Upload,
@@ -58,26 +60,259 @@ import {
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
 import { Input } from '@/app/components/ui/input';
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from '@/app/components/ui/popover';
 import { Textarea } from '@/app/components/ui/textarea';
 import { MotionTabs } from '@/app/components/ui/motion-tabs';
+import {
+  fieldSummary,
+  hasAvailableStudioModel,
+  isStudioModelAvailable,
+  modelForKind,
+  modelOptionsForKind,
+  resolveStudioModel,
+} from '@/lib/studio/model-catalog';
+import type {
+  StudioGenerativeKind,
+  StudioNodeData,
+} from '@/lib/studio/types';
 import { cn } from '@/lib/utils';
+import {
+  ModelMark,
+  SettingControl,
+  settingsDescription,
+  settingsTitle,
+} from './canvas/NodeInspector';
 
 const MODES = [
   { value: 'agent', label: 'Plan with Agent', icon: Sparkles },
-  { value: 'inspire', label: 'Find references', icon: Search },
   { value: 'design', label: 'Freeform', icon: Wand2 },
 ] as const;
 
+const GENERATIVE_KINDS = ['image', 'video', 'text'] as const;
+
+function defaultFreeformConfigs(
+  freeCreditModelsOnly: boolean,
+): Record<
+  StudioGenerativeKind,
+  Record<string, string | number | boolean>
+> {
+  const defaultsFor = (
+    kind: StudioGenerativeKind,
+  ): Record<string, string | number | boolean> => {
+    const spec = modelForKind(kind);
+    const model = resolveStudioModel(kind, undefined, freeCreditModelsOnly);
+    return { ...spec.defaults, modelId: model.id };
+  };
+  return {
+    image: defaultsFor('image'),
+    video: defaultsFor('video'),
+    text: defaultsFor('text'),
+  };
+}
+
+const KIND_LABELS: Record<StudioGenerativeKind, string> = {
+  image: 'Image',
+  video: 'Video',
+  text: 'Text',
+};
+
+function FreeformControls({
+  kind,
+  values,
+  freeCreditModelsOnly,
+  modelOpen,
+  settingsOpen,
+  onModelOpenChange,
+  onSettingsOpenChange,
+  onModelChange,
+  onFieldChange,
+}: {
+  kind: StudioGenerativeKind;
+  values: Record<string, unknown>;
+  freeCreditModelsOnly: boolean;
+  modelOpen: boolean;
+  settingsOpen: boolean;
+  onModelOpenChange: (open: boolean) => void;
+  onSettingsOpenChange: (open: boolean) => void;
+  onModelChange: (kind: StudioGenerativeKind, modelId: string) => void;
+  onFieldChange: (key: string, value: string | number | boolean) => void;
+}) {
+  const spec = modelForKind(kind);
+  const selectedModel = resolveStudioModel(
+    kind,
+    values.modelId,
+    freeCreditModelsOnly,
+  );
+  const summary = fieldSummary(kind, values);
+
+  return (
+    <div className="flex min-w-0 items-center gap-1 border-l border-border pl-2">
+      <Popover open={modelOpen} onOpenChange={onModelOpenChange}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={`Choose model, currently ${selectedModel.label}`}
+            className="h-9 min-w-0 max-w-[178px] gap-1.5 rounded-[10px] px-2.5 text-[11px] font-medium hover:bg-secondary data-[state=open]:bg-secondary"
+          >
+            <ModelMark model={selectedModel} compact />
+            <span className="truncate">{selectedModel.label}</span>
+            <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          side="bottom"
+          sideOffset={10}
+          className="w-[390px] rounded-[18px] border-border/90 bg-popover p-2 shadow-[0_24px_64px_-28px_rgba(0,0,0,.4),0_8px_24px_-16px_rgba(0,0,0,.25)]"
+        >
+          <PopoverHeader className="gap-1 px-2 pt-1.5 pb-2.5">
+            <PopoverTitle className="text-[13px] font-semibold tracking-[-0.01em]">
+              Choose a model
+            </PopoverTitle>
+            <PopoverDescription className="text-[10.5px]">
+              {freeCreditModelsOnly
+                ? 'Free-credit mode · unavailable models are disabled'
+                : 'Choose what this canvas generates first'}
+            </PopoverDescription>
+          </PopoverHeader>
+          <div className="grid max-h-[430px] gap-3 overflow-y-auto px-0.5 pb-0.5">
+            {GENERATIVE_KINDS.map((optionKind) => (
+              <section key={optionKind}>
+                <span className="px-2 text-[9px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+                  {KIND_LABELS[optionKind]}
+                </span>
+                <div className="mt-1 grid gap-1" role="listbox">
+                  {modelOptionsForKind(optionKind).map((model) => {
+                    const available = isStudioModelAvailable(
+                      model,
+                      freeCreditModelsOnly,
+                    );
+                    const selected =
+                      available &&
+                      optionKind === kind &&
+                      model.id === selectedModel.id;
+                    return (
+                      <button
+                        key={model.id}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        disabled={!available}
+                        className={cn(
+                          'grid w-full grid-cols-[36px_minmax(0,1fr)_16px] items-center gap-3 rounded-[12px] px-2.5 py-2.5 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-1 focus-visible:ring-foreground/20',
+                          selected && 'bg-muted',
+                          !available &&
+                            'cursor-not-allowed opacity-40 hover:bg-transparent',
+                        )}
+                        onClick={() => {
+                          if (!available) return;
+                          onModelChange(optionKind, model.id);
+                          onModelOpenChange(false);
+                        }}
+                      >
+                        <ModelMark model={model} />
+                        <span className="min-w-0">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate text-[12px] font-semibold">
+                              {model.label}
+                            </span>
+                            <span className="shrink-0 rounded-[5px] border bg-background px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+                              {model.tag}
+                            </span>
+                          </span>
+                          <span className="mt-0.5 block truncate text-[10.5px] text-muted-foreground">
+                            {model.provider} · {model.description}
+                          </span>
+                        </span>
+                        <Check
+                          className={cn(
+                            'size-3.5 transition-opacity',
+                            selected ? 'opacity-100' : 'opacity-0',
+                          )}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      <Popover open={settingsOpen} onOpenChange={onSettingsOpenChange}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={!spec.fields.length}
+            aria-label={`Open ${settingsTitle(kind)}`}
+            className="h-9 min-w-0 max-w-[152px] gap-1.5 rounded-[10px] px-2.5 text-[11px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground data-[state=open]:bg-secondary data-[state=open]:text-foreground"
+          >
+            <SlidersHorizontal className="size-3.5 shrink-0" />
+            <span className="truncate">{summary}</span>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          side="bottom"
+          sideOffset={10}
+          className="studio-parameter-popover w-[min(408px,calc(100vw-24px))] overflow-hidden rounded-[18px] border border-[var(--param-line)] bg-[var(--param-bg)] p-0 text-[var(--param-ink)] shadow-[0_28px_72px_-32px_rgba(0,0,0,.38),0_8px_24px_-16px_rgba(0,0,0,.16)]"
+        >
+          <PopoverHeader className="border-b border-[var(--param-line)] px-5 py-4">
+            <PopoverTitle className="text-[13px] font-semibold tracking-[-0.015em] text-[var(--param-ink)]">
+              {settingsTitle(kind)}
+            </PopoverTitle>
+            <PopoverDescription className="mt-0.5 text-[10.5px] leading-4 text-[var(--param-muted)]">
+              {settingsDescription(kind)}
+            </PopoverDescription>
+          </PopoverHeader>
+          <div className="grid max-h-[440px] gap-5 overflow-y-auto bg-[var(--param-canvas)] px-5 py-4.5">
+            {spec.fields.map((field) => (
+              <SettingControl
+                key={field.key}
+                field={field}
+                current={values[field.key]}
+                onFieldChange={onFieldChange}
+                onAspectChange={(aspect) => onFieldChange('aspect', aspect)}
+              />
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
 export default function StudioHome({
   authenticated = false,
+  freeCreditModelsOnly = false,
 }: {
   authenticated?: boolean;
+  freeCreditModelsOnly?: boolean;
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState('');
   const [mode, setMode] =
     useState<(typeof MODES)[number]['value']>('agent');
+  const [freeformKind, setFreeformKind] =
+    useState<StudioGenerativeKind>('image');
+  const [freeformConfigs, setFreeformConfigs] = useState(() =>
+    defaultFreeformConfigs(freeCreditModelsOnly),
+  );
+  const [modelOpen, setModelOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [projects, setProjects] = useState<StudioProject[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(authenticated);
@@ -104,7 +339,36 @@ export default function StudioHome({
     return () => window.clearTimeout(timer);
   }, [refreshProjects]);
 
-  const canSubmit = prompt.trim().length > 0;
+  const freeformSpec = modelForKind(freeformKind);
+  const freeformValues = {
+    ...freeformSpec.defaults,
+    ...freeformConfigs[freeformKind],
+  };
+  const selectedFreeformModel = resolveStudioModel(
+    freeformKind,
+    freeformValues.modelId,
+    freeCreditModelsOnly,
+  );
+  const freeformModelAvailable = hasAvailableStudioModel(
+    freeformKind,
+    freeCreditModelsOnly,
+  );
+  const canSubmit =
+    prompt.trim().length > 0 &&
+    (mode !== 'design' || freeformModelAvailable);
+
+  function updateFreeformField(
+    key: string,
+    value: string | number | boolean,
+  ) {
+    setFreeformConfigs((current) => ({
+      ...current,
+      [freeformKind]: {
+        ...current[freeformKind],
+        [key]: value,
+      },
+    }));
+  }
 
   function requireAccount() {
     if (authenticated) return true;
@@ -119,16 +383,27 @@ export default function StudioHome({
   async function createFromPrompt() {
     const text = prompt.trim();
     if (!text || !requireAccount()) return;
-    const prefix =
-      mode === 'inspire'
-        ? 'Find strong visual references before creating: '
-        : mode === 'design'
-          ? 'Explore this as a freeform creative direction: '
-          : 'Plan the task and canvas structure before executing: ';
-    const project = await createStudioProjectSynced({
-      title: text.slice(0, 18),
-      pendingPrompt: `${prefix}${text}`,
-    });
+    const project =
+      mode === 'design'
+        ? await createStudioProjectSynced({
+            title: text.slice(0, 18),
+            pendingGeneration: {
+              kind: freeformKind,
+              prompt: text,
+              data: {
+                ...(freeformValues as Partial<StudioNodeData>),
+                modelId: selectedFreeformModel.id,
+                aspect: String(
+                  freeformValues.aspect ??
+                    (freeformKind === 'video' ? '16:9' : '1:1'),
+                ),
+              },
+            },
+          })
+        : await createStudioProjectSynced({
+            title: text.slice(0, 18),
+            pendingPrompt: `Plan the task and canvas structure before executing: ${text}`,
+          });
     router.push(`/studio/${project.id}`);
   }
 
@@ -257,6 +532,29 @@ export default function StudioHome({
                 ariaLabel="Creation mode"
                 onValueChange={setMode}
               />
+              {mode === 'design' ? (
+                <FreeformControls
+                  kind={freeformKind}
+                  values={freeformValues}
+                  freeCreditModelsOnly={freeCreditModelsOnly}
+                  modelOpen={modelOpen}
+                  settingsOpen={settingsOpen}
+                  onModelOpenChange={setModelOpen}
+                  onSettingsOpenChange={setSettingsOpen}
+                  onModelChange={(nextKind, modelId) => {
+                    setFreeformKind(nextKind);
+                    setFreeformConfigs((current) => ({
+                      ...current,
+                      [nextKind]: {
+                        ...current[nextKind],
+                        modelId,
+                      },
+                    }));
+                    setSettingsOpen(false);
+                  }}
+                  onFieldChange={updateFreeformField}
+                />
+              ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               <Button
