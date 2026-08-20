@@ -74,10 +74,16 @@ import {
   fieldSummary,
   hasAvailableStudioModel,
   isStudioModelAvailable,
-  modelForKind,
   modelOptionsForKind,
+  modelSpecFor,
   resolveStudioModel,
 } from '@/lib/studio/model-catalog';
+import {
+  DEFAULT_STUDIO_RUNTIME_CONFIG,
+  estimateStudioCredits,
+  isStudioBillableModelId,
+  type StudioRuntimeConfig,
+} from '@/lib/studio/pricing';
 import type {
   StudioGenerativeKind,
   StudioNodeData,
@@ -98,7 +104,7 @@ const MODES = [
 const GENERATIVE_KINDS = ['image', 'video', 'text'] as const;
 
 function defaultFreeformConfigs(
-  freeCreditModelsOnly: boolean,
+  runtime: StudioRuntimeConfig,
 ): Record<
   StudioGenerativeKind,
   Record<string, string | number | boolean>
@@ -106,8 +112,8 @@ function defaultFreeformConfigs(
   const defaultsFor = (
     kind: StudioGenerativeKind,
   ): Record<string, string | number | boolean> => {
-    const spec = modelForKind(kind);
-    const model = resolveStudioModel(kind, undefined, freeCreditModelsOnly);
+    const model = resolveStudioModel(kind, undefined, runtime);
+    const spec = modelSpecFor(kind, model.id, runtime);
     return { ...spec.defaults, modelId: model.id };
   };
   return {
@@ -126,7 +132,7 @@ const KIND_LABELS: Record<StudioGenerativeKind, string> = {
 function FreeformControls({
   kind,
   values,
-  freeCreditModelsOnly,
+  runtime,
   modelOpen,
   settingsOpen,
   onModelOpenChange,
@@ -136,7 +142,7 @@ function FreeformControls({
 }: {
   kind: StudioGenerativeKind;
   values: Record<string, unknown>;
-  freeCreditModelsOnly: boolean;
+  runtime: StudioRuntimeConfig;
   modelOpen: boolean;
   settingsOpen: boolean;
   onModelOpenChange: (open: boolean) => void;
@@ -144,13 +150,9 @@ function FreeformControls({
   onModelChange: (kind: StudioGenerativeKind, modelId: string) => void;
   onFieldChange: (key: string, value: string | number | boolean) => void;
 }) {
-  const spec = modelForKind(kind);
-  const selectedModel = resolveStudioModel(
-    kind,
-    values.modelId,
-    freeCreditModelsOnly,
-  );
-  const summary = fieldSummary(kind, values);
+  const selectedModel = resolveStudioModel(kind, values.modelId, runtime);
+  const spec = modelSpecFor(kind, selectedModel.id, runtime);
+  const summary = fieldSummary(kind, values, selectedModel.id, runtime);
 
   return (
     <div className="flex min-w-0 items-center gap-1 border-l border-border pl-2">
@@ -179,9 +181,7 @@ function FreeformControls({
               Choose a model
             </PopoverTitle>
             <PopoverDescription className="text-[10.5px]">
-              {freeCreditModelsOnly
-                ? 'Free-credit mode · unavailable models are disabled'
-                : 'Choose what this canvas generates first'}
+              Models disabled by the current Studio policy are unavailable
             </PopoverDescription>
           </PopoverHeader>
           <div className="grid max-h-[430px] gap-3 overflow-y-auto px-0.5 pb-0.5">
@@ -194,7 +194,7 @@ function FreeformControls({
                   {modelOptionsForKind(optionKind).map((model) => {
                     const available = isStudioModelAvailable(
                       model,
-                      freeCreditModelsOnly,
+                      runtime,
                     );
                     const selected =
                       available &&
@@ -296,10 +296,10 @@ function FreeformControls({
 
 export default function StudioHome({
   authenticated = false,
-  freeCreditModelsOnly = false,
+  runtimeConfig = DEFAULT_STUDIO_RUNTIME_CONFIG,
 }: {
   authenticated?: boolean;
-  freeCreditModelsOnly?: boolean;
+  runtimeConfig?: StudioRuntimeConfig;
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -309,7 +309,7 @@ export default function StudioHome({
   const [freeformKind, setFreeformKind] =
     useState<StudioGenerativeKind>('image');
   const [freeformConfigs, setFreeformConfigs] = useState(() =>
-    defaultFreeformConfigs(freeCreditModelsOnly),
+    defaultFreeformConfigs(runtimeConfig),
   );
   const [modelOpen, setModelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -339,20 +339,51 @@ export default function StudioHome({
     return () => window.clearTimeout(timer);
   }, [refreshProjects]);
 
-  const freeformSpec = modelForKind(freeformKind);
-  const freeformValues = {
-    ...freeformSpec.defaults,
-    ...freeformConfigs[freeformKind],
-  };
   const selectedFreeformModel = resolveStudioModel(
     freeformKind,
-    freeformValues.modelId,
-    freeCreditModelsOnly,
+    freeformConfigs[freeformKind].modelId,
+    runtimeConfig,
   );
+  const freeformSpec = modelSpecFor(
+    freeformKind,
+    selectedFreeformModel.id,
+    runtimeConfig,
+  );
+  const freeformValues: Record<
+    string,
+    string | number | boolean
+  > = {
+    ...freeformSpec.defaults,
+    ...freeformConfigs[freeformKind],
+    modelId: selectedFreeformModel.id,
+  };
   const freeformModelAvailable = hasAvailableStudioModel(
     freeformKind,
-    freeCreditModelsOnly,
+    runtimeConfig,
   );
+  const freeformQuote = (() => {
+    if (
+      mode !== 'design' ||
+      !freeformModelAvailable ||
+      !isStudioBillableModelId(selectedFreeformModel.id)
+    ) {
+      return null;
+    }
+    try {
+      return estimateStudioCredits({
+        kind: freeformKind,
+        modelId: selectedFreeformModel.id,
+        parameters: Object.fromEntries(
+          Object.entries(freeformValues).filter(([key]) => key !== 'modelId'),
+        ),
+        prompt,
+        referenceImages: [],
+        runtime: runtimeConfig,
+      });
+    } catch {
+      return null;
+    }
+  })();
   const canSubmit =
     prompt.trim().length > 0 &&
     (mode !== 'design' || freeformModelAvailable);
@@ -394,7 +425,7 @@ export default function StudioHome({
                 ...(freeformValues as Partial<StudioNodeData>),
                 modelId: selectedFreeformModel.id,
                 aspect: String(
-                  freeformValues.aspect ??
+                  freeformValues['aspect'] ??
                     (freeformKind === 'video' ? '16:9' : '1:1'),
                 ),
               },
@@ -536,17 +567,22 @@ export default function StudioHome({
                 <FreeformControls
                   kind={freeformKind}
                   values={freeformValues}
-                  freeCreditModelsOnly={freeCreditModelsOnly}
+                  runtime={runtimeConfig}
                   modelOpen={modelOpen}
                   settingsOpen={settingsOpen}
                   onModelOpenChange={setModelOpen}
                   onSettingsOpenChange={setSettingsOpen}
                   onModelChange={(nextKind, modelId) => {
+                    const nextSpec = modelSpecFor(
+                      nextKind,
+                      modelId,
+                      runtimeConfig,
+                    );
                     setFreeformKind(nextKind);
                     setFreeformConfigs((current) => ({
                       ...current,
                       [nextKind]: {
-                        ...current[nextKind],
+                        ...nextSpec.defaults,
                         modelId,
                       },
                     }));
@@ -594,7 +630,9 @@ export default function StudioHome({
                 disabled={!canSubmit}
                 className="h-10 rounded-xl bg-primary px-5 text-primary-foreground hover:bg-primary/90"
               >
-                Create
+                {mode === 'design' && freeformQuote
+                  ? `Create · ${freeformQuote.credits} ${freeformQuote.credits === 1 ? 'credit' : 'credits'}`
+                  : 'Create'}
                 <ArrowRight />
               </Button>
             </div>

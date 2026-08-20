@@ -16,5 +16,5 @@ export function customCreditPriceCents(credits: number) {
     CUSTOM_CREDIT_MAX,
     Math.max(CUSTOM_CREDIT_MIN, Math.round(credits)),
   );
-  return Math.max(299, Math.ceil((safeCredits * 3) / 2));
+  return 299 + (safeCredits - CUSTOM_CREDIT_MIN) * 2;
 }

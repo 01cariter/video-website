@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import type { AppUser } from '@/lib/types';
+import type { StudioRuntimeConfig } from '@/lib/studio/pricing';
 
 const StudioWorkspace = dynamic(() => import('./StudioWorkspace'), {
   ssr: false,
@@ -14,17 +15,17 @@ const StudioWorkspace = dynamic(() => import('./StudioWorkspace'), {
 
 export default function StudioWorkspaceLoader({
   projectId,
-  freeCreditModelsOnly,
+  runtimeConfig,
   user,
 }: {
   projectId: string;
-  freeCreditModelsOnly: boolean;
+  runtimeConfig: StudioRuntimeConfig;
   user: AppUser | null;
 }) {
   return (
     <StudioWorkspace
       projectId={projectId}
-      freeCreditModelsOnly={freeCreditModelsOnly}
+      runtimeConfig={runtimeConfig}
       user={user}
     />
   );

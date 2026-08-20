@@ -1,5 +1,5 @@
 import StudioWorkspaceLoader from '../../../components/studio/canvas/StudioWorkspaceLoader';
-import { freeCreditModelsOnly } from '@/flags';
+import { getStudioRuntimeConfig } from '@/flags';
 import { getCurrentUser } from '@/lib/user';
 
 export default async function StudioProjectPage({
@@ -7,15 +7,15 @@ export default async function StudioProjectPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const [{ id }, restrictToFreeCreditModels, user] = await Promise.all([
+  const [{ id }, runtimeConfig, user] = await Promise.all([
     params,
-    freeCreditModelsOnly(),
+    getStudioRuntimeConfig(),
     getCurrentUser(),
   ]);
   return (
     <StudioWorkspaceLoader
       projectId={id}
-      freeCreditModelsOnly={restrictToFreeCreditModels}
+      runtimeConfig={runtimeConfig}
       user={user}
     />
   );

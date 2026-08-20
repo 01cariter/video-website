@@ -256,7 +256,7 @@ export function NodeOverlays({
     arrangeNodes,
     updateNodeData,
     setNodeAspect,
-    freeCreditModelsOnly,
+    runtimeConfig,
   } = useStudioCanvas();
   const selected =
     selectedIds.length === 1
@@ -394,13 +394,32 @@ export function NodeOverlays({
                 kind={selected.type as StudioGenerativeKind}
                 data={selected.data}
                 canSubmit={selected.data.prompt.trim().length > 0}
-                freeCreditModelsOnly={freeCreditModelsOnly}
+                runtimeConfig={runtimeConfig}
                 onPromptChange={(value) =>
                   updateNodeData(selected.id, { prompt: value })
                 }
                 onFieldChange={(key, value) =>
                   updateNodeData(selected.id, { [key]: value })
                 }
+                onModelChange={(modelId, defaults, maxRefs) => {
+                  const refs = Array.isArray(selected.data.refSrcs)
+                    ? selected.data.refSrcs.slice(0, maxRefs)
+                    : selected.data.refSrc && maxRefs > 0
+                      ? [selected.data.refSrc]
+                      : [];
+                  if (
+                    typeof defaults.aspect === 'string' &&
+                    defaults.aspect !== selected.data.aspect
+                  ) {
+                    setNodeAspect(selected.id, defaults.aspect);
+                  }
+                  updateNodeData(selected.id, {
+                    ...defaults,
+                    modelId,
+                    refSrc: refs[0],
+                    refSrcs: refs,
+                  });
+                }}
                 onAspectChange={(aspect) => setNodeAspect(selected.id, aspect)}
                 onRefsChange={(srcs) =>
                   updateNodeData(selected.id, {

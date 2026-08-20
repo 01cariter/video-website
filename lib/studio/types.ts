@@ -18,7 +18,7 @@ export interface StudioNodeData {
   modelId?: string;
   n?: number;
   duration?: number;
-  videoResolution?: '480p' | '720p';
+  videoResolution?: '480p' | '720p' | '1080p' | '2k' | '4k';
   generateAudio?: boolean;
   reasoningEffort?: 'low' | 'medium' | 'high';
   refSrc?: string;

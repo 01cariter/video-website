@@ -1,6 +1,5 @@
 import { experimental_generateVideo as generateVideo } from 'ai';
-import { freeCreditModelsOnly } from '@/flags';
-import { videoCreditCost } from '@/lib/credits/config';
+import { getStudioRuntimeConfig } from '@/flags';
 import {
   beginMeteredRequest,
   completeMeteredRequest,
@@ -10,22 +9,31 @@ import {
 import { friendlyAiError } from '@/lib/studio/errors';
 import { storeGeneratedAsset } from '@/lib/studio/generated-assets';
 import {
-  hasAvailableStudioModel,
-  resolveStudioModel,
-  videoPixelSize,
-} from '@/lib/studio/model-catalog';
+  expectedStudioCreditsStatus,
+  isStudioModelEnabled,
+  priceStudioUsage,
+} from '@/lib/studio/pricing';
+import {
+  buildStudioVideoGeneratePayload,
+  estimateStudioVideoUpstreamUsdMicros,
+  normalizeStudioVideoRequest,
+  STUDIO_VIDEO_MODEL_IDS,
+  VideoGenerationValidationError,
+  videoParametersFromBody,
+  videoReferenceFromBody,
+} from '@/lib/studio/video-generation';
 import { getAuthUser } from '@/lib/supabase/server';
 
 export const maxDuration = 300;
 
-const VIDEO_ASPECTS = new Set([
-  '16:9',
-  '4:3',
-  '1:1',
-  '3:4',
-  '9:16',
-  '21:9',
-]);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function stringField(body: Record<string, unknown>, key: string) {
+  const value = body[key];
+  return typeof value === 'string' ? value.trim() : undefined;
+}
 
 export async function POST(request: Request) {
   const user = await getAuthUser();
@@ -35,63 +43,99 @@ export async function POST(request: Request) {
       { status: 401 },
     );
   }
-  const body = (await request.json().catch(() => null)) as {
-    prompt?: string;
-    modelId?: string;
-    aspect?: string;
-    duration?: number;
-    videoResolution?: '480p' | '720p';
-    generateAudio?: boolean;
-    refSrc?: string;
-    refSrcs?: string[];
-    requestId?: string;
-    projectId?: string;
-    nodeId?: string;
-  } | null;
-  const prompt = body?.prompt?.trim();
-  const requestId = body?.requestId?.trim();
+
+  const parsedBody: unknown = await request.json().catch(() => null);
+  const body = isRecord(parsedBody) ? parsedBody : {};
+  const prompt = stringField(body, 'prompt');
+  const requestId = stringField(body, 'requestId');
   if (!prompt) {
     return Response.json({ error: 'Add a prompt first.' }, { status: 400 });
   }
   if (!requestId || requestId.length > 160) {
-    return Response.json({ error: 'Invalid request identifier.' }, { status: 400 });
+    return Response.json(
+      { error: 'Invalid request identifier.' },
+      { status: 400 },
+    );
   }
 
-  const aspect = body?.aspect || '16:9';
-  const aspectRatio = VIDEO_ASPECTS.has(aspect)
-    ? (aspect as `${number}:${number}`)
-    : '16:9';
-  const seconds = Math.min(30, Math.max(4, Number(body?.duration) || 5));
-  const resolution = body?.videoResolution === '480p' ? '480p' : '720p';
-  const generateAudio = Boolean(body?.generateAudio);
-  const restrictToFreeCreditModels = await freeCreditModelsOnly();
-  if (!hasAvailableStudioModel('video', restrictToFreeCreditModels)) {
+  const projectId = stringField(body, 'projectId');
+  const nodeId = stringField(body, 'nodeId');
+  const runtime = await getStudioRuntimeConfig();
+  const modelId =
+    body.modelId ??
+    STUDIO_VIDEO_MODEL_IDS.find((candidate) =>
+      isStudioModelEnabled(candidate, runtime),
+    );
+  if (!modelId) {
     return Response.json(
-      { error: 'Video generation requires paid AI Gateway credits.' },
+      { error: 'Video generation is currently disabled.' },
       { status: 403 },
     );
   }
-  const model = resolveStudioModel(
-    'video',
-    body?.modelId,
-    restrictToFreeCreditModels,
-  );
-  const referenceImage = (
-    Array.isArray(body?.refSrcs) ? body.refSrcs[0] : body?.refSrc
-  )?.trim();
-
+  let videoRequest;
   try {
+    videoRequest = normalizeStudioVideoRequest({
+      modelId: body.modelId === undefined ? modelId : body.modelId,
+      parameters: videoParametersFromBody(body),
+      referenceImage: videoReferenceFromBody(body),
+    });
+  } catch (error) {
+    if (error instanceof VideoGenerationValidationError) {
+      return Response.json({ error: error.message }, { status: 400 });
+    }
+    throw error;
+  }
+
+  let meteredAccepted = false;
+  let quote: ReturnType<typeof priceStudioUsage> | undefined;
+  try {
+    if (!isStudioModelEnabled(videoRequest.modelId, runtime)) {
+      return Response.json(
+        { error: 'This video model is currently unavailable.' },
+        { status: 403 },
+      );
+    }
+
+    const upstreamUsdMicros =
+      estimateStudioVideoUpstreamUsdMicros(videoRequest);
+    quote = priceStudioUsage({
+      modelId: videoRequest.modelId,
+      upstreamUsdMicros,
+      runtime,
+    });
+    const expectedCreditsStatus = expectedStudioCreditsStatus(
+      body.expectedCredits,
+      quote,
+    );
+    if (
+      expectedCreditsStatus === 'invalid' ||
+      expectedCreditsStatus === 'not-provided'
+    ) {
+      return Response.json(
+        {
+          error:
+            'Missing or invalid expected credit quote. Refresh and try again.',
+        },
+        { status: 400 },
+      );
+    }
+    if (expectedCreditsStatus === 'changed') {
+      return Response.json(
+        {
+          error: `Price changed to ${quote.credits} credits. Refresh and try again.`,
+          code: 'PRICE_CHANGED',
+          ...quote,
+        },
+        { status: 409 },
+      );
+    }
     const metered = await beginMeteredRequest({
       userId: user.id,
       requestId,
       kind: 'video',
-      cost: videoCreditCost({
-        duration: seconds,
-        resolution,
-        generateAudio,
-      }),
-      projectId: body?.projectId,
-      nodeId: body?.nodeId,
+      cost: quote.credits,
+      projectId,
+      nodeId,
     });
     if (!metered.accepted) {
       if (metered.status === 'completed' && metered.result) {
@@ -105,28 +149,27 @@ export async function POST(request: Request) {
         { status: 409 },
       );
     }
+    meteredAccepted = true;
 
-    const { video } = await generateVideo({
-      model: model.id,
-      prompt: referenceImage
-        ? { image: referenceImage, text: prompt }
-        : prompt,
-      aspectRatio: referenceImage ? 'adaptive' : aspectRatio,
-      duration: seconds,
-      resolution: videoPixelSize(aspectRatio, resolution),
-      providerOptions: {
-        bytedance: { generateAudio },
-      },
-    });
+    const { video } = await generateVideo(
+      buildStudioVideoGeneratePayload({ prompt, request: videoRequest }),
+    );
     const url = await storeGeneratedAsset({
       userId: user.id,
-      projectId: body?.projectId,
+      projectId,
       requestId,
       kind: 'video',
       mediaType: video.mediaType || 'video/mp4',
       base64: video.base64,
     });
-    const response = { url, balance: metered.balance };
+    const response = {
+      url,
+      balance: metered.balance,
+      credits: quote.credits,
+      upstreamUsdMicros: quote.upstreamUsdMicros,
+      markupBps: quote.markupBps,
+      pricingVersion: quote.pricingVersion,
+    };
     await completeMeteredRequest({
       userId: user.id,
       requestId,
@@ -136,18 +179,26 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
       return Response.json(
-        { error: 'Not enough credits. Top up first.', code: 'INSUFFICIENT_CREDITS' },
+        {
+          error: 'Not enough credits. Top up first.',
+          code: 'INSUFFICIENT_CREDITS',
+          ...(quote ?? {}),
+        },
         { status: 402 },
       );
     }
-    const message = error instanceof Error ? error.message : 'Video generation failed.';
-    await failMeteredRequest({
-      userId: user.id,
-      requestId,
-      error: message,
-    }).catch(() => undefined);
+
+    const message =
+      error instanceof Error ? error.message : 'Video generation failed.';
+    const balance = meteredAccepted
+      ? await failMeteredRequest({
+          userId: user.id,
+          requestId,
+          error: message,
+        }).catch(() => undefined)
+      : undefined;
     return Response.json(
-      { error: friendlyAiError(message) },
+      { error: friendlyAiError(message), balance },
       { status: 502 },
     );
   }

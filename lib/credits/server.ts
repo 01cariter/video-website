@@ -204,7 +204,19 @@ export async function completeMeteredRequest(input: {
   userId: string;
   requestId: string;
   result: Record<string, unknown>;
+  actualCost?: number;
 }) {
+  if (input.actualCost !== undefined) {
+    const [row] = await sql<{ balance: number | string }[]>`
+      SELECT public.complete_metered_ai_generation_request(
+        ${input.userId},
+        ${input.requestId},
+        ${JSON.stringify(input.result)}::jsonb,
+        ${Math.max(1, Math.round(input.actualCost))}
+      ) AS balance
+    `;
+    return numeric(row?.balance);
+  }
   await sql`
     SELECT public.complete_ai_generation_request(
       ${input.userId},

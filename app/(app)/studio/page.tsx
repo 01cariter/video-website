@@ -1,16 +1,16 @@
 import StudioHome from '../../components/studio/StudioHome';
-import { freeCreditModelsOnly } from '@/flags';
+import { getStudioRuntimeConfig } from '@/flags';
 import { getAuthUser } from '@/lib/supabase/server';
 
 export default async function StudioPage() {
-  const [user, restrictToFreeCreditModels] = await Promise.all([
+  const [user, runtimeConfig] = await Promise.all([
     getAuthUser(),
-    freeCreditModelsOnly(),
+    getStudioRuntimeConfig(),
   ]);
   return (
     <StudioHome
       authenticated={Boolean(user)}
-      freeCreditModelsOnly={restrictToFreeCreditModels}
+      runtimeConfig={runtimeConfig}
     />
   );
 }

@@ -2,6 +2,7 @@
 
 import { createContext, useContext } from 'react';
 import type { StudioArrangeAction } from '@/lib/studio/geometry';
+import type { StudioRuntimeConfig } from '@/lib/studio/pricing';
 import type {
   StudioNode,
   StudioNodeData,
@@ -13,7 +14,7 @@ export type StudioTool = 'select' | 'pan' | 'section';
 export interface StudioCanvasApi {
   nodes: StudioNode[];
   selectedIds: string[];
-  freeCreditModelsOnly: boolean;
+  runtimeConfig: StudioRuntimeConfig;
   addNode: (
     kind: StudioNodeKind,
     extras?: {

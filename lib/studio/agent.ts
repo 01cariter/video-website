@@ -2,7 +2,14 @@ import 'server-only';
 
 import { isStepCount, ToolLoopAgent, tool, type ToolSet } from 'ai';
 import { z } from 'zod';
-import { chatModelId } from './model-catalog';
+import {
+  DEFAULT_STUDIO_RUNTIME_CONFIG,
+  STUDIO_AGENT_MAX_OUTPUT_TOKENS_PER_STEP,
+  STUDIO_AGENT_MAX_STEPS,
+  STUDIO_AGENT_SKILL_CONTEXT_BYTE_LIMIT,
+  normalizeStudioRuntimeConfig,
+  type StudioRuntimeConfig,
+} from './pricing';
 import { isStudioSkillId, type StudioSkillId } from './skills/catalog';
 import {
   readStudioSkillResource,
@@ -21,6 +28,17 @@ export interface CanvasNodeSnapshot {
   height?: number;
 }
 
+interface StudioAgentUsageEvent {
+  usage: {
+    inputTokens: number | undefined;
+    outputTokens: number | undefined;
+  };
+  steps: Array<{
+    inputTokens: number | undefined;
+    outputTokens: number | undefined;
+  }>;
+}
+
 function inventoryText(canvas: CanvasNodeSnapshot[]) {
   if (!canvas.length) return 'The canvas is currently empty.';
   return canvas
@@ -35,13 +53,16 @@ const kindSchema = z.enum(['image', 'video', 'text', 'section']);
 
 export function createStudioAgent(
   canvas: CanvasNodeSnapshot[],
-  freeCreditModelsOnly = false,
-  onEnd?: () => Promise<void> | void,
+  runtimeOrLegacy: StudioRuntimeConfig | boolean =
+    DEFAULT_STUDIO_RUNTIME_CONFIG,
+  onEnd?: (event: StudioAgentUsageEvent) => Promise<void> | void,
   skillIds: readonly StudioSkillId[] = [],
 ) {
+  const runtime = normalizeStudioRuntimeConfig(runtimeOrLegacy);
   const activeSkillText = studioSkillSelectionText(skillIds);
   const skillTools: ToolSet = {};
   if (skillIds.length) {
+    let remainingSkillContextBytes = STUDIO_AGENT_SKILL_CONTEXT_BYTE_LIMIT;
     skillTools.readSkillResource = tool({
       description: `Read an instruction or reference file from an active built-in skill. Read SKILL.md before applying a skill, then read only the references it routes you to. Active skills:\n${activeSkillText}`,
       inputSchema: z.object({
@@ -81,13 +102,23 @@ export function createStudioAgent(
             value: 'This Skill context is not active for the current request.',
           };
         }
+        const value = await readStudioSkillResource(
+          skillIds,
+          selection.skillId,
+          selection.resource,
+        );
+        const bytes = new TextEncoder().encode(value).length;
+        if (bytes > remainingSkillContextBytes) {
+          return {
+            type: 'text' as const,
+            value:
+              'The request-scoped Skill context budget is exhausted. Continue with the Skill context already loaded.',
+          };
+        }
+        remainingSkillContextBytes -= bytes;
         return {
           type: 'text' as const,
-          value: await readStudioSkillResource(
-            skillIds,
-            selection.skillId,
-            selection.resource,
-          ),
+          value,
         };
       },
     });
@@ -95,8 +126,9 @@ export function createStudioAgent(
 
   return new ToolLoopAgent({
     id: 'snackd-canvas-agent',
-    model: chatModelId(freeCreditModelsOnly),
-    stopWhen: isStepCount(8),
+    model: runtime.agentModelId,
+    stopWhen: isStepCount(STUDIO_AGENT_MAX_STEPS),
+    maxOutputTokens: STUDIO_AGENT_MAX_OUTPUT_TOKENS_PER_STEP,
     instructions: `You are the professional AI canvas Agent in Snackd Creator Studio. You operate a LeaferJS infinite canvas.
 
 Working rules:
@@ -106,11 +138,7 @@ Working rules:
 - Prefer one to three essential nodes per step. A series may use more, but group and arrange them clearly with sections.
 - Prefer updateCanvasNode when revising existing work. Do not create redundant nodes.
 - Confirm that the user clearly intends deletion before removing anything.
-- ${
-      freeCreditModelsOnly
-        ? 'Free-credit mode is active. Do not create video generation nodes because no video model is currently available in this mode.'
-        : 'All configured generation models are available.'
-    }
+- Respect the enabled model policy enforced by the generation endpoints. AI Gateway account credits are not a per-model capability.
 - Node coordinates use canvas world space. Common sizes: image 300×300, video 300×169, text 280×176, section 720×460.
 - After tools finish, summarize what changed in one or two sentences without exposing internal tool details.
 ${
@@ -179,6 +207,15 @@ ${inventoryText(canvas)}`,
         }),
       }),
     },
-    onEnd: onEnd ? async () => onEnd() : undefined,
+    onEnd: onEnd
+      ? async (event) =>
+          onEnd({
+            usage: event.usage,
+            steps: event.steps.map((step) => ({
+              inputTokens: step.usage.inputTokens,
+              outputTokens: step.usage.outputTokens,
+            })),
+          })
+      : undefined,
   });
 }

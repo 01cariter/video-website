@@ -19,7 +19,7 @@ export default function NodePropertiesPanel({
   onQuickEditOpenChange: (open: boolean) => void;
 }) {
   const {
-    freeCreditModelsOnly,
+    runtimeConfig,
     quickEditNode,
     reuseNode,
     sendNodesToAgent,
@@ -32,7 +32,7 @@ export default function NodePropertiesPanel({
   const model =
     node.type === 'section'
       ? null
-      : resolveStudioModel(node.type, node.data.modelId, freeCreditModelsOnly);
+      : resolveStudioModel(node.type, node.data.modelId, runtimeConfig);
 
   useEffect(() => {
     if (!quickEditOpen) return;
@@ -123,7 +123,12 @@ export default function NodePropertiesPanel({
                 </span>
               </div>
               <div className="mt-2 border-t border-border pt-2 text-[11px] leading-5 text-muted-foreground">
-                {fieldSummary(node.type, node.data)}
+                {fieldSummary(
+                  node.type,
+                  node.data,
+                  node.data.modelId,
+                  runtimeConfig,
+                )}
               </div>
               {Array.isArray(node.data.refSrcs) && node.data.refSrcs.length ? (
                 <div className="mt-2 text-[11px] text-muted-foreground">

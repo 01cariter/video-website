@@ -13,10 +13,10 @@ import {
   Check,
   FileText,
   ImageIcon,
+  LoaderCircle,
   Plus,
   Search,
   Sparkles,
-  Square,
   Video,
   X,
 } from 'lucide-react';
@@ -63,7 +63,6 @@ interface AgentPanelProps {
   status: 'submitted' | 'streaming' | 'ready' | 'error';
   error?: Error | undefined;
   onSend: (text: string, skillIds: StudioSkillId[]) => void;
-  onStop: () => void;
   draftRequest?: { id: number; text: string } | null;
 }
 
@@ -98,7 +97,6 @@ export default function AgentPanel({
   status,
   error,
   onSend,
-  onStop,
   draftRequest,
 }: AgentPanelProps) {
   const { addNode } = useStudioCanvas();
@@ -610,10 +608,10 @@ export default function AgentPanel({
               type="button"
               size="icon-sm"
               className="rounded-lg"
-              onClick={onStop}
-              aria-label="Stop"
+              disabled
+              aria-label="Agent working"
             >
-              <Square className="size-3" />
+              <LoaderCircle className="size-3 animate-spin" />
             </Button>
           ) : (
             <Button

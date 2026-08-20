@@ -22,6 +22,15 @@ import {
 } from '@/lib/studio/media-upload';
 import { createBlankNode, saveStudioProject } from '@/lib/studio/store';
 import {
+  modelSpecFor,
+  resolveStudioModel,
+} from '@/lib/studio/model-catalog';
+import {
+  estimateStudioCredits,
+  type StudioBillableModelId,
+  type StudioRuntimeConfig,
+} from '@/lib/studio/pricing';
+import {
   getStudioProjectSynced,
   saveStudioProjectSynced,
 } from '@/lib/studio/client-store';
@@ -60,7 +69,7 @@ import {
 
 interface StudioWorkspaceProps {
   projectId: string;
-  freeCreditModelsOnly: boolean;
+  runtimeConfig: StudioRuntimeConfig;
   user: AppUser | null;
 }
 
@@ -253,11 +262,11 @@ function applyProcessedTools(
 
 function CanvasWorkspace({
   project,
-  freeCreditModelsOnly,
+  runtimeConfig,
   user,
 }: {
   project: StudioProject;
-  freeCreditModelsOnly: boolean;
+  runtimeConfig: StudioRuntimeConfig;
   user: AppUser | null;
 }) {
   const router = useRouter();
@@ -443,25 +452,46 @@ function CanvasWorkspace({
       });
 
       try {
+        const model = resolveStudioModel(
+          node.type,
+          node.data.modelId,
+          runtimeConfig,
+        );
+        const spec = modelSpecFor(node.type, model.id, runtimeConfig);
+        const parameters = Object.fromEntries(
+          spec.fields.map((field) => [
+            field.key,
+            node.data[field.key] ?? spec.defaults[field.key],
+          ]),
+        );
+        const references = (
+          Array.isArray(node.data.refSrcs)
+            ? node.data.refSrcs
+            : node.data.refSrc
+              ? [node.data.refSrc]
+              : []
+        ).slice(0, spec.maxRefs);
+        const expectedQuote = estimateStudioCredits({
+          kind: node.type,
+          modelId: model.id as StudioBillableModelId,
+          parameters,
+          prompt: node.data.prompt,
+          current: node.data.text,
+          referenceImages: references,
+          runtime: runtimeConfig,
+        });
         const body = {
           projectId: project.id,
           nodeId: node.id,
           requestId: requestId(),
           prompt: node.data.prompt,
           current: node.data.text || '',
-          modelId: node.data.modelId,
-          aspect: node.data.aspect,
-          n: node.data.n,
-          refSrc: node.data.refSrc,
-          refSrcs: Array.isArray(node.data.refSrcs)
-            ? node.data.refSrcs
-            : node.data.refSrc
-              ? [node.data.refSrc]
-              : [],
-          duration: node.data.duration,
-          videoResolution: node.data.videoResolution,
-          generateAudio: node.data.generateAudio,
-          reasoningEffort: node.data.reasoningEffort,
+          modelId: model.id,
+          parameters,
+          refSrc: references[0],
+          refSrcs: references,
+          reasoningEffort: parameters.reasoningEffort,
+          expectedCredits: expectedQuote.credits,
         };
         const endpoint =
           node.type === 'text'
@@ -550,7 +580,7 @@ function CanvasWorkspace({
         generating.current.delete(id);
       }
     },
-    [commitNodes, project.id, updateNodeData],
+    [commitNodes, project.id, runtimeConfig, updateNodeData],
   );
 
   const addNode = useCallback(
@@ -560,7 +590,18 @@ function CanvasWorkspace({
         x: center.x - (extras.size?.width ?? 280) / 2,
         y: center.y - (extras.size?.height ?? 220) / 2,
       };
-      const data: Partial<StudioNodeData> = { ...extras.data };
+      const defaults =
+        kind === 'section'
+          ? {}
+          : (() => {
+              const model = resolveStudioModel(kind, undefined, runtimeConfig);
+              const spec = modelSpecFor(kind, model.id, runtimeConfig);
+              return { ...spec.defaults, modelId: model.id };
+            })();
+      const data: Partial<StudioNodeData> = {
+        ...defaults,
+        ...extras.data,
+      };
       if (extras.prompt !== undefined) data.prompt = extras.prompt;
       if (extras.title !== undefined) data.title = extras.title;
       if (extras.text !== undefined) data.text = extras.text;
@@ -590,7 +631,7 @@ function CanvasWorkspace({
       }
       return next.id;
     },
-    [commitNodes, generateNode],
+    [commitNodes, generateNode, runtimeConfig],
   );
   useEffect(() => {
     addNodeRef.current = addNode;
@@ -1074,7 +1115,7 @@ function CanvasWorkspace({
     [nodes, project.id, selectedIds],
   );
 
-  const { messages, sendMessage, status, stop, error } = useChat({
+  const { messages, sendMessage, status, error } = useChat({
     id: project.id,
     transport,
     messages: project.messages,
@@ -1201,7 +1242,7 @@ function CanvasWorkspace({
     () => ({
       nodes,
       selectedIds,
-      freeCreditModelsOnly,
+      runtimeConfig,
       addNode,
       generateNode,
       reuseNode,
@@ -1245,7 +1286,7 @@ function CanvasWorkspace({
       removeNodes,
       changeZoom,
       fitNodes,
-      freeCreditModelsOnly,
+      runtimeConfig,
       selectIds,
       selectedIds,
       sendToBack,
@@ -1432,7 +1473,6 @@ function CanvasWorkspace({
           onSend={(text, skillIds) =>
             void sendMessage({ text }, { body: { skillIds } })
           }
-          onStop={() => stop()}
           draftRequest={agentDraftRequest}
         />
         <AnimatePresence>
@@ -1458,7 +1498,7 @@ function CanvasWorkspace({
 
 export default function StudioWorkspace({
   projectId,
-  freeCreditModelsOnly,
+  runtimeConfig,
   user,
 }: StudioWorkspaceProps) {
   const router = useRouter();
@@ -1500,7 +1540,7 @@ export default function StudioWorkspace({
   return (
     <CanvasWorkspace
       project={project}
-      freeCreditModelsOnly={freeCreditModelsOnly}
+      runtimeConfig={runtimeConfig}
       user={user}
     />
   );

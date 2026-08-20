@@ -3,7 +3,11 @@
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import byteDanceIcon from '@lobehub/icons-static-svg/icons/bytedance.svg';
+import anthropicIcon from '@lobehub/icons-static-svg/icons/anthropic.svg';
+import deepseekIcon from '@lobehub/icons-static-svg/icons/deepseek.svg';
+import googleIcon from '@lobehub/icons-static-svg/icons/google.svg';
 import grokIcon from '@lobehub/icons-static-svg/icons/grok.svg';
+import minimaxIcon from '@lobehub/icons-static-svg/icons/minimax.svg';
 import openAiIcon from '@lobehub/icons-static-svg/icons/openai.svg';
 import poolsideIcon from '@lobehub/icons-static-svg/icons/poolside.svg';
 import recraftIcon from '@lobehub/icons-static-svg/icons/recraft.svg';
@@ -21,21 +25,22 @@ import {
   fieldSummary,
   hasAvailableStudioModel,
   isStudioModelAvailable,
-  modelForKind,
+  modelSpecFor,
   modelOptionsForKind,
   resolveStudioModel,
   type CatalogField,
   type StudioModelOption,
 } from '@/lib/studio/model-catalog';
+import {
+  estimateStudioCredits,
+  type StudioBillableModelId,
+  type StudioRuntimeConfig,
+} from '@/lib/studio/pricing';
 import type {
   StudioGenerativeKind,
   StudioNodeData,
 } from '@/lib/studio/types';
-import {
-  CREDIT_COSTS,
-  imageCreditCost,
-  videoCreditCost,
-} from '@/lib/credits/config';
+import { uploadStudioMedia } from '@/lib/studio/media-upload';
 import { cn } from '@/lib/utils';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent } from '@/app/components/ui/card';
@@ -59,16 +64,25 @@ interface NodeInspectorProps {
   kind: StudioGenerativeKind;
   data: StudioNodeData;
   canSubmit: boolean;
-  freeCreditModelsOnly: boolean;
+  runtimeConfig: StudioRuntimeConfig;
   onPromptChange: (value: string) => void;
   onFieldChange: (key: string, value: string | number | boolean) => void;
+  onModelChange: (
+    modelId: string,
+    defaults: Record<string, string | number | boolean>,
+    maxRefs: number,
+  ) => void;
   onAspectChange: (aspect: string) => void;
   onRefsChange: (srcs: string[]) => void;
   onSubmit: () => void;
 }
 
 const PROVIDER_ICONS = {
+  Anthropic: anthropicIcon,
   ByteDance: byteDanceIcon,
+  DeepSeek: deepseekIcon,
+  Google: googleIcon,
+  MiniMax: minimaxIcon,
   OpenAI: openAiIcon,
   Poolside: poolsideIcon,
   Recraft: recraftIcon,
@@ -432,9 +446,10 @@ export default function NodeInspector({
   kind,
   data,
   canSubmit,
-  freeCreditModelsOnly,
+  runtimeConfig,
   onPromptChange,
   onFieldChange,
+  onModelChange,
   onAspectChange,
   onRefsChange,
   onSubmit,
@@ -443,39 +458,44 @@ export default function NodeInspector({
   const fileRef = useRef<HTMLInputElement>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const spec = modelForKind(kind);
+  const [referencesBusy, setReferencesBusy] = useState(false);
   const modelOptions = modelOptionsForKind(kind);
-  const modelAvailable = hasAvailableStudioModel(
-    kind,
-    freeCreditModelsOnly,
-  );
+  const modelAvailable = hasAvailableStudioModel(kind, runtimeConfig);
   const selectedModel = resolveStudioModel(
     kind,
     data.modelId,
-    freeCreditModelsOnly,
+    runtimeConfig,
   );
-  const busy = data.status === 'generating' || data.status === 'uploading';
+  const spec = modelSpecFor(kind, selectedModel.id, runtimeConfig);
+  const busy =
+    data.status === 'generating' ||
+    data.status === 'uploading' ||
+    referencesBusy;
   const references = referenceSources(data).slice(0, spec.maxRefs);
-  const values: Record<string, unknown> = {
-    ...spec.defaults,
-    aspect: data.aspect,
-    n: data.n,
-    duration: data.duration,
-    videoResolution: data.videoResolution,
-    generateAudio: data.generateAudio,
-    reasoningEffort: data.reasoningEffort,
-  };
-  const summary = fieldSummary(kind, values);
-  const creditCost =
-    kind === 'image'
-      ? imageCreditCost(Number(data.n) || 1)
-      : kind === 'video'
-        ? videoCreditCost({
-            duration: Number(data.duration) || 5,
-            resolution: data.videoResolution === '480p' ? '480p' : '720p',
-            generateAudio: Boolean(data.generateAudio),
-          })
-        : CREDIT_COSTS.text;
+  const values: Record<string, unknown> = { ...spec.defaults };
+  for (const field of spec.fields) {
+    if (data[field.key] !== undefined) values[field.key] = data[field.key];
+  }
+  const summary = fieldSummary(
+    kind,
+    values,
+    selectedModel.id,
+    runtimeConfig,
+  );
+  let creditCost: number | null = null;
+  try {
+    creditCost = estimateStudioCredits({
+      kind,
+      modelId: selectedModel.id as StudioBillableModelId,
+      parameters: values,
+      prompt: data.prompt,
+      current: data.text,
+      referenceImages: references,
+      runtime: runtimeConfig,
+    }).credits;
+  } catch {
+    creditCost = null;
+  }
 
   useEffect(() => {
     if (busy) return;
@@ -643,16 +663,14 @@ export default function NodeInspector({
                     Choose a model
                   </PopoverTitle>
                   <PopoverDescription className="text-[10.5px]">
-                    {freeCreditModelsOnly
-                      ? 'Free-credit mode · unavailable models are disabled'
-                      : 'Routed through Vercel AI Gateway'}
+                    Routed through Vercel AI Gateway
                   </PopoverDescription>
                 </PopoverHeader>
                 <div className="grid gap-1" role="listbox" aria-label="Generation model">
                   {modelOptions.map((model) => {
                     const available = isStudioModelAvailable(
                       model,
-                      freeCreditModelsOnly,
+                      runtimeConfig,
                     );
                     const selected =
                       available && model.id === selectedModel.id;
@@ -671,7 +689,16 @@ export default function NodeInspector({
                         )}
                         onClick={() => {
                           if (!available) return;
-                          onFieldChange('modelId', model.id);
+                          const nextSpec = modelSpecFor(
+                            kind,
+                            model.id,
+                            runtimeConfig,
+                          );
+                          onModelChange(
+                            model.id,
+                            nextSpec.defaults,
+                            nextSpec.maxRefs,
+                          );
                           setModelOpen(false);
                         }}
                       >
@@ -707,13 +734,24 @@ export default function NodeInspector({
             <Button
               type="submit"
               size="sm"
-              disabled={!canSubmit || busy || !modelAvailable}
-              aria-label={`Generate for ${creditCost} credits`}
+              disabled={
+                !canSubmit || busy || !modelAvailable || creditCost === null
+              }
+              aria-label={
+                creditCost === null
+                  ? 'Generation parameters are unavailable'
+                  : `Generate for ${creditCost} ${creditCost === 1 ? 'credit' : 'credits'}`
+              }
               className="h-8 min-w-[124px] gap-1.5 rounded-[9px] px-3 text-[11px] !text-primary-foreground shadow-none active:translate-y-px disabled:!text-primary-foreground/45"
             >
               <Zap className="size-3.5" />
               <span>Generate</span>
-              <span className="opacity-65">· {creditCost} credits</span>
+              <span className="opacity-65">
+                ·{' '}
+                {creditCost === null
+                  ? 'Unavailable'
+                  : `${creditCost} ${creditCost === 1 ? 'credit' : 'credits'}`}
+              </span>
             </Button>
           </div>
         </form>
@@ -732,8 +770,16 @@ export default function NodeInspector({
             const remaining = Math.max(0, spec.maxRefs - references.length);
             if (!files.length || !remaining) return;
             try {
+              setReferencesBusy(true);
               const next = await Promise.all(
-                files.slice(0, remaining).map(readReferenceImage),
+                files.slice(0, remaining).map(async (file) => {
+                  if (kind !== 'video') return readReferenceImage(file);
+                  const uploaded = await uploadStudioMedia(file);
+                  if (uploaded.kind !== 'image') {
+                    throw new Error('Choose an image reference.');
+                  }
+                  return uploaded.url;
+                }),
               );
               onRefsChange(
                 [...references, ...next].filter(
@@ -742,6 +788,8 @@ export default function NodeInspector({
               );
             } catch {
               // Keep the composer usable when an individual file cannot be read.
+            } finally {
+              setReferencesBusy(false);
             }
           }}
         />

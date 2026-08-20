@@ -1,12 +1,14 @@
-export const WELCOME_CREDITS = 200;
+export const WELCOME_CREDITS = 50;
 
+// Representative default-model estimates for the Credits page only. Studio
+// generation routes use the exact per-model quote in lib/studio/pricing.ts.
 export const CREDIT_COSTS = {
-  agent: 1,
-  text: 3,
-  image: 20,
-  video480PerSecond: 20,
-  video720PerSecond: 32,
-  videoAudioPerSecond: 4,
+  agent: 5,
+  text: 1,
+  image: 9,
+  video480PerSecond: 16,
+  video720PerSecond: 35,
+  videoAudioPerSecond: 0,
 } as const;
 
 export type MeteredAiKind = 'agent' | 'text' | 'image' | 'video';

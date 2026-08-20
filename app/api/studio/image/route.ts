@@ -1,6 +1,4 @@
-import { generateImage } from 'ai';
-import { freeCreditModelsOnly } from '@/flags';
-import { imageCreditCost } from '@/lib/credits/config';
+import { getStudioRuntimeConfig } from '@/flags';
 import {
   beginMeteredRequest,
   completeMeteredRequest,
@@ -10,29 +8,32 @@ import {
 import { friendlyAiError } from '@/lib/studio/errors';
 import { storeGeneratedAsset } from '@/lib/studio/generated-assets';
 import {
-  hasAvailableStudioModel,
-  resolveStudioModel,
-} from '@/lib/studio/model-catalog';
+  imageParametersFromBody,
+  prepareStudioImageRequest,
+  STUDIO_IMAGE_MODEL_IDS,
+  StudioImageValidationError,
+  type StudioImageRequestBodyLike,
+} from '@/lib/studio/image-generation';
+import { generatePreparedStudioImages } from '@/lib/studio/image-provider';
+import {
+  estimateStudioCredits,
+  expectedStudioCreditsStatus,
+  isStudioModelEnabled,
+} from '@/lib/studio/pricing';
 import { getAuthUser } from '@/lib/supabase/server';
 
 export const maxDuration = 120;
 
-const IMAGE_ASPECTS = new Set([
-  '1:1',
-  '16:9',
-  '9:16',
-  '4:3',
-  '3:4',
-  '3:2',
-  '2:3',
-  '2:1',
-  '1:2',
-  '19.5:9',
-  '9:19.5',
-  '20:9',
-  '9:20',
-  'auto',
-]);
+interface StudioImageRequestBody extends StudioImageRequestBodyLike {
+  prompt?: unknown;
+  modelId?: unknown;
+  refSrc?: unknown;
+  refSrcs?: unknown;
+  requestId?: unknown;
+  projectId?: unknown;
+  nodeId?: unknown;
+  expectedCredits?: unknown;
+}
 
 export async function POST(request: Request) {
   const user = await getAuthUser();
@@ -42,93 +43,147 @@ export async function POST(request: Request) {
       { status: 401 },
     );
   }
-  const body = (await request.json().catch(() => null)) as {
-    prompt?: string;
-    modelId?: string;
-    aspect?: string;
-    n?: number;
-    refSrc?: string;
-    refSrcs?: string[];
-    requestId?: string;
-    projectId?: string;
-    nodeId?: string;
-  } | null;
-  const prompt = body?.prompt?.trim();
-  const requestId = body?.requestId?.trim();
-  if (!prompt) {
-    return Response.json({ error: 'Add a prompt first.' }, { status: 400 });
-  }
-  if (!requestId || requestId.length > 160) {
-    return Response.json({ error: 'Invalid request identifier.' }, { status: 400 });
-  }
 
-  const count = Math.min(4, Math.max(1, Number(body?.n) || 1));
-  const aspect = body?.aspect || '1:1';
-  const aspectRatio = IMAGE_ASPECTS.has(aspect)
-    ? (aspect as `${number}:${number}` | 'auto')
-    : '1:1';
-  const restrictToFreeCreditModels = await freeCreditModelsOnly();
-  if (
-    !hasAvailableStudioModel('image', restrictToFreeCreditModels)
-  ) {
+  const parsedBody: unknown = await request.json().catch(() => null);
+  if (!isRecord(parsedBody)) {
+    return Response.json({ error: 'Invalid image request.' }, { status: 400 });
+  }
+  const body = parsedBody as StudioImageRequestBody;
+  const requestId = optionalTrimmedString(body.requestId);
+  if (!requestId || requestId.length > 160) {
     return Response.json(
-      { error: 'Image generation requires paid AI Gateway credits.' },
-      { status: 403 },
+      { error: 'Invalid request identifier.' },
+      { status: 400 },
     );
   }
-  const model = resolveStudioModel(
-    'image',
-    body?.modelId,
-    restrictToFreeCreditModels,
-  );
-  const referenceImages = (
-    Array.isArray(body?.refSrcs)
-      ? body.refSrcs
-      : body?.refSrc
-        ? [body.refSrc]
-        : []
-  )
-    .filter((src): src is string => typeof src === 'string' && Boolean(src))
-    .slice(0, 3);
 
+  let prepared: ReturnType<typeof prepareStudioImageRequest>;
+  let pricing: ReturnType<typeof estimateStudioCredits>;
   try {
-    const metered = await beginMeteredRequest({
+    const runtime = await getStudioRuntimeConfig();
+    const modelId =
+      body.modelId ??
+      STUDIO_IMAGE_MODEL_IDS.find((candidate) =>
+        isStudioModelEnabled(candidate, runtime),
+      );
+    if (!modelId) {
+      return Response.json(
+        { error: 'Image generation is currently disabled.' },
+        { status: 403 },
+      );
+    }
+    prepared = prepareStudioImageRequest({
+      modelId,
+      prompt: body.prompt,
+      parameters: imageParametersFromBody(body),
+      referenceImages:
+        body.refSrcs !== undefined
+          ? body.refSrcs
+          : body.refSrc !== undefined
+            ? [body.refSrc]
+            : [],
+    });
+    if (!isStudioModelEnabled(prepared.modelId, runtime)) {
+      return Response.json(
+        { error: 'This image model is currently disabled.' },
+        { status: 403 },
+      );
+    }
+    pricing = estimateStudioCredits({
+      kind: 'image',
+      modelId: prepared.modelId,
+      parameters: prepared.parameters,
+      prompt: prepared.prompt,
+      referenceImages: prepared.referenceImages,
+      runtime,
+    });
+  } catch (error) {
+    if (error instanceof StudioImageValidationError) {
+      return Response.json({ error: error.message }, { status: 400 });
+    }
+    const message =
+      error instanceof Error ? error.message : 'Could not price this image.';
+    return Response.json({ error: friendlyAiError(message) }, { status: 500 });
+  }
+
+  const expectedCreditsStatus = expectedStudioCreditsStatus(
+    body.expectedCredits,
+    pricing,
+  );
+  if (
+    expectedCreditsStatus === 'invalid' ||
+    expectedCreditsStatus === 'not-provided'
+  ) {
+    return Response.json(
+      { error: 'Missing or invalid expected credit quote. Refresh and try again.' },
+      { status: 400 },
+    );
+  }
+  if (expectedCreditsStatus === 'changed') {
+    return Response.json(
+      {
+        error: `Price changed to ${pricing.credits} credits. Refresh and try again.`,
+        code: 'PRICE_CHANGED',
+        ...pricing,
+      },
+      { status: 409 },
+    );
+  }
+
+  let metered: Awaited<ReturnType<typeof beginMeteredRequest>>;
+  try {
+    metered = await beginMeteredRequest({
       userId: user.id,
       requestId,
       kind: 'image',
-      cost: imageCreditCost(count),
-      projectId: body?.projectId,
-      nodeId: body?.nodeId,
+      cost: pricing.credits,
+      projectId: optionalTrimmedString(body.projectId),
+      nodeId: optionalTrimmedString(body.nodeId),
     });
-    if (!metered.accepted) {
-      if (metered.status === 'completed' && metered.result) {
-        return Response.json(metered.result);
-      }
+  } catch (error) {
+    if (error instanceof InsufficientCreditsError) {
       return Response.json(
         {
-          error: 'This generation is processing or failed. Generate it again.',
-          balance: metered.balance,
+          error: 'Not enough credits. Top up first.',
+          code: 'INSUFFICIENT_CREDITS',
+          credits: pricing.credits,
+          upstreamUsdMicros: pricing.upstreamUsdMicros,
+          markupBps: pricing.markupBps,
+          pricingVersion: pricing.pricingVersion,
         },
-        { status: 409 },
+        { status: 402 },
       );
     }
+    const message =
+      error instanceof Error ? error.message : 'Could not start generation.';
+    return Response.json({ error: friendlyAiError(message) }, { status: 500 });
+  }
 
-    const result = await generateImage({
-      model: model.id,
-      prompt: referenceImages.length
-        ? { text: prompt, images: referenceImages }
-        : prompt,
-      n: count,
-      aspectRatio:
-        aspectRatio === 'auto'
-          ? undefined
-          : (aspectRatio as `${number}:${number}`),
-    });
+  if (!metered.accepted) {
+    if (metered.status === 'completed' && metered.result) {
+      return Response.json(metered.result);
+    }
+    return Response.json(
+      {
+        error: 'This generation is processing or failed. Generate it again.',
+        balance: metered.balance,
+      },
+      { status: 409 },
+    );
+  }
+
+  try {
+    const images = await generatePreparedStudioImages(prepared);
+    if (images.length !== prepared.count) {
+      throw new Error(
+        `The provider returned ${images.length} of ${prepared.count} requested images.`,
+      );
+    }
     const urls = await Promise.all(
-      result.images.map((image, index) =>
+      images.map((image, index) =>
         storeGeneratedAsset({
           userId: user.id,
-          projectId: body?.projectId,
+          projectId: optionalTrimmedString(body.projectId),
           requestId,
           index,
           kind: 'image',
@@ -137,7 +192,17 @@ export async function POST(request: Request) {
         }),
       ),
     );
-    const response = { url: urls[0], urls, balance: metered.balance };
+    const response = {
+      url: urls[0],
+      urls,
+      balance: metered.balance,
+      credits: pricing.credits,
+      upstreamUsdMicros: pricing.upstreamUsdMicros,
+      markupBps: pricing.markupBps,
+      pricingVersion: pricing.pricingVersion,
+      modelId: prepared.modelId,
+      parameters: prepared.parameters,
+    };
     await completeMeteredRequest({
       userId: user.id,
       requestId,
@@ -145,21 +210,26 @@ export async function POST(request: Request) {
     });
     return Response.json(response);
   } catch (error) {
-    if (error instanceof InsufficientCreditsError) {
-      return Response.json(
-        { error: 'Not enough credits. Top up first.', code: 'INSUFFICIENT_CREDITS' },
-        { status: 402 },
-      );
-    }
-    const message = error instanceof Error ? error.message : 'Image generation failed.';
-    await failMeteredRequest({
+    const message =
+      error instanceof Error ? error.message : 'Image generation failed.';
+    const balance = await failMeteredRequest({
       userId: user.id,
       requestId,
       error: message,
     }).catch(() => undefined);
     return Response.json(
-      { error: friendlyAiError(message) },
+      { error: friendlyAiError(message), balance },
       { status: 502 },
     );
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function optionalTrimmedString(value: unknown) {
+  return typeof value === 'string' && value.trim()
+    ? value.trim()
+    : undefined;
 }
