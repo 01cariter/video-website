@@ -20,11 +20,19 @@ import {
   kindFromMime,
   storagePathFor,
 } from '@/lib/media-shared';
-import type { AppUser, Media, MediaKind, Video, VideoCategory } from '@/lib/types';
+import type {
+  AppUser,
+  Media,
+  MediaKind,
+  Video,
+  VideoCategory,
+} from '@/lib/types';
 import { MAX_POST_ASSETS, MAX_POST_BODY_LENGTH } from '@/lib/types';
+import type { ComposeAssetDraft, ComposeDraft } from './compose/types';
 
 interface MediaUploaderProps {
   user: AppUser;
+  initialDraft?: ComposeDraft;
   onPublished: (video: Video) => void;
 }
 
@@ -35,13 +43,24 @@ interface Probe {
   duration: number | null;
 }
 
-interface Selection {
+interface SelectionBase {
   key: string;
-  file: File;
   objectUrl: string;
   probe: Probe;
+}
+
+interface LocalSelection extends SelectionBase {
+  source: 'local';
+  file: File;
   poster: Blob | null;
 }
+
+interface RemoteSelection extends SelectionBase {
+  source: 'remote';
+  asset: ComposeAssetDraft;
+}
+
+type Selection = LocalSelection | RemoteSelection;
 
 interface MediaResponse {
   media: Media;
@@ -54,19 +73,31 @@ interface VideoResponse {
 const ACCEPT = Array.from(ALLOWED_MEDIA_MIME_TYPES).join(',');
 const POSTER_CAPTURE_TIMEOUT_MS = 8000;
 
-export default function MediaUploader({ user, onPublished }: MediaUploaderProps) {
+export default function MediaUploader({
+  user,
+  initialDraft,
+  onPublished,
+}: MediaUploaderProps) {
   const supabase = useMemo(() => createClient(), []);
   const inputRef = useRef<HTMLInputElement>(null);
   const selectionsRef = useRef<Selection[]>([]);
 
-  const [selections, setSelections] = useState<Selection[]>([]);
+  const [selections, setSelections] = useState<Selection[]>(() =>
+    selectionsFromDraft(initialDraft),
+  );
   const [reading, setReading] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
+  const [title, setTitle] = useState(
+    () => initialDraft?.title?.slice(0, 120) ?? '',
+  );
+  const [body, setBody] = useState(
+    () => initialDraft?.body?.slice(0, MAX_POST_BODY_LENGTH) ?? '',
+  );
   const [category, setCategory] = useState<VideoCategory>('study');
   const [label, setLabel] = useState('');
-  const [stage, setStage] = useState<'idle' | 'uploading' | 'publishing'>('idle');
+  const [stage, setStage] = useState<'idle' | 'uploading' | 'publishing'>(
+    'idle',
+  );
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
 
@@ -76,15 +107,18 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
     selectionsRef.current = selections;
   }, [selections]);
 
-  useEffect(() => () => {
-    for (const item of selectionsRef.current) URL.revokeObjectURL(item.objectUrl);
-  }, []);
+  useEffect(
+    () => () => {
+      for (const item of selectionsRef.current) revokeLocalObjectUrl(item);
+    },
+    [],
+  );
 
   const removeAt = useCallback((key: string) => {
     setSelections((current) => {
       const next = current.filter((item) => {
         if (item.key !== key) return true;
-        URL.revokeObjectURL(item.objectUrl);
+        revokeLocalObjectUrl(item);
         return false;
       });
       return next;
@@ -96,7 +130,8 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
     setSelections((current) => {
       const index = current.findIndex((item) => item.key === key);
       const nextIndex = index + delta;
-      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
+      if (index < 0 || nextIndex < 0 || nextIndex >= current.length)
+        return current;
       const copy = [...current];
       const [item] = copy.splice(index, 1);
       copy.splice(nextIndex, 0, item);
@@ -124,19 +159,26 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
         for (const file of incoming.slice(0, room)) {
           const mime = file.type || '';
           if (!ALLOWED_MEDIA_MIME_TYPES.has(mime)) {
-            setError('Choose JPEG, PNG, WebP, GIF, AVIF, MP4, WebM or MOV files.');
+            setError(
+              'Choose JPEG, PNG, WebP, GIF, AVIF, MP4, WebM or MOV files.',
+            );
             continue;
           }
           if (file.size <= 0 || file.size > MAX_DIRECT_UPLOAD_BYTES) {
-            setError(`Files must be between 1 byte and ${formatBytes(MAX_DIRECT_UPLOAD_BYTES)}.`);
+            setError(
+              `Files must be between 1 byte and ${formatBytes(MAX_DIRECT_UPLOAD_BYTES)}.`,
+            );
             continue;
           }
           const objectUrl = URL.createObjectURL(file);
           try {
             const isVideo = kindFromMime(mime) === 'video';
-            const probe = isVideo ? await probeVideo(objectUrl) : await probeImage(objectUrl);
+            const probe = isVideo
+              ? await probeVideo(objectUrl)
+              : await probeImage(objectUrl);
             const poster = isVideo ? await captureVideoPoster(objectUrl) : null;
             accepted.push({
+              source: 'local',
               key: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
               file,
               objectUrl,
@@ -145,11 +187,17 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
             });
           } catch (readError) {
             URL.revokeObjectURL(objectUrl);
-            setError(readError instanceof Error ? readError.message : 'That file could not be read.');
+            setError(
+              readError instanceof Error
+                ? readError.message
+                : 'That file could not be read.',
+            );
           }
         }
         if (accepted.length > 0) {
-          setSelections((current) => [...current, ...accepted].slice(0, MAX_POST_ASSETS));
+          setSelections((current) =>
+            [...current, ...accepted].slice(0, MAX_POST_ASSETS),
+          );
         }
       } finally {
         setReading(false);
@@ -178,7 +226,10 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
     }
 
     setError('');
-    setStage(selections.length > 0 ? 'uploading' : 'publishing');
+    const hasLocalSelections = selections.some(
+      (item) => item.source === 'local',
+    );
+    setStage(hasLocalSelections ? 'uploading' : 'publishing');
     setProgress(0);
 
     try {
@@ -186,7 +237,7 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
       const token = data.session?.access_token;
       if (!token) throw new Error('Your session expired. Sign in again.');
 
-      const mediaIds: number[] = [];
+      let mediaIds: number[] = [];
       let posterMediaId: number | null = null;
       let durationLabel = '';
 
@@ -203,6 +254,7 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
         };
         const jobs: Job[] = [];
         for (const item of selections) {
+          if (item.source !== 'local') continue;
           const isVideo = item.probe.kind === 'video';
           jobs.push({
             selectionKey: item.key,
@@ -228,26 +280,33 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
           }
         }
 
-        const totalBytes = jobs.reduce((sum, job) => sum + job.blob.size, 0) || 1;
-        const loaded = new Map<string, number>();
-        for (const job of jobs) {
-          await uploadToStorage({
-            blob: job.blob,
-            mime: job.mime,
-            path: job.path,
-            token,
-            onProgress: (bytes) => {
-              loaded.set(job.path, bytes);
-              const sum = [...loaded.values()].reduce((total, value) => total + value, 0);
-              setProgress(Math.min(0.98, sum / totalBytes));
-            },
-          });
-          loaded.set(job.path, job.blob.size);
+        if (jobs.length > 0) {
+          const totalBytes =
+            jobs.reduce((sum, job) => sum + job.blob.size, 0) || 1;
+          const loaded = new Map<string, number>();
+          for (const job of jobs) {
+            await uploadToStorage({
+              blob: job.blob,
+              mime: job.mime,
+              path: job.path,
+              token,
+              onProgress: (bytes) => {
+                loaded.set(job.path, bytes);
+                const sum = [...loaded.values()].reduce(
+                  (total, value) => total + value,
+                  0,
+                );
+                setProgress(Math.min(0.98, sum / totalBytes));
+              },
+            });
+            loaded.set(job.path, job.blob.size);
+          }
         }
 
         setProgress(1);
         setStage('publishing');
 
+        const assetBySelection = new Map<string, number>();
         const coverBySelection = new Map<string, number>();
         for (const job of jobs) {
           const media = await registerMedia({
@@ -257,19 +316,58 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
             height: job.height,
             durationSeconds: job.durationSeconds,
           });
-          if (job.role === 'asset') mediaIds.push(media.id);
+          if (job.role === 'asset')
+            assetBySelection.set(job.selectionKey, media.id);
           else coverBySelection.set(job.selectionKey, media.id);
         }
 
-        const firstImage = selections.find((item) => item.probe.kind === 'image');
-        const firstVideo = selections.find((item) => item.probe.kind === 'video');
+        for (const item of selections) {
+          if (item.source !== 'remote') continue;
+          const media = await registerMedia({
+            url: item.asset.url,
+            kind: item.asset.kind,
+            mime: item.asset.mime,
+            width: item.probe.width,
+            height: item.probe.height,
+            durationSeconds: item.probe.duration,
+          });
+          assetBySelection.set(item.key, media.id);
+
+          if (
+            item.probe.kind === 'video' &&
+            item.asset.posterUrl &&
+            isPublicHttpsUrl(item.asset.posterUrl)
+          ) {
+            const cover = await registerMedia({
+              url: item.asset.posterUrl,
+              kind: 'image',
+              mime: 'image/jpeg',
+              width: item.probe.width,
+              height: item.probe.height,
+              durationSeconds: null,
+            });
+            coverBySelection.set(item.key, cover.id);
+          }
+        }
+
+        mediaIds = selections
+          .map((item) => assetBySelection.get(item.key))
+          .filter(isNumber);
+
+        const firstImage = selections.find(
+          (item) => item.probe.kind === 'image',
+        );
+        const firstVideo = selections.find(
+          (item) => item.probe.kind === 'video',
+        );
         if (!firstImage && firstVideo) {
           posterMediaId = coverBySelection.get(firstVideo.key) ?? null;
         }
         if (firstVideo?.probe.duration) {
           durationLabel = formatDuration(firstVideo.probe.duration);
         } else if (selections.every((item) => item.probe.kind === 'image')) {
-          durationLabel = selections.length === 1 ? 'Photo' : `${selections.length} photos`;
+          durationLabel =
+            selections.length === 1 ? 'Photo' : `${selections.length} photos`;
         }
       }
 
@@ -286,17 +384,23 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
           duration: durationLabel,
         }),
       });
-      const payload = (await response.json().catch(() => ({}))) as VideoResponse & {
+      const payload = (await response
+        .json()
+        .catch(() => ({}))) as VideoResponse & {
         error?: string;
         detail?: string;
       };
       if (!response.ok) {
-        throw new Error(payload.detail || payload.error || 'The post could not be published.');
+        throw new Error(
+          payload.detail || payload.error || 'The post could not be published.',
+        );
       }
 
       onPublished(payload.video);
     } catch (publishError) {
-      setError(publishError instanceof Error ? publishError.message : 'Upload failed.');
+      setError(
+        publishError instanceof Error ? publishError.message : 'Upload failed.',
+      );
       setStage('idle');
       setProgress(0);
     }
@@ -317,16 +421,29 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
                         <video
                           className="up-thumb-media"
                           src={item.objectUrl}
+                          poster={
+                            item.source === 'remote'
+                              ? item.asset.posterUrl || undefined
+                              : undefined
+                          }
                           muted
                           playsInline
                           preload="metadata"
                         />
                       ) : (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img className="up-thumb-media" src={item.objectUrl} alt="" />
+                        <img
+                          className="up-thumb-media"
+                          src={item.objectUrl}
+                          alt=""
+                        />
                       )}
                       <span className="up-thumb-badge">
-                        {isVideo ? <Film aria-hidden="true" /> : <ImageIcon aria-hidden="true" />}
+                        {isVideo ? (
+                          <Film aria-hidden="true" />
+                        ) : (
+                          <ImageIcon aria-hidden="true" />
+                        )}
                         {index + 1}
                       </span>
                       <div className="up-thumb-actions">
@@ -385,7 +502,9 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
               ) : (
                 <CloudUpload aria-hidden="true" />
               )}
-              <b>{reading ? 'Reading files...' : 'Drag photos or videos here'}</b>
+              <b>
+                {reading ? 'Reading files...' : 'Drag photos or videos here'}
+              </b>
               <button
                 type="button"
                 className="up-browse"
@@ -395,8 +514,9 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
                 Browse files
               </button>
               <small>
-                Optional · up to {MAX_POST_ASSETS} files · JPEG, PNG, WebP, GIF, AVIF, MP4, WebM or MOV ·{' '}
-                {formatBytes(MAX_DIRECT_UPLOAD_BYTES)} each
+                Optional · up to {MAX_POST_ASSETS} files · JPEG, PNG, WebP, GIF,
+                AVIF, MP4, WebM or MOV · {formatBytes(MAX_DIRECT_UPLOAD_BYTES)}{' '}
+                each
               </small>
             </div>
           )}
@@ -414,7 +534,11 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
         <div className="up-form">
           <h2>New post</h2>
 
-          {error && <div className="up-error" role="alert">{error}</div>}
+          {error && (
+            <div className="up-error" role="alert">
+              {error}
+            </div>
+          )}
 
           <div className="up-fld">
             <label htmlFor="up-body">
@@ -481,7 +605,9 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
 
           {stage !== 'idle' && (
             <div className="up-progress" role="status">
-              <span className="up-bar"><i style={{ width: `${Math.round(progress * 100)}%` }} /></span>
+              <span className="up-bar">
+                <i style={{ width: `${Math.round(progress * 100)}%` }} />
+              </span>
               <small>
                 {stage === 'uploading'
                   ? `Uploading ${Math.round(progress * 100)}%`
@@ -490,13 +616,22 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
             </div>
           )}
 
-          <button className="up-publish" type="submit" disabled={!body.trim() || busy}>
-            {stage !== 'idle' && <LoaderCircle className="button-spinner" aria-hidden="true" />}
+          <button
+            className="up-publish"
+            type="submit"
+            disabled={!body.trim() || busy}
+          >
+            {stage !== 'idle' && (
+              <LoaderCircle className="button-spinner" aria-hidden="true" />
+            )}
             {stage === 'idle' ? 'Publish to feed' : 'Working...'}
           </button>
           <small className="up-hint">
             Posted as {user.display_name}
-            {selections.length === 0 ? ' · text-only is fine' : ` · ${selections.length} media attached`}.
+            {selections.length === 0
+              ? ' · text-only is fine'
+              : ` · ${selections.length} media attached`}
+            .
           </small>
         </div>
       </form>
@@ -505,7 +640,9 @@ export default function MediaUploader({ user, onPublished }: MediaUploaderProps)
 }
 
 async function registerMedia(body: {
-  storagePath: string;
+  storagePath?: string;
+  url?: string;
+  kind?: MediaKind;
   mime: string;
   width: number | null;
   height: number | null;
@@ -521,9 +658,50 @@ async function registerMedia(body: {
     detail?: string;
   };
   if (!response.ok) {
-    throw new Error(payload.detail || payload.error || 'The upload could not be registered.');
+    throw new Error(
+      payload.detail || payload.error || 'The upload could not be registered.',
+    );
   }
   return payload.media;
+}
+
+function selectionsFromDraft(initialDraft?: ComposeDraft): Selection[] {
+  return (initialDraft?.assets ?? [])
+    .filter(
+      (asset) =>
+        isPublicHttpsUrl(asset.url) && ALLOWED_MEDIA_MIME_TYPES.has(asset.mime),
+    )
+    .slice(0, MAX_POST_ASSETS)
+    .map((asset, index) => ({
+      source: 'remote',
+      key: `remote-${index}-${asset.url}`,
+      objectUrl: asset.url,
+      probe: {
+        kind: asset.kind,
+        width: asset.width ?? null,
+        height: asset.height ?? null,
+        duration:
+          asset.kind === 'video' ? (asset.durationSeconds ?? null) : null,
+      },
+      asset,
+    }));
+}
+
+function revokeLocalObjectUrl(item: Selection) {
+  if (item.source === 'local') URL.revokeObjectURL(item.objectUrl);
+}
+
+function isPublicHttpsUrl(value: string) {
+  if (value.length > 2048) return false;
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isNumber(value: number | undefined): value is number {
+  return typeof value === 'number';
 }
 
 function uploadToStorage({
@@ -563,9 +741,12 @@ function uploadToStorage({
         mime,
         body: request.responseText,
       });
-      reject(new Error(storageErrorMessage(request.responseText, request.status)));
+      reject(
+        new Error(storageErrorMessage(request.responseText, request.status)),
+      );
     };
-    request.onerror = () => reject(new Error('The network dropped during upload.'));
+    request.onerror = () =>
+      reject(new Error('The network dropped during upload.'));
     request.onabort = () => reject(new Error('The upload was cancelled.'));
     request.send(blob);
   });
@@ -574,7 +755,10 @@ function uploadToStorage({
 function storageErrorMessage(responseText: string, status: number) {
   let detail = '';
   try {
-    const parsed = JSON.parse(responseText) as { message?: string; error?: string };
+    const parsed = JSON.parse(responseText) as {
+      message?: string;
+      error?: string;
+    };
     detail = String(parsed.message || parsed.error || '');
   } catch {
     detail = responseText.trim().slice(0, 200);
@@ -611,7 +795,8 @@ function probeVideo(objectUrl: string) {
         height: element.videoHeight || null,
         duration: Number.isFinite(element.duration) ? element.duration : null,
       });
-    element.onerror = () => reject(new Error('This browser cannot read that video format.'));
+    element.onerror = () =>
+      reject(new Error('This browser cannot read that video format.'));
     element.src = objectUrl;
   });
 }
@@ -625,7 +810,10 @@ function captureVideoPoster(objectUrl: string) {
       window.clearTimeout(timer);
       resolve(blob);
     };
-    const timer = window.setTimeout(() => finish(null), POSTER_CAPTURE_TIMEOUT_MS);
+    const timer = window.setTimeout(
+      () => finish(null),
+      POSTER_CAPTURE_TIMEOUT_MS,
+    );
 
     const element = document.createElement('video');
     element.preload = 'auto';
@@ -663,6 +851,7 @@ function formatDuration(seconds: number | null) {
 }
 
 function formatBytes(bytes: number) {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+  if (bytes >= 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }

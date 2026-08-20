@@ -3,18 +3,14 @@
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { LoaderCircle } from 'lucide-react';
+import { AnimatePresence } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import type { DragEvent as ReactDragEvent } from 'react';
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Frame, Leafer } from '@/lib/leafer-react';
 import {
   arrangeStudioNodes,
+  findOpenStudioPosition,
   sizeForAspect,
   sizeForMediaDimensions,
   type StudioArrangeAction,
@@ -37,7 +33,11 @@ import type {
   StudioProject,
   StudioViewport,
 } from '@/lib/studio/types';
+import type { AppUser, Video } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import ComposeModal from '@/app/components/compose/ComposeModal';
+import type { ComposeDraft } from '@/app/components/compose/types';
+import { PUBLISHED_EVENT } from '@/app/components/shell/compose-events';
 import AgentPanel from './AgentPanel';
 import CanvasContextMenu from './CanvasContextMenu';
 import {
@@ -61,6 +61,7 @@ import {
 interface StudioWorkspaceProps {
   projectId: string;
   freeCreditModelsOnly: boolean;
+  user: AppUser | null;
 }
 
 interface AddNodeExtras {
@@ -70,9 +71,26 @@ interface AddNodeExtras {
   data?: Partial<StudioNodeData>;
   position?: { x: number; y: number };
   size?: { width: number; height: number };
+  autoGenerate?: boolean;
+}
+
+interface AgentDraftRequest {
+  id: number;
+  text: string;
 }
 
 const STUDIO_DROP_FILE_LIMIT = 8;
+
+const DERIVED_OUTPUT_FIELDS = [
+  'src',
+  'posterSrc',
+  'text',
+  'error',
+  'sourceWidth',
+  'sourceHeight',
+  'sourceDuration',
+  'uploadMime',
+] as const;
 
 const EDITOR_CONFIG = {
   hideOnMove: false,
@@ -92,6 +110,94 @@ function requestId() {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function derivedNodeData(
+  source: StudioNode,
+  operation: 'reuse' | 'regenerate' | 'quick-edit',
+  prompt = source.data.prompt,
+) {
+  const data: Partial<StudioNodeData> = { ...source.data };
+  for (const key of DERIVED_OUTPUT_FIELDS) delete data[key];
+  return {
+    ...data,
+    prompt,
+    title: `${source.data.title || source.type} ${
+      operation === 'reuse'
+        ? 'reuse'
+        : operation === 'quick-edit'
+          ? 'edit'
+          : 'variation'
+    }`,
+    status: 'idle' as const,
+    hidden: false,
+    locked: false,
+    sourceNodeId: source.id,
+    operation,
+  };
+}
+
+function nodeMime(node: StudioNode) {
+  if (typeof node.data.uploadMime === 'string') return node.data.uploadMime;
+  const src = node.data.src?.toLowerCase() ?? '';
+  if (node.type === 'video') {
+    if (src.includes('.webm')) return 'video/webm';
+    if (src.includes('.mov')) return 'video/quicktime';
+    return 'video/mp4';
+  }
+  if (src.includes('.webp')) return 'image/webp';
+  if (src.includes('.jpg') || src.includes('.jpeg')) return 'image/jpeg';
+  if (src.includes('.gif')) return 'image/gif';
+  if (src.includes('.avif')) return 'image/avif';
+  return 'image/png';
+}
+
+function composeDraftFromNodes(project: StudioProject, nodes: StudioNode[]) {
+  const assets = nodes.flatMap((node) => {
+    if (
+      (node.type !== 'image' && node.type !== 'video') ||
+      typeof node.data.src !== 'string' ||
+      !/^https:\/\//i.test(node.data.src)
+    ) {
+      return [];
+    }
+    return [
+      {
+        url: node.data.src,
+        kind: node.type,
+        mime: nodeMime(node),
+        width:
+          typeof node.data.sourceWidth === 'number'
+            ? node.data.sourceWidth
+            : null,
+        height:
+          typeof node.data.sourceHeight === 'number'
+            ? node.data.sourceHeight
+            : null,
+        durationSeconds:
+          typeof node.data.sourceDuration === 'number'
+            ? node.data.sourceDuration
+            : null,
+        posterUrl:
+          typeof node.data.posterSrc === 'string'
+            ? node.data.posterSrc
+            : undefined,
+      },
+    ];
+  });
+  const bodyParts = nodes.flatMap((node) => {
+    if (node.type === 'text' && node.data.text?.trim()) {
+      return [node.data.text.trim()];
+    }
+    if (node.data.prompt?.trim()) return [node.data.prompt.trim()];
+    return [];
+  });
+  const body = [...new Set(bodyParts)].join('\n\n');
+  return {
+    title: nodes.length === 1 ? nodes[0].data.title : project.title,
+    body: body || `Created in ${project.title || 'Creator Studio'}.`,
+    assets,
+  } satisfies ComposeDraft;
 }
 
 function operationFromOutput(output: unknown): StudioCanvasOperation[] {
@@ -115,8 +221,7 @@ function operationFromOutput(output: unknown): StudioCanvasOperation[] {
         type: 'add_node',
         node: {
           kind: value.kind as StudioNodeKind,
-          prompt:
-            typeof value.prompt === 'string' ? value.prompt : undefined,
+          prompt: typeof value.prompt === 'string' ? value.prompt : undefined,
           title: typeof value.title === 'string' ? value.title : undefined,
           text: typeof value.text === 'string' ? value.text : undefined,
         },
@@ -149,10 +254,13 @@ function applyProcessedTools(
 function CanvasWorkspace({
   project,
   freeCreditModelsOnly,
+  user,
 }: {
   project: StudioProject;
   freeCreditModelsOnly: boolean;
+  user: AppUser | null;
 }) {
+  const router = useRouter();
   const persistTimer = useRef<number | null>(null);
   const localPersistTimer = useRef<number | null>(null);
   const generating = useRef(new Set<string>());
@@ -173,6 +281,9 @@ function CanvasWorkspace({
   const [menu, setMenu] = useState<StudioCanvasMenuState | null>(null);
   const [uploadingCount, setUploadingCount] = useState(0);
   const [uploadError, setUploadError] = useState('');
+  const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
+  const [agentDraftRequest, setAgentDraftRequest] =
+    useState<AgentDraftRequest | null>(null);
   const nodesRef = useRef(nodes);
   const viewportRef = useRef(viewport);
   const titleRef = useRef(title);
@@ -209,7 +320,9 @@ function CanvasWorkspace({
 
   const selectIds = useCallback((ids: string[]) => {
     const existing = new Set(nodesRef.current.map((node) => node.id));
-    setSelectedIds(ids.filter((id, index) => existing.has(id) && ids.indexOf(id) === index));
+    setSelectedIds(
+      ids.filter((id, index) => existing.has(id) && ids.indexOf(id) === index),
+    );
   }, []);
 
   const updateNode = useCallback(
@@ -267,9 +380,18 @@ function CanvasWorkspace({
             probe.height,
             'video',
           );
-          updateNode(node.id, {
+          const preferred = {
             x: current.x + (current.width - size.width) / 2,
             y: current.y + (current.height - size.height) / 2,
+          };
+          const position = findOpenStudioPosition(
+            nodesRef.current,
+            preferred,
+            size,
+            { ignoreIds: [node.id] },
+          );
+          updateNode(node.id, {
+            ...position,
             width: size.width,
             height: size.height,
           });
@@ -284,22 +406,25 @@ function CanvasWorkspace({
     }
   }, [nodes, updateNode, updateNodeData]);
 
-  const setNodeAspect = useCallback((id: string, aspect: string) => {
-    commitNodes((current) =>
-      current.map((node) => {
-        if (node.id !== id || node.type === 'section') return node;
-        const next = sizeForAspect(aspect, node.type);
-        return {
-          ...node,
-          x: node.x + (node.width - next.width) / 2,
-          y: node.y + (node.height - next.height) / 2,
-          width: next.width,
-          height: next.height,
-          data: { ...node.data, aspect },
-        };
-      }),
-    );
-  }, [commitNodes]);
+  const setNodeAspect = useCallback(
+    (id: string, aspect: string) => {
+      commitNodes((current) =>
+        current.map((node) => {
+          if (node.id !== id || node.type === 'section') return node;
+          const next = sizeForAspect(aspect, node.type);
+          return {
+            ...node,
+            x: node.x + (node.width - next.width) / 2,
+            y: node.y + (node.height - next.height) / 2,
+            width: next.width,
+            height: next.height,
+            data: { ...node.data, aspect },
+          };
+        }),
+      );
+    },
+    [commitNodes],
+  );
 
   const generateNode = useCallback(
     async (id: string) => {
@@ -376,7 +501,8 @@ function CanvasWorkspace({
 
         const urls =
           payload.urls?.filter(Boolean) || (payload.url ? [payload.url] : []);
-        if (!urls.length) throw new Error('The generation service returned no assets.');
+        if (!urls.length)
+          throw new Error('The generation service returned no assets.');
         updateNodeData(id, {
           status: 'ready',
           src: urls[0],
@@ -387,26 +513,30 @@ function CanvasWorkspace({
             const source = current.find((item) => item.id === id);
             if (!source) return current;
             const top = Math.max(0, ...current.map((item) => item.zIndex));
+            const occupied = [...current];
             const copies = urls.slice(1).map((url, index) => {
-              const copy = createBlankNode(
-                source.type,
+              const position = findOpenStudioPosition(
+                occupied,
                 {
-                  x: source.x + (index + 1) * 36,
-                  y: source.y + (index + 1) * 36,
+                  x: source.x + source.width + 28,
+                  y: source.y,
                 },
-                {
-                  ...source.data,
-                  src: url,
-                  status: 'ready',
-                  title: `${source.data.title} ${index + 2}`,
-                },
+                { width: source.width, height: source.height },
               );
-              return {
+              const copy = createBlankNode(source.type, position, {
+                ...source.data,
+                src: url,
+                status: 'ready',
+                title: `${source.data.title} ${index + 2}`,
+              });
+              const next = {
                 ...copy,
                 width: source.width,
                 height: source.height,
                 zIndex: top + index + 1,
               };
+              occupied.push(next);
+              return next;
             });
             return current.concat(copies);
           });
@@ -426,28 +556,36 @@ function CanvasWorkspace({
   const addNode = useCallback(
     (kind: StudioNodeKind, extras: AddNodeExtras = {}) => {
       const center = canvasCenterRef.current();
+      const preferred = extras.position || {
+        x: center.x - (extras.size?.width ?? 280) / 2,
+        y: center.y - (extras.size?.height ?? 220) / 2,
+      };
+      const data: Partial<StudioNodeData> = { ...extras.data };
+      if (extras.prompt !== undefined) data.prompt = extras.prompt;
+      if (extras.title !== undefined) data.title = extras.title;
+      if (extras.text !== undefined) data.text = extras.text;
+      const node = createBlankNode(kind, preferred, data);
+      const size = {
+        width: extras.size?.width ?? node.width,
+        height: extras.size?.height ?? node.height,
+      };
       const position =
-        extras.position || {
-          x: center.x - (extras.size?.width ?? 280) / 2,
-          y: center.y - (extras.size?.height ?? 220) / 2,
-        };
-      const node = createBlankNode(kind, position, {
-        ...extras.data,
-        prompt: extras.prompt,
-        title: extras.title,
-        text: extras.text,
-      });
+        kind === 'section'
+          ? preferred
+          : findOpenStudioPosition(nodesRef.current, preferred, size);
       const top = Math.max(0, ...nodesRef.current.map((item) => item.zIndex));
       const next: StudioNode = {
         ...node,
-        width: extras.size?.width ?? node.width,
-        height: extras.size?.height ?? node.height,
+        ...position,
+        ...size,
         zIndex: kind === 'section' ? -1 : top + 1,
       };
       commitNodes((current) => current.concat(next));
       setSelectedIds([next.id]);
       setTool('select');
-      if (kind !== 'section' && extras.prompt?.trim()) {
+      const autoGenerate =
+        extras.autoGenerate ?? Boolean(extras.prompt?.trim());
+      if (kind !== 'section' && autoGenerate && next.data.prompt.trim()) {
         window.setTimeout(() => void generateNode(next.id), 0);
       }
       return next.id;
@@ -458,11 +596,14 @@ function CanvasWorkspace({
     addNodeRef.current = addNode;
   }, [addNode]);
 
-  const removeNodes = useCallback((ids: string[]) => {
-    const drop = new Set(ids);
-    commitNodes((current) => current.filter((node) => !drop.has(node.id)));
-    setSelectedIds((current) => current.filter((id) => !drop.has(id)));
-  }, [commitNodes]);
+  const removeNodes = useCallback(
+    (ids: string[]) => {
+      const drop = new Set(ids);
+      commitNodes((current) => current.filter((node) => !drop.has(node.id)));
+      setSelectedIds((current) => current.filter((id) => !drop.has(id)));
+    },
+    [commitNodes],
+  );
 
   const removeNode = useCallback(
     (id: string) => {
@@ -471,33 +612,148 @@ function CanvasWorkspace({
     [removeNodes],
   );
 
-  const duplicateNodes = useCallback((ids: string[]) => {
-    const pick = new Set(ids);
-    const sources = nodesRef.current.filter((node) => pick.has(node.id));
-    if (!sources.length) return;
-    const top = Math.max(0, ...nodesRef.current.map((node) => node.zIndex));
-    const copies = sources.map((source, index) => {
-      const copy = createBlankNode(
-        source.type,
-        { x: source.x + 36, y: source.y + 36 },
-        source.data,
-      );
-      return {
-        ...copy,
-        width: source.width,
-        height: source.height,
-        rotation: 0,
-        zIndex: source.type === 'section' ? source.zIndex : top + index + 1,
-        data: { ...source.data, title: `${source.data.title} copy` },
-      };
-    });
-    commitNodes((current) => current.concat(copies));
-    setSelectedIds(copies.map((node) => node.id));
-  }, [commitNodes]);
+  const duplicateNodes = useCallback(
+    (ids: string[]) => {
+      const pick = new Set(ids);
+      const sources = nodesRef.current.filter((node) => pick.has(node.id));
+      if (!sources.length) return;
+      const top = Math.max(0, ...nodesRef.current.map((node) => node.zIndex));
+      const occupied = [...nodesRef.current];
+      const copies = sources.map((source, index) => {
+        const position =
+          source.type === 'section'
+            ? { x: source.x + 36, y: source.y + 36 }
+            : findOpenStudioPosition(
+                occupied,
+                { x: source.x + source.width + 28, y: source.y },
+                { width: source.width, height: source.height },
+              );
+        const copy = createBlankNode(source.type, position, source.data);
+        const next = {
+          ...copy,
+          width: source.width,
+          height: source.height,
+          rotation: 0,
+          zIndex: source.type === 'section' ? source.zIndex : top + index + 1,
+          data: { ...source.data, title: `${source.data.title} copy` },
+        };
+        occupied.push(next);
+        return next;
+      });
+      commitNodes((current) => current.concat(copies));
+      setSelectedIds(copies.map((node) => node.id));
+    },
+    [commitNodes],
+  );
 
   const duplicateNode = useCallback(
     (id: string) => duplicateNodes([id]),
     [duplicateNodes],
+  );
+
+  const createDerivedNode = useCallback(
+    (
+      id: string,
+      operation: 'reuse' | 'regenerate' | 'quick-edit',
+      options: { prompt?: string; autoGenerate?: boolean } = {},
+    ) => {
+      const source = nodesRef.current.find((node) => node.id === id);
+      if (!source || source.type === 'section') return;
+      const prompt = options.prompt ?? source.data.prompt;
+      const data = derivedNodeData(source, operation, prompt);
+      if (operation === 'quick-edit') {
+        const reference =
+          source.type === 'image'
+            ? source.data.src
+            : source.type === 'video'
+              ? source.data.posterSrc
+              : undefined;
+        if (reference) {
+          data.refSrc = reference;
+          data.refSrcs = [reference];
+        }
+      }
+      addNode(source.type, {
+        data,
+        position: {
+          x: source.x + source.width + 28,
+          y: source.y,
+        },
+        autoGenerate: options.autoGenerate,
+      });
+    },
+    [addNode],
+  );
+
+  const reuseNode = useCallback(
+    (id: string) => createDerivedNode(id, 'reuse', { autoGenerate: false }),
+    [createDerivedNode],
+  );
+
+  const regenerateNode = useCallback(
+    (id: string) => createDerivedNode(id, 'regenerate', { autoGenerate: true }),
+    [createDerivedNode],
+  );
+
+  const quickEditNode = useCallback(
+    (id: string, instruction: string) => {
+      const source = nodesRef.current.find((node) => node.id === id);
+      const trimmed = instruction.trim();
+      if (!source || !trimmed) return;
+      const prompt =
+        source.type === 'text' && source.data.text
+          ? `${trimmed}\n\nSource text:\n${source.data.text}`
+          : trimmed;
+      createDerivedNode(id, 'quick-edit', {
+        prompt,
+        autoGenerate: true,
+      });
+    },
+    [createDerivedNode],
+  );
+
+  const publishNodes = useCallback(
+    (ids: string[]) => {
+      const byId = new Map(nodesRef.current.map((node) => [node.id, node]));
+      const selected = ids
+        .map((id) => byId.get(id))
+        .filter((node): node is StudioNode =>
+          Boolean(node?.data.src || node?.data.text?.trim()),
+        );
+      if (!selected.length) return;
+      if (!user) {
+        router.push(
+          `/login?next=${encodeURIComponent(`/studio/${project.id}`)}`,
+        );
+        return;
+      }
+      setComposeDraft(composeDraftFromNodes(project, selected));
+    },
+    [project, router, user],
+  );
+
+  const sendNodesToAgent = useCallback(
+    (ids: string[]) => {
+      const byId = new Map(nodesRef.current.map((node) => [node.id, node]));
+      const selected = ids
+        .map((id) => byId.get(id))
+        .filter((node): node is StudioNode => Boolean(node));
+      if (!selected.length) return;
+      const references = selected
+        .map(
+          (node) =>
+            `- ${node.data.title || node.type} [${node.id}]${
+              node.data.prompt ? `\n  Prompt: ${node.data.prompt}` : ''
+            }`,
+        )
+        .join('\n');
+      setAgentDraftRequest({
+        id: Date.now(),
+        text: `Use these selected canvas items as context:\n${references}\n\nHelp me refine or continue this direction.`,
+      });
+      updateAgentOpen(true);
+    },
+    [updateAgentOpen],
   );
 
   const arrangeNodes = useCallback(
@@ -507,15 +763,24 @@ function CanvasWorkspace({
     [commitNodes],
   );
 
-  const bringToFront = useCallback((id: string) => {
-    const top = Math.max(0, ...nodesRef.current.map((node) => node.zIndex));
-    updateNode(id, { zIndex: top + 1 });
-  }, [updateNode]);
+  const bringToFront = useCallback(
+    (id: string) => {
+      const top = Math.max(0, ...nodesRef.current.map((node) => node.zIndex));
+      updateNode(id, { zIndex: top + 1 });
+    },
+    [updateNode],
+  );
 
-  const sendToBack = useCallback((id: string) => {
-    const bottom = Math.min(-1, ...nodesRef.current.map((node) => node.zIndex));
-    updateNode(id, { zIndex: bottom - 1 });
-  }, [updateNode]);
+  const sendToBack = useCallback(
+    (id: string) => {
+      const bottom = Math.min(
+        -1,
+        ...nodesRef.current.map((node) => node.zIndex),
+      );
+      updateNode(id, { zIndex: bottom - 1 });
+    },
+    [updateNode],
+  );
 
   const toggleNodeHidden = useCallback(
     (id: string) => {
@@ -626,9 +891,17 @@ function CanvasWorkspace({
                 probe.height,
                 kind,
               );
+              const position = findOpenStudioPosition(
+                nodesRef.current,
+                {
+                  x: nodeCenter.x - size.width / 2,
+                  y: nodeCenter.y - size.height / 2,
+                },
+                size,
+                { ignoreIds: [id] },
+              );
               updateNode(id, {
-                x: nodeCenter.x - size.width / 2,
-                y: nodeCenter.y - size.height / 2,
+                ...position,
                 width: size.width,
                 height: size.height,
               });
@@ -644,9 +917,17 @@ function CanvasWorkspace({
               uploaded.height,
               kind,
             );
+            const position = findOpenStudioPosition(
+              nodesRef.current,
+              {
+                x: nodeCenter.x - size.width / 2,
+                y: nodeCenter.y - size.height / 2,
+              },
+              size,
+              { ignoreIds: [id] },
+            );
             updateNode(id, {
-              x: nodeCenter.x - size.width / 2,
-              y: nodeCenter.y - size.height / 2,
+              ...position,
               width: size.width,
               height: size.height,
             });
@@ -695,9 +976,11 @@ function CanvasWorkspace({
       const rect = hostRef.current?.getBoundingClientRect();
       const viewport = currentViewport();
       const point = {
-        x: ((rect ? event.clientX - rect.left : event.clientX) - viewport.x) /
+        x:
+          ((rect ? event.clientX - rect.left : event.clientX) - viewport.x) /
           viewport.zoom,
-        y: ((rect ? event.clientY - rect.top : event.clientY) - viewport.y) /
+        y:
+          ((rect ? event.clientY - rect.top : event.clientY) - viewport.y) /
           viewport.zoom,
       };
       void addUploadedFiles(Array.from(event.dataTransfer.files), point);
@@ -732,8 +1015,14 @@ function CanvasWorkspace({
         removeNodes(operation.ids);
         return;
       }
-      const { x, y, width, height, rotation: _rotation, ...dataPatch } =
-        operation.patch;
+      const {
+        x,
+        y,
+        width,
+        height,
+        rotation: _rotation,
+        ...dataPatch
+      } = operation.patch;
       const geometry: Partial<StudioNode> = {};
       if (typeof x === 'number') geometry.x = x;
       if (typeof y === 'number') geometry.y = y;
@@ -818,14 +1107,7 @@ function CanvasWorkspace({
       }
       if (persistTimer.current) window.clearTimeout(persistTimer.current);
     };
-  }, [
-    agentOpen,
-    buildProjectSnapshot,
-    messages,
-    nodes,
-    title,
-    viewport,
-  ]);
+  }, [agentOpen, buildProjectSnapshot, messages, nodes, title, viewport]);
 
   useEffect(() => {
     const flushLocal = () => {
@@ -922,6 +1204,11 @@ function CanvasWorkspace({
       freeCreditModelsOnly,
       addNode,
       generateNode,
+      reuseNode,
+      regenerateNode,
+      quickEditNode,
+      publishNodes,
+      sendNodesToAgent,
       removeNode,
       removeNodes,
       duplicateNode,
@@ -948,6 +1235,11 @@ function CanvasWorkspace({
       duplicateNode,
       duplicateNodes,
       generateNode,
+      publishNodes,
+      quickEditNode,
+      regenerateNode,
+      reuseNode,
+      sendNodesToAgent,
       nodes,
       removeNode,
       removeNodes,
@@ -988,145 +1280,145 @@ function CanvasWorkspace({
               onDragOver={onCanvasDragOver}
               onDrop={onCanvasDrop}
             >
-            <Leafer
-              fill="transparent"
-              editor={EDITOR_CONFIG}
-              wheel={{ preventDefault: true }}
-              move={{ dragEmpty: tool === 'pan' }}
-              zoom={{ min: 0.1, max: 4 }}
-              onAppReady={handleAppReady}
-              className={cn(
-                'h-full w-full overflow-hidden',
-                tool === 'pan' && 'cursor-grab active:cursor-grabbing',
-                tool === 'section' && 'cursor-crosshair',
-              )}
-            >
-              <Frame
-                id="studio-node-layer"
-                name="nodes"
+              <Leafer
                 fill="transparent"
-                hitSelf={false}
-                isSnap={false}
-                onCreated={handleLayerCreated}
+                editor={EDITOR_CONFIG}
+                wheel={{ preventDefault: true }}
+                move={{ dragEmpty: tool === 'pan' }}
+                zoom={{ min: 0.1, max: 4 }}
+                onAppReady={handleAppReady}
+                className={cn(
+                  'h-full w-full overflow-hidden',
+                  tool === 'pan' && 'cursor-grab active:cursor-grabbing',
+                  tool === 'section' && 'cursor-crosshair',
+                )}
               >
-                {[...nodes]
-                  .sort((a, b) => a.zIndex - b.zIndex)
-                  .map((node) => (
-                    <StudioCanvasNode key={node.id} node={node} />
-                  ))}
-              </Frame>
-            </Leafer>
+                <Frame
+                  id="studio-node-layer"
+                  name="nodes"
+                  fill="transparent"
+                  hitSelf={false}
+                  isSnap={false}
+                  onCreated={handleLayerCreated}
+                >
+                  {[...nodes]
+                    .sort((a, b) => a.zIndex - b.zIndex)
+                    .map((node) => (
+                      <StudioCanvasNode key={node.id} node={node} />
+                    ))}
+                </Frame>
+              </Leafer>
 
-            {nodes
-              .filter((node) => node.data.status === 'uploading')
-              .map((node) => {
-                const iconSize = Math.max(10, 18 * viewport.zoom);
-                return (
-                  <LoaderCircle
-                    key={`upload-spinner-${node.id}`}
-                    aria-hidden="true"
-                    className="pointer-events-none absolute z-10 animate-spin text-[#52746d] motion-reduce:animate-none"
-                    strokeWidth={2}
-                    style={{
-                      left:
-                        viewport.x +
-                        (node.x + node.width / 2) * viewport.zoom,
-                      top:
-                        viewport.y +
-                        (node.y + node.height / 2 - 22) * viewport.zoom,
-                      width: iconSize,
-                      height: iconSize,
-                      transform: 'translate(-50%, -50%)',
-                    }}
+              {nodes
+                .filter((node) => node.data.status === 'uploading')
+                .map((node) => {
+                  const iconSize = Math.max(10, 18 * viewport.zoom);
+                  return (
+                    <LoaderCircle
+                      key={`upload-spinner-${node.id}`}
+                      aria-hidden="true"
+                      className="pointer-events-none absolute z-10 animate-spin text-[#52746d] motion-reduce:animate-none"
+                      strokeWidth={2}
+                      style={{
+                        left:
+                          viewport.x +
+                          (node.x + node.width / 2) * viewport.zoom,
+                        top:
+                          viewport.y +
+                          (node.y + node.height / 2 - 22) * viewport.zoom,
+                        width: iconSize,
+                        height: iconSize,
+                        transform: 'translate(-50%, -50%)',
+                      }}
+                    />
+                  );
+                })}
+
+              {!runtimeReady ? (
+                <div className="pointer-events-none absolute inset-0 grid place-items-center text-xs text-muted-foreground">
+                  Preparing the infinite canvas…
+                </div>
+              ) : null}
+
+              {uploadingCount || uploadError ? (
+                <div
+                  className="pointer-events-none absolute top-3 left-1/2 z-30 -translate-x-1/2"
+                  role={uploadError ? 'alert' : 'status'}
+                >
+                  <div className="flex max-w-[min(460px,calc(100vw-32px))] items-center gap-2 rounded-full border bg-card/95 px-3.5 py-2 text-xs font-medium shadow-lg backdrop-blur-xl">
+                    {uploadingCount ? (
+                      <LoaderCircle className="size-3.5 animate-spin text-primary" />
+                    ) : null}
+                    <span className={uploadError ? 'text-destructive' : ''}>
+                      {uploadError ||
+                        `Uploading ${uploadingCount} media ${
+                          uploadingCount === 1 ? 'file' : 'files'
+                        }…`}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+
+              {snapGuides.map((guide, index) => (
+                <div
+                  key={`${guide.axis}-${index}`}
+                  data-testid={`studio-snap-guide-${guide.axis}`}
+                  className="pointer-events-none absolute z-10 bg-[#2f6f7e] shadow-[0_0_0_0.5px_rgba(47,111,126,0.24)]"
+                  style={
+                    guide.axis === 'x'
+                      ? {
+                          left: Math.round(guide.position),
+                          top: Math.round(guide.start),
+                          width: 1,
+                          height: Math.max(
+                            1,
+                            Math.round(guide.end - guide.start),
+                          ),
+                        }
+                      : {
+                          left: Math.round(guide.start),
+                          top: Math.round(guide.position),
+                          width: Math.max(
+                            1,
+                            Math.round(guide.end - guide.start),
+                          ),
+                          height: 1,
+                        }
+                  }
+                />
+              ))}
+
+              {sectionDraftRect ? (
+                <div
+                  className="pointer-events-none absolute rounded-xl border border-dashed border-[#2f6f7e]/80 bg-[#2f6f7e]/5"
+                  style={{
+                    left: sectionDraftRect.left,
+                    top: sectionDraftRect.top,
+                    width: sectionDraftRect.width,
+                    height: sectionDraftRect.height,
+                  }}
+                />
+              ) : null}
+
+              <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2">
+                <div className="pointer-events-auto">
+                  <LeftToolbar
+                    layersOpen={layersOpen}
+                    onToggleLayers={() => setLayersOpen((open) => !open)}
                   />
-                );
-              })}
-
-            {!runtimeReady ? (
-              <div className="pointer-events-none absolute inset-0 grid place-items-center text-xs text-muted-foreground">
-                Preparing the infinite canvas…
-              </div>
-            ) : null}
-
-            {uploadingCount || uploadError ? (
-              <div
-                className="pointer-events-none absolute top-3 left-1/2 z-30 -translate-x-1/2"
-                role={uploadError ? 'alert' : 'status'}
-              >
-                <div className="flex max-w-[min(460px,calc(100vw-32px))] items-center gap-2 rounded-full border bg-card/95 px-3.5 py-2 text-xs font-medium shadow-lg backdrop-blur-xl">
-                  {uploadingCount ? (
-                    <LoaderCircle className="size-3.5 animate-spin text-primary" />
-                  ) : null}
-                  <span className={uploadError ? 'text-destructive' : ''}>
-                    {uploadError ||
-                      `Uploading ${uploadingCount} media ${
-                        uploadingCount === 1 ? 'file' : 'files'
-                      }…`}
-                  </span>
                 </div>
               </div>
-            ) : null}
-
-            {snapGuides.map((guide, index) => (
-              <div
-                key={`${guide.axis}-${index}`}
-                data-testid={`studio-snap-guide-${guide.axis}`}
-                className="pointer-events-none absolute z-10 bg-[#2f6f7e] shadow-[0_0_0_0.5px_rgba(47,111,126,0.24)]"
-                style={
-                  guide.axis === 'x'
-                    ? {
-                        left: Math.round(guide.position),
-                        top: Math.round(guide.start),
-                        width: 1,
-                        height: Math.max(1, Math.round(guide.end - guide.start)),
-                      }
-                    : {
-                        left: Math.round(guide.start),
-                        top: Math.round(guide.position),
-                        width: Math.max(1, Math.round(guide.end - guide.start)),
-                        height: 1,
-                      }
-                }
+              <LayerPanel
+                open={layersOpen}
+                onClose={() => setLayersOpen(false)}
               />
-            ))}
-
-            {sectionDraftRect ? (
-              <div
-                className="pointer-events-none absolute rounded-xl border border-dashed border-[#2f6f7e]/80 bg-[#2f6f7e]/5"
-                style={{
-                  left: sectionDraftRect.left,
-                  top: sectionDraftRect.top,
-                  width: sectionDraftRect.width,
-                  height: sectionDraftRect.height,
-                }}
-              />
-            ) : null}
-
-            <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2">
-              <div className="pointer-events-auto">
-                <LeftToolbar
-                  layersOpen={layersOpen}
-                  onToggleLayers={() => setLayersOpen((open) => !open)}
-                />
+              <div className="pointer-events-none absolute right-3 bottom-3 z-20">
+                <div className="pointer-events-auto">
+                  <ZoomControl />
+                </div>
               </div>
-            </div>
-            <LayerPanel
-              open={layersOpen}
-              onClose={() => setLayersOpen(false)}
-            />
-            <div className="pointer-events-none absolute right-3 bottom-3 z-20">
-              <div className="pointer-events-auto">
-                <ZoomControl />
-              </div>
-            </div>
-            <NodeOverlays
-              stageRef={hostRef}
-              selectionRect={selectionRect}
-            />
-            <CanvasContextMenu
-              menu={menu}
-              onClose={() => setMenu(null)}
-            />
+              <NodeOverlays stageRef={hostRef} selectionRect={selectionRect} />
+              <CanvasContextMenu menu={menu} onClose={() => setMenu(null)} />
             </div>
           </div>
         </div>
@@ -1139,7 +1431,24 @@ function CanvasWorkspace({
           error={error}
           onSend={(text) => void sendMessage({ text })}
           onStop={() => stop()}
+          draftRequest={agentDraftRequest}
         />
+        <AnimatePresence>
+          {composeDraft && user ? (
+            <ComposeModal
+              user={user}
+              initialDraft={composeDraft}
+              onClose={() => setComposeDraft(null)}
+              onPublished={(video: Video) => {
+                setComposeDraft(null);
+                window.dispatchEvent(
+                  new CustomEvent(PUBLISHED_EVENT, { detail: video }),
+                );
+                router.refresh();
+              }}
+            />
+          ) : null}
+        </AnimatePresence>
       </div>
     </StudioCanvasProvider>
   );
@@ -1148,6 +1457,7 @@ function CanvasWorkspace({
 export default function StudioWorkspace({
   projectId,
   freeCreditModelsOnly,
+  user,
 }: StudioWorkspaceProps) {
   const router = useRouter();
   const [project, setProject] = useState<StudioProject | null | undefined>();
@@ -1189,6 +1499,7 @@ export default function StudioWorkspace({
     <CanvasWorkspace
       project={project}
       freeCreditModelsOnly={freeCreditModelsOnly}
+      user={user}
     />
   );
 }

@@ -2,7 +2,11 @@
 
 import { createContext, useContext } from 'react';
 import type { StudioArrangeAction } from '@/lib/studio/geometry';
-import type { StudioNode, StudioNodeKind } from '@/lib/studio/types';
+import type {
+  StudioNode,
+  StudioNodeData,
+  StudioNodeKind,
+} from '@/lib/studio/types';
 
 export type StudioTool = 'select' | 'pan' | 'section';
 
@@ -16,11 +20,18 @@ export interface StudioCanvasApi {
       prompt?: string;
       title?: string;
       text?: string;
+      data?: Partial<StudioNodeData>;
       position?: { x: number; y: number };
       size?: { width: number; height: number };
+      autoGenerate?: boolean;
     },
   ) => string;
   generateNode: (id: string) => Promise<void>;
+  reuseNode: (id: string) => void;
+  regenerateNode: (id: string) => void;
+  quickEditNode: (id: string, instruction: string) => void;
+  publishNodes: (ids: string[]) => void;
+  sendNodesToAgent: (ids: string[]) => void;
   removeNode: (id: string) => void;
   removeNodes: (ids: string[]) => void;
   duplicateNode: (id: string) => void;
@@ -47,6 +58,7 @@ export const StudioCanvasProvider = StudioCanvasContext.Provider;
 
 export function useStudioCanvas() {
   const value = useContext(StudioCanvasContext);
-  if (!value) throw new Error('useStudioCanvas must be used inside the canvas.');
+  if (!value)
+    throw new Error('useStudioCanvas must be used inside the canvas.');
   return value;
 }

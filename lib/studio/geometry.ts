@@ -27,6 +27,107 @@ export type StudioArrangeAction =
   | 'distribute-horizontal'
   | 'distribute-vertical';
 
+export interface StudioPlacementOptions {
+  gap?: number;
+  ignoreIds?: string[];
+}
+
+function placementIsOpen(
+  blockers: StudioNode[],
+  position: { x: number; y: number },
+  size: { width: number; height: number },
+  gap: number,
+) {
+  const right = position.x + size.width;
+  const bottom = position.y + size.height;
+  return blockers.every(
+    (node) =>
+      right + gap <= node.x ||
+      position.x >= node.x + node.width + gap ||
+      bottom + gap <= node.y ||
+      position.y >= node.y + node.height + gap,
+  );
+}
+
+/** Finds the nearest predictable grid position that does not cover content. */
+export function findOpenStudioPosition(
+  nodes: StudioNode[],
+  preferred: { x: number; y: number },
+  size: { width: number; height: number },
+  options: StudioPlacementOptions = {},
+) {
+  const gap = Math.max(0, options.gap ?? 28);
+  const ignored = new Set(options.ignoreIds ?? []);
+  const blockers = nodes.filter(
+    (node) =>
+      !ignored.has(node.id) &&
+      node.type !== 'section' &&
+      node.data.hidden !== true,
+  );
+  if (placementIsOpen(blockers, preferred, size, gap)) return preferred;
+
+  const nearby = [...blockers].sort((a, b) => {
+    const distanceA = Math.hypot(a.x - preferred.x, a.y - preferred.y);
+    const distanceB = Math.hypot(b.x - preferred.x, b.y - preferred.y);
+    return distanceA - distanceB;
+  });
+  for (const blocker of nearby) {
+    const candidates = [
+      { x: blocker.x + blocker.width + gap, y: preferred.y },
+      { x: preferred.x, y: blocker.y + blocker.height + gap },
+      { x: blocker.x - size.width - gap, y: preferred.y },
+      { x: preferred.x, y: blocker.y - size.height - gap },
+    ];
+    const open = candidates.find((candidate) =>
+      placementIsOpen(blockers, candidate, size, gap),
+    );
+    if (open) return open;
+  }
+
+  const stepX = Math.max(48, size.width + gap);
+  const stepY = Math.max(48, size.height + gap);
+  for (let ring = 1; ring <= 64; ring += 1) {
+    const offsets = [0];
+    for (let offset = 1; offset <= ring; offset += 1) {
+      offsets.push(offset, -offset);
+    }
+    for (const row of offsets) {
+      const right = {
+        x: preferred.x + ring * stepX,
+        y: preferred.y + row * stepY,
+      };
+      if (placementIsOpen(blockers, right, size, gap)) return right;
+    }
+    for (const column of offsets) {
+      const bottom = {
+        x: preferred.x + column * stepX,
+        y: preferred.y + ring * stepY,
+      };
+      if (placementIsOpen(blockers, bottom, size, gap)) return bottom;
+    }
+    for (const row of offsets) {
+      const left = {
+        x: preferred.x - ring * stepX,
+        y: preferred.y + row * stepY,
+      };
+      if (placementIsOpen(blockers, left, size, gap)) return left;
+    }
+    for (const column of offsets) {
+      const top = {
+        x: preferred.x + column * stepX,
+        y: preferred.y - ring * stepY,
+      };
+      if (placementIsOpen(blockers, top, size, gap)) return top;
+    }
+  }
+
+  const rightmost = Math.max(
+    preferred.x,
+    ...blockers.map((node) => node.x + node.width + gap),
+  );
+  return { x: rightmost, y: preferred.y };
+}
+
 interface StudioAxisSnap {
   delta: number;
   position: number;
@@ -66,16 +167,16 @@ export function arrangeStudioNodes(
 
   if (action === 'tidy') {
     const ordered = [...items].sort((a, b) => {
-      const centerGap = Math.abs(
-        a.y + a.height / 2 - (b.y + b.height / 2),
-      );
+      const centerGap = Math.abs(a.y + a.height / 2 - (b.y + b.height / 2));
       const sameVisualRow = centerGap <= Math.min(a.height, b.height) / 2;
       return sameVisualRow
         ? a.x - b.x || a.y - b.y || a.zIndex - b.zIndex
         : a.y - b.y || a.x - b.x || a.zIndex - b.zIndex;
     });
     const columns =
-      ordered.length <= 3 ? ordered.length : Math.ceil(Math.sqrt(ordered.length));
+      ordered.length <= 3
+        ? ordered.length
+        : Math.ceil(Math.sqrt(ordered.length));
     const rows = Math.ceil(ordered.length / columns);
     const columnWidths = Array.from({ length: columns }, () => 0);
     const rowHeights = Array.from({ length: rows }, () => 0);
@@ -118,9 +219,7 @@ export function arrangeStudioNodes(
       patches.set(node.id, { x: left + (right - left - node.width) / 2 }),
     );
   } else if (action === 'align-right') {
-    items.forEach((node) =>
-      patches.set(node.id, { x: right - node.width }),
-    );
+    items.forEach((node) => patches.set(node.id, { x: right - node.width }));
   } else if (action === 'align-top') {
     items.forEach((node) => patches.set(node.id, { y: top }));
   } else if (action === 'align-center-vertical') {
@@ -128,9 +227,7 @@ export function arrangeStudioNodes(
       patches.set(node.id, { y: top + (bottom - top - node.height) / 2 }),
     );
   } else if (action === 'align-bottom') {
-    items.forEach((node) =>
-      patches.set(node.id, { y: bottom - node.height }),
-    );
+    items.forEach((node) => patches.set(node.id, { y: bottom - node.height }));
   } else if (action === 'distribute-horizontal') {
     const ordered = [...items].sort((a, b) => a.x - b.x);
     const totalWidth = ordered.reduce((total, node) => total + node.width, 0);
@@ -142,10 +239,7 @@ export function arrangeStudioNodes(
     });
   } else if (action === 'distribute-vertical') {
     const ordered = [...items].sort((a, b) => a.y - b.y);
-    const totalHeight = ordered.reduce(
-      (total, node) => total + node.height,
-      0,
-    );
+    const totalHeight = ordered.reduce((total, node) => total + node.height, 0);
     const gap = Math.max(
       8,
       (bottom - top - totalHeight) / (ordered.length - 1),
@@ -358,7 +452,8 @@ export function sizeForAspect(aspect: string, kind: StudioNodeKind = 'image') {
   if (kind === 'section') return { width: 480, height: 320 };
   const [rw, rh] = parseAspect(aspect);
   const long = 300;
-  if (rw >= rh) return { width: long, height: Math.max(120, Math.round((long * rh) / rw)) };
+  if (rw >= rh)
+    return { width: long, height: Math.max(120, Math.round((long * rh) / rw)) };
   return { width: Math.max(120, Math.round((long * rw) / rh)), height: long };
 }
 

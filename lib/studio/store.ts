@@ -438,6 +438,7 @@ export function createBlankNode(
     rotation: 0,
     zIndex: kind === 'section' ? -1 : 0,
     data: {
+      ...extras,
       kind,
       title: extras.title || titles[kind],
       prompt: extras.prompt || '',

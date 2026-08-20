@@ -6,9 +6,11 @@ import { motion, useReducedMotion } from 'motion/react';
 import { X } from 'lucide-react';
 import MediaUploader from '../MediaUploader';
 import type { AppUser, Video } from '@/lib/types';
+import type { ComposeDraft } from './types';
 
 interface ComposeModalProps {
   user: AppUser;
+  initialDraft?: ComposeDraft;
   onClose: () => void;
   onPublished: (video: Video) => void;
 }
@@ -17,7 +19,12 @@ const MODAL_EASE = [0.22, 1, 0.36, 1] as const;
 
 // Post is upload-only — no AI/Solo choice here. Studio is the one surface
 // that embeds Worksolo; this modal never renders it.
-export default function ComposeModal({ user, onClose, onPublished }: ComposeModalProps) {
+export default function ComposeModal({
+  user,
+  initialDraft,
+  onClose,
+  onPublished,
+}: ComposeModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const prefersReducedMotion = Boolean(useReducedMotion());
 
@@ -45,15 +52,26 @@ export default function ComposeModal({ user, onClose, onPublished }: ComposeModa
     >
       <motion.div
         className="create-modal-shell"
-        initial={prefersReducedMotion ? false : { opacity: 0, y: 14, scale: 0.985 }}
+        initial={
+          prefersReducedMotion ? false : { opacity: 0, y: 14, scale: 0.985 }
+        }
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 8, scale: 0.99 }}
-        transition={{ duration: prefersReducedMotion ? 0 : 0.18, ease: MODAL_EASE }}
+        transition={{
+          duration: prefersReducedMotion ? 0 : 0.18,
+          ease: MODAL_EASE,
+        }}
       >
         <div className="solo-shell">
           <header className="solo-header">
             <div className="solo-header-left">
-              <button type="button" className="back" onClick={onClose} aria-label="Close" title="Close">
+              <button
+                type="button"
+                className="back"
+                onClick={onClose}
+                aria-label="Close"
+                title="Close"
+              >
                 <X aria-hidden="true" />
                 <span>Close</span>
               </button>
@@ -64,7 +82,11 @@ export default function ComposeModal({ user, onClose, onPublished }: ComposeModa
               </div>
             </div>
           </header>
-          <MediaUploader user={user} onPublished={onPublished} />
+          <MediaUploader
+            user={user}
+            initialDraft={initialDraft}
+            onPublished={onPublished}
+          />
         </div>
       </motion.div>
     </dialog>

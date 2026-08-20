@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   arrangeStudioNodes,
+  findOpenStudioPosition,
   resolveStudioResizeDirection,
   resolveStudioResizeSnap,
 } from './geometry';
@@ -101,5 +102,56 @@ describe('studio resize snapping', () => {
     assert.equal(result.snappedX, true);
     assert.equal(result.bounds.right, 200);
     assert.equal(result.bounds.width, 200);
+  });
+});
+
+describe('studio collision-free placement', () => {
+  it('keeps the preferred position when it is open', () => {
+    assert.deepEqual(
+      findOpenStudioPosition(
+        [node('n1', 0, 0)],
+        { x: 240, y: 0 },
+        {
+          width: 100,
+          height: 80,
+        },
+      ),
+      { x: 240, y: 0 },
+    );
+  });
+
+  it('moves a new node away from occupied content', () => {
+    const position = findOpenStudioPosition(
+      [node('n1', 0, 0)],
+      { x: 0, y: 0 },
+      { width: 100, height: 80 },
+    );
+
+    assert.deepEqual(position, { x: 128, y: 0 });
+    assert.ok(
+      position.x + 100 <= -28 ||
+        position.x >= 128 ||
+        position.y + 80 <= -28 ||
+        position.y >= 108,
+    );
+  });
+
+  it('does not treat sections as content blockers', () => {
+    const section = {
+      ...node('n1', 0, 0),
+      type: 'section' as const,
+      data: { ...node('n1', 0, 0).data, kind: 'section' as const },
+    };
+    assert.deepEqual(
+      findOpenStudioPosition(
+        [section],
+        { x: 0, y: 0 },
+        {
+          width: 100,
+          height: 80,
+        },
+      ),
+      { x: 0, y: 0 },
+    );
   });
 });

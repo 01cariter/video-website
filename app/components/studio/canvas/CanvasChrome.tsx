@@ -9,6 +9,7 @@ import {
   AlignVerticalJustifyEnd,
   AlignVerticalJustifyStart,
   AlignVerticalSpaceBetween,
+  Bot,
   ChevronDown,
   Copy,
   Hand,
@@ -21,11 +22,13 @@ import {
   Minus,
   MousePointer2,
   Plus,
+  PencilLine,
   RectangleHorizontal,
   Trash2,
   Type,
   Video,
   Wand2,
+  Upload,
   Eye,
   EyeOff,
   X,
@@ -63,16 +66,19 @@ import {
   TooltipTrigger,
 } from '@/app/components/ui/tooltip';
 import NodeInspector from './NodeInspector';
+import NodePropertiesPanel from './NodePropertiesPanel';
 import { useStudioCanvas } from './studio-context';
 import type { StudioFloatingRect } from './useLeaferStudioRuntime';
 
-const KIND_META: Record<StudioNodeKind, { label: string; icon: typeof ImageIcon }> =
-  {
-    image: { label: 'Image generation', icon: ImageIcon },
-    video: { label: 'Video generation', icon: Video },
-    text: { label: 'Text', icon: Type },
-    section: { label: 'Group', icon: RectangleHorizontal },
-  };
+const KIND_META: Record<
+  StudioNodeKind,
+  { label: string; icon: typeof ImageIcon }
+> = {
+  image: { label: 'Image generation', icon: ImageIcon },
+  video: { label: 'Video generation', icon: Video },
+  text: { label: 'Text', icon: Type },
+  section: { label: 'Group', icon: RectangleHorizontal },
+};
 
 function clamp(value: number, min: number, max: number) {
   if (max < min) return min;
@@ -98,11 +104,11 @@ function ToolButton({
         <Button
           type="button"
           variant="ghost"
-          size="icon-xs"
+          size="icon-lg"
           aria-label={label}
           aria-pressed={pressed}
           className={cn(
-            'size-8 rounded-md [&_svg]:size-[15px]',
+            'size-10 rounded-lg [&_svg]:size-[18px]',
             pressed &&
               '!bg-primary !text-primary-foreground hover:!bg-primary/90 hover:!text-primary-foreground',
           )}
@@ -134,7 +140,9 @@ export function LeftToolbar({
     <TooltipProvider delayDuration={160}>
       <div
         data-moodboard-floating-occluder
-        className="flex items-center gap-0.5 rounded-lg border border-border bg-card/95 p-0.5 shadow-[0_1px_2px_rgba(0,0,0,.05)] backdrop-blur-xl"
+        className="flex max-w-[calc(100vw-24px)] items-center gap-1 overflow-x-auto rounded-xl border border-border bg-card/95 p-1 shadow-[0_8px_28px_-20px_rgba(0,0,0,.55)] backdrop-blur-xl"
+        role="toolbar"
+        aria-label="Canvas tools"
       >
         <ToolButton
           label="Select"
@@ -152,7 +160,7 @@ export function LeftToolbar({
         >
           <Hand />
         </ToolButton>
-        <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+        <span className="mx-1 h-6 w-px bg-border" aria-hidden />
         <ToolButton label="Image generator" onClick={() => addNode('image')}>
           <ImageIcon />
         </ToolButton>
@@ -170,8 +178,12 @@ export function LeftToolbar({
         >
           <RectangleHorizontal />
         </ToolButton>
-        <span className="mx-1 h-5 w-px bg-border" aria-hidden />
-        <ToolButton label="Layers" pressed={layersOpen} onClick={onToggleLayers}>
+        <span className="mx-1 h-6 w-px bg-border" aria-hidden />
+        <ToolButton
+          label="Layers"
+          pressed={layersOpen}
+          onClick={onToggleLayers}
+        >
           <Layers3 />
         </ToolButton>
         <ToolButton label="Fit canvas" onClick={() => fitView()}>
@@ -187,21 +199,21 @@ export function ZoomControl() {
   const percent = Math.round(zoom * 100);
   return (
     <div
-      className="flex items-center rounded-lg border border-border bg-card/95 p-0.5 text-muted-foreground shadow-[0_1px_2px_rgba(0,0,0,.05)] backdrop-blur-xl"
+      className="flex items-center rounded-xl border border-border bg-card/95 p-1 text-muted-foreground shadow-[0_8px_28px_-20px_rgba(0,0,0,.55)] backdrop-blur-xl"
       role="group"
       aria-label="Canvas zoom"
     >
       <button
         type="button"
-        className="grid size-8 place-items-center rounded-md hover:bg-accent hover:text-foreground"
+        className="grid size-10 place-items-center rounded-lg hover:bg-accent hover:text-foreground"
         aria-label="Zoom out"
         onClick={() => changeZoom(zoom * 0.88)}
       >
-        <Minus className="size-3" />
+        <Minus className="size-4" />
       </button>
       <button
         type="button"
-        className="min-w-12 px-1 text-center text-[11px] font-medium tabular-nums hover:text-foreground"
+        className="min-w-14 px-1 text-center text-xs font-medium tabular-nums hover:text-foreground"
         aria-label="Reset zoom to 100%"
         onClick={() => changeZoom(1)}
       >
@@ -209,11 +221,11 @@ export function ZoomControl() {
       </button>
       <button
         type="button"
-        className="grid size-8 place-items-center rounded-md hover:bg-accent hover:text-foreground"
+        className="grid size-10 place-items-center rounded-lg hover:bg-accent hover:text-foreground"
         aria-label="Zoom in"
         onClick={() => changeZoom(zoom * 1.14)}
       >
-        <Plus className="size-3" />
+        <Plus className="size-4" />
       </button>
     </div>
   );
@@ -234,6 +246,9 @@ export function NodeOverlays({
     nodes,
     selectedIds,
     generateNode,
+    regenerateNode,
+    publishNodes,
+    sendNodesToAgent,
     duplicateNode,
     duplicateNodes,
     removeNode,
@@ -245,7 +260,7 @@ export function NodeOverlays({
   } = useStudioCanvas();
   const selected =
     selectedIds.length === 1
-      ? nodes.find((node) => node.id === selectedIds[0]) ?? null
+      ? (nodes.find((node) => node.id === selectedIds[0]) ?? null)
       : null;
   const selectedNodes = useMemo(() => {
     const byId = new Map(nodes.map((node) => [node.id, node]));
@@ -258,7 +273,12 @@ export function NodeOverlays({
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [surfaceSize, setSurfaceSize] = useState({ width: 560, height: 116 });
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+  const [quickEditNodeId, setQuickEditNodeId] = useState<string | null>(null);
   const reduceMotion = Boolean(useReducedMotion());
+  const hasPublishable = selectedNodes.some((node) =>
+    Boolean(node.data.src || node.data.text?.trim()),
+  );
+  const propertiesVisible = Boolean(selected && selected.type !== 'section');
 
   useLayoutEffect(() => {
     const stage = stageRef.current;
@@ -299,19 +319,19 @@ export function NodeOverlays({
     const padding = 10;
     const minLeft = Math.max(padding, leftInset + padding);
     const maxLeft =
-      stageSize.width - rightInset - surfaceSize.width - padding;
+      stageSize.width -
+      rightInset -
+      (propertiesVisible ? 328 : 0) -
+      surfaceSize.width -
+      padding;
     const generator =
-      selected &&
-      selected.type !== 'section' &&
-      isGeneratorNode(selected.data);
+      selected && selected.type !== 'section' && isGeneratorNode(selected.data);
     const preferredTop = generator
       ? selectionRect.bottom + 10
       : selectionRect.top - surfaceSize.height - 10;
     return {
       left: clamp(
-        selectionRect.left +
-          selectionRect.width / 2 -
-          surfaceSize.width / 2,
+        selectionRect.left + selectionRect.width / 2 - surfaceSize.width / 2,
         minLeft,
         maxLeft,
       ),
@@ -326,6 +346,7 @@ export function NodeOverlays({
     leftInset,
     multiSelected,
     rightInset,
+    propertiesVisible,
     selected,
     selectionRect,
     stageSize.height,
@@ -358,6 +379,9 @@ export function NodeOverlays({
             {multiSelected ? (
               <MultiSelectionToolbar
                 count={selectedNodes.length}
+                canPublish={hasPublishable}
+                onPublish={() => publishNodes(selectedIds)}
+                onSendToAgent={() => sendNodesToAgent(selectedIds)}
                 onOrganize={() => arrangeNodes(selectedIds, 'tidy')}
                 onArrange={(action) => arrangeNodes(selectedIds, action)}
                 onDuplicate={() => duplicateNodes(selectedIds)}
@@ -377,9 +401,7 @@ export function NodeOverlays({
                 onFieldChange={(key, value) =>
                   updateNodeData(selected.id, { [key]: value })
                 }
-                onAspectChange={(aspect) =>
-                  setNodeAspect(selected.id, aspect)
-                }
+                onAspectChange={(aspect) => setNodeAspect(selected.id, aspect)}
                 onRefsChange={(srcs) =>
                   updateNodeData(selected.id, {
                     refSrc: srcs[0],
@@ -391,7 +413,11 @@ export function NodeOverlays({
             ) : selected ? (
               <SelectionToolbar
                 node={selected}
-                onGenerate={() => void generateNode(selected.id)}
+                canPublish={hasPublishable}
+                onPublish={() => publishNodes([selected.id])}
+                onSendToAgent={() => sendNodesToAgent([selected.id])}
+                onQuickEdit={() => setQuickEditNodeId(selected.id)}
+                onRegenerate={() => regenerateNode(selected.id)}
                 onDuplicate={() => duplicateNode(selected.id)}
                 onDelete={() => removeNode(selected.id)}
               />
@@ -399,18 +425,34 @@ export function NodeOverlays({
           </motion.div>
         ) : null}
       </AnimatePresence>
+      {selected && selected.type !== 'section' ? (
+        <NodePropertiesPanel
+          key={selected.id}
+          node={selected}
+          quickEditOpen={quickEditNodeId === selected.id}
+          onQuickEditOpenChange={(open) =>
+            setQuickEditNodeId(open ? selected.id : null)
+          }
+        />
+      ) : null}
     </div>
   );
 }
 
 function MultiSelectionToolbar({
   count,
+  canPublish,
+  onPublish,
+  onSendToAgent,
   onOrganize,
   onArrange,
   onDuplicate,
   onDelete,
 }: {
   count: number;
+  canPublish: boolean;
+  onPublish: () => void;
+  onSendToAgent: () => void;
   onOrganize: () => void;
   onArrange: (
     action:
@@ -431,21 +473,51 @@ function MultiSelectionToolbar({
       <div
         data-testid="studio-multi-selection-toolbar"
         data-moodboard-floating-occluder
-        className="flex items-center gap-0.5 rounded-lg border border-border bg-card/95 p-0.5 shadow-[0_4px_18px_-12px_rgba(0,0,0,.5)] backdrop-blur-xl"
+        className="flex max-w-[calc(100vw-20px)] items-center gap-1 overflow-x-auto rounded-xl border border-border bg-card/95 p-1 shadow-[0_10px_34px_-22px_rgba(0,0,0,.58)] backdrop-blur-xl"
         role="toolbar"
         aria-label={`${count} selected items`}
       >
-        <span className="px-2 text-[11px] font-medium text-muted-foreground tabular-nums">
+        <span className="px-2.5 text-xs font-medium text-muted-foreground tabular-nums">
           {count} selected
         </span>
-        <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
-        <Button type="button" variant="ghost" size="xs" onClick={onOrganize}>
+        <span className="mx-0.5 h-6 w-px bg-border" aria-hidden />
+        {canPublish ? (
+          <Button
+            type="button"
+            size="sm"
+            className="h-10 rounded-lg"
+            onClick={onPublish}
+          >
+            <Upload /> Publish
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-10 rounded-lg"
+          onClick={onSendToAgent}
+        >
+          <Bot /> Send to Agent
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-10 rounded-lg"
+          onClick={onOrganize}
+        >
           <LayoutGrid />
           Organize
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" variant="ghost" size="xs">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-10 rounded-lg"
+            >
               <AlignHorizontalJustifyCenter />
               Align
               <ChevronDown className="size-3 text-muted-foreground" />
@@ -487,14 +559,12 @@ function MultiSelectionToolbar({
             >
               <AlignHorizontalSpaceBetween /> Distribute horizontally
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() => onArrange('distribute-vertical')}
-            >
+            <DropdownMenuItem onSelect={() => onArrange('distribute-vertical')}>
               <AlignVerticalSpaceBetween /> Distribute vertically
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
+        <span className="mx-0.5 h-6 w-px bg-border" aria-hidden />
         <ToolButton label="Duplicate selected" onClick={onDuplicate}>
           <Copy />
         </ToolButton>
@@ -508,23 +578,69 @@ function MultiSelectionToolbar({
 
 function SelectionToolbar({
   node,
-  onGenerate,
+  canPublish,
+  onPublish,
+  onSendToAgent,
+  onQuickEdit,
+  onRegenerate,
   onDuplicate,
   onDelete,
 }: {
   node: StudioNode;
-  onGenerate: () => void;
+  canPublish: boolean;
+  onPublish: () => void;
+  onSendToAgent: () => void;
+  onQuickEdit: () => void;
+  onRegenerate: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
   return (
-    <div className="flex items-center gap-0.5 rounded-lg border border-border bg-card/95 p-0.5 shadow-[0_4px_18px_-12px_rgba(0,0,0,.5)] backdrop-blur-xl">
+    <div
+      data-testid="studio-selection-toolbar"
+      className="flex max-w-[calc(100vw-20px)] items-center gap-1 overflow-x-auto rounded-xl border border-border bg-card/95 p-1 shadow-[0_10px_34px_-22px_rgba(0,0,0,.58)] backdrop-blur-xl"
+      role="toolbar"
+      aria-label="Selected item actions"
+    >
+      {canPublish ? (
+        <Button
+          type="button"
+          size="sm"
+          className="h-10 rounded-lg"
+          onClick={onPublish}
+        >
+          <Upload /> Publish
+        </Button>
+      ) : null}
       {node.type !== 'section' ? (
         <Button
           type="button"
           variant="ghost"
-          size="xs"
-          onClick={onGenerate}
+          size="sm"
+          className="h-10 rounded-lg"
+          onClick={onSendToAgent}
+        >
+          <Bot /> Send to Agent
+        </Button>
+      ) : null}
+      {node.type !== 'section' && (node.data.src || node.data.text) ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-10 rounded-lg"
+          onClick={onQuickEdit}
+        >
+          <PencilLine /> Quick Edit
+        </Button>
+      ) : null}
+      {node.type !== 'section' && node.data.prompt.trim() ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-10 rounded-lg"
+          onClick={onRegenerate}
         >
           <Wand2 />
           Regenerate
@@ -533,7 +649,8 @@ function SelectionToolbar({
       <Button
         type="button"
         variant="ghost"
-        size="icon-xs"
+        size="icon-lg"
+        className="rounded-lg"
         aria-label="Duplicate"
         onClick={onDuplicate}
       >
@@ -542,7 +659,8 @@ function SelectionToolbar({
       <Button
         type="button"
         variant="ghost"
-        size="icon-xs"
+        size="icon-lg"
+        className="rounded-lg"
         aria-label="Delete"
         onClick={onDelete}
       >
@@ -559,13 +677,8 @@ export function LayerPanel({
   open: boolean;
   onClose: () => void;
 }) {
-  const {
-    nodes,
-    selectedIds,
-    selectIds,
-    toggleNodeHidden,
-    toggleNodeLocked,
-  } = useStudioCanvas();
+  const { nodes, selectedIds, selectIds, toggleNodeHidden, toggleNodeLocked } =
+    useStudioCanvas();
   const items = useMemo(
     () => [...nodes].sort((a, b) => b.zIndex - a.zIndex),
     [nodes],
