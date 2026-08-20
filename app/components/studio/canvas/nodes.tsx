@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import type { IUI } from 'leafer-editor';
 import { Frame, Img, Rect, Txt } from '@/lib/leafer-react';
 import type { StudioNode } from '@/lib/studio/types';
 
@@ -27,6 +28,8 @@ export function StudioCanvasNode({ node }: { node: StudioNode }) {
       visible={visible}
       fill="transparent"
       strokeWidth={0}
+      cornerRadius={node.type === 'section' ? 0 : NODE_RADIUS}
+      overflow={node.type === 'section' ? 'show' : 'hide'}
       draggable={!locked}
       editable={!locked}
       editConfig={NODE_EDIT_CONFIG}
@@ -83,6 +86,10 @@ function NodeBody({
     return <GeneratingNode node={node} data={data} />;
   }
 
+  if (node.data.status === 'uploading') {
+    return <UploadingNode node={node} data={data} />;
+  }
+
   if (node.type === 'image') {
     return (
       <>
@@ -91,7 +98,7 @@ function NodeBody({
           y={0}
           width={node.width}
           height={node.height}
-          fill="#211914"
+          fill="#eee8df"
           stroke={NODE_STROKE}
           strokeWidth={1}
           cornerRadius={NODE_RADIUS}
@@ -116,6 +123,8 @@ function NodeBody({
   }
 
   if (node.type === 'video') {
+    const posterSrc =
+      typeof node.data.posterSrc === 'string' ? node.data.posterSrc : undefined;
     return (
       <>
         <Rect
@@ -123,37 +132,78 @@ function NodeBody({
           y={0}
           width={node.width}
           height={node.height}
-          fill="#211914"
+          fill="#f1ece5"
           stroke={NODE_STROKE}
           strokeWidth={1}
           cornerRadius={NODE_RADIUS}
           data={data}
         />
-        <Txt
-          text={node.data.src ? '▶  Video generated' : node.data.error || 'Video'}
-          x={0}
-          y={Math.max(0, node.height / 2 - 11)}
-          width={node.width}
-          fontSize={13}
-          fontWeight={600}
-          textAlign="center"
-          fill={node.data.error ? '#e56969' : '#e8ded1'}
-          hittable={false}
-          data={data}
-        />
-        {node.data.src ? (
-          <Txt
-            text="Double-click or use the menu to play"
+        {posterSrc ? (
+          <Img
+            url={posterSrc}
             x={0}
-            y={Math.max(0, node.height / 2 + 14)}
+            y={0}
             width={node.width}
-            fontSize={10}
-            textAlign="center"
-            fill="#a99a8c"
-            hittable={false}
+            height={node.height}
+            cornerRadius={NODE_RADIUS}
+            draggable={false}
             data={data}
           />
         ) : null}
+        {node.data.src && posterSrc ? (
+          <>
+            <Rect
+              x={Math.max(8, node.width / 2 - 22)}
+              y={Math.max(8, node.height / 2 - 22)}
+              width={44}
+              height={44}
+              fill="rgba(255,253,249,0.88)"
+              stroke="rgba(77,65,56,0.16)"
+              strokeWidth={1}
+              cornerRadius={22}
+              hittable={false}
+              data={data}
+            />
+            <Txt
+              text="▶"
+              x={Math.max(8, node.width / 2 - 19)}
+              y={Math.max(8, node.height / 2 - 10)}
+              width={40}
+              fontSize={16}
+              textAlign="center"
+              fill="#51473f"
+              hittable={false}
+              data={data}
+            />
+          </>
+        ) : (
+          <>
+            <Txt
+              text={node.data.error ? '!' : '▷'}
+              x={12}
+              y={Math.max(0, node.height / 2 - 30)}
+              width={Math.max(24, node.width - 24)}
+              fontSize={24}
+              fontWeight={500}
+              textAlign="center"
+              fill={node.data.error ? '#b94e4e' : '#a27962'}
+              hittable={false}
+              data={data}
+            />
+            <Txt
+              text={node.data.error || (node.data.src ? 'Video ready' : 'Video')}
+              x={12}
+              y={Math.max(0, node.height / 2 + 7)}
+              width={Math.max(24, node.width - 24)}
+              fontSize={11}
+              fontWeight={600}
+              textAlign="center"
+              fill={node.data.error ? '#b94e4e' : '#75685f'}
+              hittable={false}
+              data={data}
+            />
+          </>
+        )}
       </>
     );
   }
@@ -255,12 +305,34 @@ function GeneratingNode({
   node: StudioNode;
   data: Record<string, unknown>;
 }) {
-  const progress = useLoadingSweep();
-  const bandWidth = Math.max(72, Math.min(180, node.width * 0.42));
-  const x = Math.max(
-    0,
-    Math.min(node.width, progress * node.width) - bandWidth / 2,
-  );
+  const sweepRef = useRef<IUI | null>(null);
+  const bandWidth = Math.max(96, Math.min(220, node.width * 0.58));
+
+  useEffect(() => {
+    const sweep = sweepRef.current as
+      | (IUI & { forceUpdate?: () => void })
+      | null;
+    if (!sweep) return;
+    const reduceMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
+    if (reduceMotion) {
+      sweep.x = (node.width - bandWidth) / 2;
+      sweep.forceUpdate?.();
+      return;
+    }
+    let frame = 0;
+    const start = performance.now();
+    const distance = node.width + bandWidth * 2;
+    const tick = (time: number) => {
+      const progress = ((time - start) % 2400) / 2400;
+      sweep.x = -bandWidth + progress * distance;
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [bandWidth, node.width]);
+
   return (
     <>
       <Rect
@@ -268,21 +340,34 @@ function GeneratingNode({
         y={0}
         width={node.width}
         height={node.height}
-        fill={NODE_FILL}
+        fill="#f2ede6"
         stroke={NODE_STROKE}
         strokeWidth={1}
         cornerRadius={NODE_RADIUS}
         data={data}
       />
       <Rect
-        x={x}
+        x={-bandWidth}
         y={0}
-        width={Math.min(bandWidth, node.width - x)}
+        width={bandWidth}
         height={node.height}
-        fill="rgba(255,255,255,0.48)"
-        cornerRadius={NODE_RADIUS}
+        fill={{
+          type: 'linear',
+          from: 'left',
+          to: 'right',
+          stops: [
+            { offset: 0, color: 'rgba(255,255,255,0)' },
+            { offset: 0.28, color: 'rgba(255,255,255,0.04)' },
+            { offset: 0.5, color: 'rgba(255,255,255,0.42)' },
+            { offset: 0.72, color: 'rgba(255,250,243,0.08)' },
+            { offset: 1, color: 'rgba(255,255,255,0)' },
+          ],
+        }}
         hittable={false}
         data={data}
+        onCreated={(instance: IUI) => {
+          sweepRef.current = instance;
+        }}
       />
       <Txt
         text={
@@ -306,17 +391,78 @@ function GeneratingNode({
   );
 }
 
-function useLoadingSweep() {
-  const [progress, setProgress] = useState(0);
-  useEffect(() => {
-    let frame = 0;
-    const start = performance.now();
-    const tick = (time: number) => {
-      setProgress(((time - start) % 1400) / 1400);
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, []);
-  return progress;
+function UploadingNode({
+  node,
+  data,
+}: {
+  node: StudioNode;
+  data: Record<string, unknown>;
+}) {
+  const posterSrc =
+    typeof node.data.posterSrc === 'string' ? node.data.posterSrc : undefined;
+  return (
+    <>
+      <Rect
+        x={0}
+        y={0}
+        width={node.width}
+        height={node.height}
+        fill="#f4f1eb"
+        stroke="#9eb2ad"
+        strokeWidth={1}
+        dashPattern={[7, 5]}
+        cornerRadius={NODE_RADIUS}
+        data={data}
+      />
+      {posterSrc ? (
+        <>
+          <Img
+            url={posterSrc}
+            x={0}
+            y={0}
+            width={node.width}
+            height={node.height}
+            opacity={0.64}
+            cornerRadius={NODE_RADIUS}
+            draggable={false}
+            data={data}
+          />
+          <Rect
+            x={0}
+            y={0}
+            width={node.width}
+            height={node.height}
+            fill="rgba(247,244,238,0.38)"
+            cornerRadius={NODE_RADIUS}
+            hittable={false}
+            data={data}
+          />
+        </>
+      ) : null}
+      <Txt
+        text="↑"
+        x={12}
+        y={Math.max(0, node.height / 2 - 31)}
+        width={Math.max(24, node.width - 24)}
+        fontSize={22}
+        fontWeight={500}
+        textAlign="center"
+        fill="#52746d"
+        hittable={false}
+        data={data}
+      />
+      <Txt
+        text={`Uploading ${node.type === 'video' ? 'video' : 'image'}`}
+        x={12}
+        y={Math.max(0, node.height / 2 + 6)}
+        width={Math.max(24, node.width - 24)}
+        fontSize={11}
+        fontWeight={600}
+        textAlign="center"
+        fill="#536963"
+        hittable={false}
+        data={data}
+      />
+    </>
+  );
 }

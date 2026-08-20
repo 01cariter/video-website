@@ -80,9 +80,16 @@ function normalizeNode(value: unknown, index: number): StudioNode | null {
   const width = numberValue(legacy.width ?? style?.width, defaults.width);
   const height = numberValue(legacy.height ?? style?.height, defaults.height);
   const normalizedStatus =
-    rawData.status === 'generating'
+    rawData.status === 'generating' || rawData.status === 'uploading'
       ? 'idle'
       : rawData.status || (rawData.src || rawData.text ? 'ready' : 'idle');
+  const refSrcs = Array.isArray(rawData.refSrcs)
+    ? rawData.refSrcs.filter(
+        (src): src is string => typeof src === 'string' && Boolean(src),
+      )
+    : rawData.refSrc
+      ? [rawData.refSrc]
+      : [];
   return {
     id: String(legacy.id || createStudioId('n')),
     type: kind,
@@ -99,6 +106,8 @@ function normalizeNode(value: unknown, index: number): StudioNode | null {
       aspect: String(rawData.aspect || (kind === 'video' ? '16:9' : '1:1')),
       kind,
       title: normalizeNodeTitle(kind, rawData.title),
+      refSrc: refSrcs[0],
+      refSrcs,
     },
   };
 }
@@ -189,6 +198,13 @@ function writeStore(file: StudioStoreFile) {
               node.data.refSrc && node.data.refSrc.startsWith('data:')
                 ? undefined
                 : node.data.refSrc,
+            refSrcs: node.data.refSrcs?.filter(
+              (src) => !src.startsWith('data:'),
+            ),
+            posterSrc:
+              node.data.posterSrc && node.data.posterSrc.startsWith('data:')
+                ? undefined
+                : node.data.posterSrc,
           },
         })),
       })),
@@ -379,6 +395,13 @@ export function createBlankNode(
     kind === 'section'
       ? { width: 480, height: 320 }
       : sizeForAspect(aspect, kind);
+  const refSrcs = (
+    Array.isArray(extras.refSrcs)
+      ? extras.refSrcs
+      : extras.refSrc
+        ? [extras.refSrc]
+        : []
+  ).filter(Boolean);
   return {
     id: createStudioId('n'),
     type: kind,
@@ -421,8 +444,10 @@ export function createBlankNode(
               extras.reasoningEffort ||
               (defaults.reasoningEffort as StudioNodeData['reasoningEffort']),
           }),
-      refSrc: extras.refSrc,
+      refSrc: refSrcs[0],
+      refSrcs,
       src: extras.src,
+      posterSrc: extras.posterSrc,
       error: extras.error,
       hidden: extras.hidden,
       locked: extras.locked,

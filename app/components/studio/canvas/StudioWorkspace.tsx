@@ -13,8 +13,12 @@ import {
   useState,
 } from 'react';
 import { Frame, Leafer } from '@/lib/leafer-react';
-import { sizeForAspect } from '@/lib/studio/geometry';
 import {
+  sizeForAspect,
+  sizeForMediaDimensions,
+} from '@/lib/studio/geometry';
+import {
+  probeStudioMediaUrl,
   studioMediaKind,
   uploadStudioMedia,
 } from '@/lib/studio/media-upload';
@@ -88,31 +92,6 @@ function requestId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function uploadedMediaSize(
-  width: number | null,
-  height: number | null,
-  kind: 'image' | 'video',
-) {
-  if (!width || !height || width <= 0 || height <= 0) {
-    return kind === 'video'
-      ? { width: 400, height: 225 }
-      : { width: 340, height: 280 };
-  }
-  const ratio = width / height;
-  const maxWidth = 420;
-  const maxHeight = 360;
-  let nextWidth = maxWidth;
-  let nextHeight = nextWidth / ratio;
-  if (nextHeight > maxHeight) {
-    nextHeight = maxHeight;
-    nextWidth = nextHeight * ratio;
-  }
-  return {
-    width: Math.max(120, Math.round(nextWidth)),
-    height: Math.max(120, Math.round(nextHeight)),
-  };
-}
-
 function operationFromOutput(output: unknown): StudioCanvasOperation[] {
   if (!output || typeof output !== 'object') return [];
   const value = output as Record<string, unknown>;
@@ -176,6 +155,7 @@ function CanvasWorkspace({
   const localPersistTimer = useRef<number | null>(null);
   const dragDepth = useRef(0);
   const generating = useRef(new Set<string>());
+  const videoPosterProbes = useRef(new Set<string>());
   const seenTools = useRef(new Set<string>());
   const [nodes, setNodes] = useState(project.nodes);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -265,6 +245,45 @@ function CanvasWorkspace({
     [commitNodes],
   );
 
+  useEffect(() => {
+    for (const node of nodes) {
+      if (
+        node.type !== 'video' ||
+        !node.data.src ||
+        node.data.posterSrc ||
+        node.data.status !== 'ready'
+      ) {
+        continue;
+      }
+      const key = `${node.id}:${node.data.src}`;
+      if (videoPosterProbes.current.has(key)) continue;
+      videoPosterProbes.current.add(key);
+      void probeStudioMediaUrl(node.data.src, 'video')
+        .then((probe) => {
+          const current = nodesRef.current.find((item) => item.id === node.id);
+          if (!current || current.data.src !== node.data.src) return;
+          const size = sizeForMediaDimensions(
+            probe.width,
+            probe.height,
+            'video',
+          );
+          updateNode(node.id, {
+            x: current.x + (current.width - size.width) / 2,
+            y: current.y + (current.height - size.height) / 2,
+            width: size.width,
+            height: size.height,
+          });
+          updateNodeData(node.id, {
+            posterSrc: probe.posterSrc,
+            sourceWidth: probe.width,
+            sourceHeight: probe.height,
+            sourceDuration: probe.durationSeconds,
+          });
+        })
+        .catch(() => undefined);
+    }
+  }, [nodes, updateNode, updateNodeData]);
+
   const setNodeAspect = useCallback((id: string, aspect: string) => {
     commitNodes((current) =>
       current.map((node) => {
@@ -309,6 +328,11 @@ function CanvasWorkspace({
           aspect: node.data.aspect,
           n: node.data.n,
           refSrc: node.data.refSrc,
+          refSrcs: Array.isArray(node.data.refSrcs)
+            ? node.data.refSrcs
+            : node.data.refSrc
+              ? [node.data.refSrc]
+              : [],
           duration: node.data.duration,
           videoResolution: node.data.videoResolution,
           generateAudio: node.data.generateAudio,
@@ -574,26 +598,54 @@ function CanvasWorkspace({
 
       await Promise.all(
         accepted.map(async ({ file, kind }, index) => {
-          const initialSize = uploadedMediaSize(null, null, kind);
+          const initialSize = sizeForMediaDimensions(null, null, kind);
+          const nodeCenter = {
+            x: point.x + index * 28,
+            y: point.y + index * 28,
+          };
           const id = addNode(kind, {
             title: file.name,
             position: {
-              x: point.x - initialSize.width / 2 + index * 28,
-              y: point.y - initialSize.height / 2 + index * 28,
+              x: nodeCenter.x - initialSize.width / 2,
+              y: nodeCenter.y - initialSize.height / 2,
             },
             size: initialSize,
-            data: { status: 'generating' },
+            data: { status: 'uploading' },
           });
           try {
-            const uploaded = await uploadStudioMedia(file);
-            const size = uploadedMediaSize(
+            const uploaded = await uploadStudioMedia(file, (probe) => {
+              const size = sizeForMediaDimensions(
+                probe.width,
+                probe.height,
+                kind,
+              );
+              updateNode(id, {
+                x: nodeCenter.x - size.width / 2,
+                y: nodeCenter.y - size.height / 2,
+                width: size.width,
+                height: size.height,
+              });
+              updateNodeData(id, {
+                posterSrc: probe.posterSrc,
+                sourceWidth: probe.width,
+                sourceHeight: probe.height,
+                sourceDuration: probe.durationSeconds,
+              });
+            });
+            const size = sizeForMediaDimensions(
               uploaded.width,
               uploaded.height,
               kind,
             );
-            updateNode(id, { width: size.width, height: size.height });
+            updateNode(id, {
+              x: nodeCenter.x - size.width / 2,
+              y: nodeCenter.y - size.height / 2,
+              width: size.width,
+              height: size.height,
+            });
             updateNodeData(id, {
               src: uploaded.url,
+              posterSrc: uploaded.posterSrc,
               status: 'ready',
               error: undefined,
               uploadMime: uploaded.mime,

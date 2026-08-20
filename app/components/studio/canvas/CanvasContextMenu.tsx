@@ -17,7 +17,6 @@ import {
   Video,
   Wand2,
 } from 'lucide-react';
-import type { StudioNodeKind } from '@/lib/studio/types';
 import { isGeneratorNode } from '@/lib/studio/geometry';
 import { useStudioCanvas } from './studio-context';
 import type { StudioCanvasMenuState } from './useLeaferStudioRuntime';
@@ -30,13 +29,6 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
-
-const KIND_LABEL: Record<StudioNodeKind, string> = {
-  image: 'Image',
-  video: 'Video',
-  text: 'Text',
-  section: 'Group',
-};
 
 function downloadSrc(src: string, title: string) {
   const link = document.createElement('a');
@@ -164,10 +156,9 @@ export default function CanvasContextMenu({
 
         {menu.type === 'node' && node && data ? (
           <>
-            <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">
-              {data.title || KIND_LABEL[node.type]}
-            </DropdownMenuLabel>
-            {node.type !== 'section' && data.status !== 'generating' ? (
+            {node.type !== 'section' &&
+            data.status !== 'generating' &&
+            data.status !== 'uploading' ? (
               <DropdownMenuItem
                 onSelect={() => void generateNode(menu.nodeId)}
               >

@@ -2,7 +2,12 @@ import type { UIMessage } from 'ai';
 
 export type StudioNodeKind = 'image' | 'video' | 'text' | 'section';
 export type StudioGenerativeKind = Exclude<StudioNodeKind, 'section'>;
-export type StudioGenStatus = 'idle' | 'generating' | 'ready' | 'error';
+export type StudioGenStatus =
+  | 'idle'
+  | 'uploading'
+  | 'generating'
+  | 'ready'
+  | 'error';
 
 export interface StudioNodeData {
   kind: StudioNodeKind;
@@ -17,7 +22,9 @@ export interface StudioNodeData {
   generateAudio?: boolean;
   reasoningEffort?: 'low' | 'medium' | 'high';
   refSrc?: string;
+  refSrcs?: string[];
   src?: string;
+  posterSrc?: string;
   text?: string;
   error?: string;
   hidden?: boolean;

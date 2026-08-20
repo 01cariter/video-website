@@ -48,6 +48,7 @@ export async function POST(request: Request) {
     aspect?: string;
     n?: number;
     refSrc?: string;
+    refSrcs?: string[];
     requestId?: string;
     projectId?: string;
     nodeId?: string;
@@ -80,6 +81,15 @@ export async function POST(request: Request) {
     body?.modelId,
     restrictToFreeCreditModels,
   );
+  const referenceImages = (
+    Array.isArray(body?.refSrcs)
+      ? body.refSrcs
+      : body?.refSrc
+        ? [body.refSrc]
+        : []
+  )
+    .filter((src): src is string => typeof src === 'string' && Boolean(src))
+    .slice(0, 3);
 
   try {
     const metered = await beginMeteredRequest({
@@ -105,8 +115,8 @@ export async function POST(request: Request) {
 
     const result = await generateImage({
       model: model.id,
-      prompt: body?.refSrc
-        ? { text: prompt, images: [body.refSrc] }
+      prompt: referenceImages.length
+        ? { text: prompt, images: referenceImages }
         : prompt,
       n: count,
       aspectRatio:

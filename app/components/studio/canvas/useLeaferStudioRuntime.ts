@@ -23,6 +23,7 @@ import {
 } from 'react';
 import {
   containedNodeIdsForSection,
+  resolveStudioResizeSnap,
   resolveStudioSnap,
   type StudioBounds,
   type StudioSnapGuide,
@@ -215,6 +216,62 @@ function setFramePosition(frame: IUI, x: number, y: number) {
     Reflect.set(target, 'y', y);
   }
   target.forceUpdate?.();
+}
+
+function setFrameBounds(frame: IUI, bounds: StudioBounds) {
+  const target = frame as IUI & {
+    set?: (value: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }) => void;
+    forceUpdate?: () => void;
+  };
+  const value = {
+    x: bounds.left,
+    y: bounds.top,
+    width: bounds.width,
+    height: bounds.height,
+  };
+  if (target.set) target.set(value);
+  else Object.assign(target, value);
+  target.forceUpdate?.();
+}
+
+function ratioResizeBounds(
+  current: StudioBounds,
+  snapped: StudioBounds,
+  direction: number,
+  ratio: number,
+  axis: 'x' | 'y',
+): StudioBounds {
+  const movesLeft = direction === 0 || direction === 6 || direction === 7;
+  const movesRight = direction === 2 || direction === 3 || direction === 4;
+  const movesTop = direction === 0 || direction === 1 || direction === 2;
+  const movesBottom = direction === 4 || direction === 5 || direction === 6;
+  const width = axis === 'x' ? snapped.width : snapped.height * ratio;
+  const height = axis === 'y' ? snapped.height : snapped.width / ratio;
+  const centerX = current.left + current.width / 2;
+  const centerY = current.top + current.height / 2;
+  const left = movesLeft
+    ? current.right - width
+    : movesRight
+      ? current.left
+      : centerX - width / 2;
+  const top = movesTop
+    ? current.bottom - height
+    : movesBottom
+      ? current.top
+      : centerY - height / 2;
+  return {
+    left,
+    top,
+    right: left + width,
+    bottom: top + height,
+    width,
+    height,
+  };
 }
 
 function setTreeViewport(
@@ -574,17 +631,125 @@ export function useLeaferStudioRuntime({
     publishSnapGuides,
   ]);
 
+  const applyResizeSnapping = useCallback(
+    (event?: unknown) => {
+      if (
+        toolRef.current !== 'select' ||
+        snapGuardRef.current ||
+        selectedIdsRef.current.length !== 1
+      ) {
+        return;
+      }
+      const direction = Number(
+        (event as { direction?: number } | undefined)?.direction,
+      );
+      if (!Number.isInteger(direction) || direction < 0 || direction > 7) {
+        clearSnapGuides();
+        return;
+      }
+      const nodeId = selectedIdsRef.current[0];
+      const node = nodesRef.current.find((item) => item.id === nodeId);
+      const frame = findFrame(nodeId);
+      if (!node || !frame) return;
+      const movingBounds = frameBounds(frame);
+      const targetBounds = nodesRef.current
+        .filter(
+          (item) =>
+            item.id !== nodeId &&
+            item.data.hidden !== true,
+        )
+        .map((item) => findFrame(item.id))
+        .filter((item): item is IUI => Boolean(item))
+        .map(frameBounds);
+      if (!targetBounds.length) {
+        clearSnapGuides();
+        return;
+      }
+
+      const viewport = currentViewport();
+      const snap = resolveStudioResizeSnap(
+        movingBounds,
+        targetBounds,
+        direction,
+        6 / Math.max(0.1, viewport.zoom),
+      );
+      if (!snap.snappedX && !snap.snappedY) {
+        clearSnapGuides();
+        return;
+      }
+
+      let nextBounds = snap.bounds;
+      let guides = snap.guides;
+      const minimumSize =
+        node.type === 'image' || node.type === 'video' ? 1 : 40;
+      if (node.type === 'image' || node.type === 'video') {
+        const horizontalOnly = direction === 3 || direction === 7;
+        const verticalOnly = direction === 1 || direction === 5;
+        const axis =
+          horizontalOnly || !snap.snappedY
+            ? 'x'
+            : verticalOnly || !snap.snappedX
+              ? 'y'
+              : Math.abs(snap.deltaX) <= Math.abs(snap.deltaY)
+                ? 'x'
+                : 'y';
+        const ratio =
+          node.width > 0 && node.height > 0
+            ? node.width / node.height
+            : movingBounds.width / movingBounds.height;
+        nextBounds = ratioResizeBounds(
+          movingBounds,
+          snap.bounds,
+          direction,
+          ratio,
+          axis,
+        );
+        guides = snap.guides.filter((guide) => guide.axis === axis);
+      }
+      if (
+        nextBounds.width < minimumSize ||
+        nextBounds.height < minimumSize
+      ) {
+        clearSnapGuides();
+        return;
+      }
+
+      snapGuardRef.current = true;
+      try {
+        setFrameBounds(frame, nextBounds);
+        appRef.current?.tree?.forceUpdate?.();
+      } finally {
+        snapGuardRef.current = false;
+      }
+      publishSnapGuides(guides);
+    },
+    [
+      clearSnapGuides,
+      currentViewport,
+      findFrame,
+      publishSnapGuides,
+    ],
+  );
+
   const readNodesFromFrames = useCallback(
     () =>
       nodesRef.current.map((node) => {
         const frame = findFrame(node.id);
         if (!frame) return node;
+        const minimumSize =
+          node.type === 'image' || node.type === 'video' ? 1 : 40;
         return {
           ...node,
           x: Math.round(Number(frame.x ?? node.x)),
           y: Math.round(Number(frame.y ?? node.y)),
-          width: Math.max(40, Math.round(Number(frame.width ?? node.width))),
-          height: Math.max(40, Math.round(Number(frame.height ?? node.height))),
+          width: Math.max(
+            minimumSize,
+            Math.round(Number(frame.width ?? node.width)),
+          ),
+          height: Math.max(
+            minimumSize,
+            Math.round(Number(frame.height ?? node.height)),
+          ),
           rotation: 0,
           zIndex: Math.round(Number(frame.zIndex ?? node.zIndex)),
         };
@@ -687,7 +852,8 @@ export function useLeaferStudioRuntime({
       syncSectionChildrenDuringDrag();
       scheduleSelectionRect();
     };
-    const syncEditorScaleGeometry = () => {
+    const syncEditorScaleGeometry = (event?: unknown) => {
+      applyResizeSnapping(event);
       syncSectionChildrenDuringDrag();
       scheduleSelectionRect();
     };
@@ -874,6 +1040,7 @@ export function useLeaferStudioRuntime({
     };
   }, [
     applyMoveSnapping,
+    applyResizeSnapping,
     beginSectionChildrenDrag,
     clearSnapGuides,
     commitFrameState,

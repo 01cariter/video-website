@@ -122,6 +122,89 @@ export function resolveStudioSnap(
   return { deltaX, deltaY, guides };
 }
 
+function closestResizeSnap(
+  movingPoint: number | null,
+  targets: StudioBounds[],
+  axis: 'x' | 'y',
+  threshold: number,
+) {
+  if (movingPoint == null) return null;
+  let best: StudioAxisSnap | null = null;
+  for (const target of targets) {
+    for (const targetPoint of axisPoints(target, axis)) {
+      const delta = targetPoint - movingPoint;
+      if (Math.abs(delta) > threshold) continue;
+      if (!best || Math.abs(delta) < Math.abs(best.delta)) {
+        best = { delta, position: targetPoint, target };
+      }
+    }
+  }
+  return best;
+}
+
+export function resolveStudioResizeSnap(
+  moving: StudioBounds,
+  targets: StudioBounds[],
+  direction: number,
+  threshold: number,
+) {
+  const movesLeft = direction === 0 || direction === 6 || direction === 7;
+  const movesRight = direction === 2 || direction === 3 || direction === 4;
+  const movesTop = direction === 0 || direction === 1 || direction === 2;
+  const movesBottom = direction === 4 || direction === 5 || direction === 6;
+  const x = closestResizeSnap(
+    movesLeft ? moving.left : movesRight ? moving.right : null,
+    targets,
+    'x',
+    threshold,
+  );
+  const y = closestResizeSnap(
+    movesTop ? moving.top : movesBottom ? moving.bottom : null,
+    targets,
+    'y',
+    threshold,
+  );
+  const bounds = { ...moving };
+  if (x) {
+    if (movesLeft) bounds.left += x.delta;
+    if (movesRight) bounds.right += x.delta;
+  }
+  if (y) {
+    if (movesTop) bounds.top += y.delta;
+    if (movesBottom) bounds.bottom += y.delta;
+  }
+  bounds.width = bounds.right - bounds.left;
+  bounds.height = bounds.bottom - bounds.top;
+
+  const padding = Math.max(8, threshold * 1.5);
+  const guides: StudioSnapGuide[] = [];
+  if (x) {
+    guides.push({
+      axis: 'x',
+      position: x.position,
+      start: Math.min(bounds.top, x.target.top) - padding,
+      end: Math.max(bounds.bottom, x.target.bottom) + padding,
+    });
+  }
+  if (y) {
+    guides.push({
+      axis: 'y',
+      position: y.position,
+      start: Math.min(bounds.left, y.target.left) - padding,
+      end: Math.max(bounds.right, y.target.right) + padding,
+    });
+  }
+
+  return {
+    bounds,
+    deltaX: x?.delta ?? 0,
+    deltaY: y?.delta ?? 0,
+    snappedX: Boolean(x),
+    snappedY: Boolean(y),
+    guides,
+  };
+}
+
 export function parseAspect(aspect: string): [number, number] {
   if (!aspect || aspect === 'auto' || aspect === 'adaptive') return [1, 1];
   const [w, h] = aspect.split(':').map(Number);
@@ -138,6 +221,41 @@ export function sizeForAspect(aspect: string, kind: StudioNodeKind = 'image') {
   return { width: Math.max(120, Math.round((long * rw) / rh)), height: long };
 }
 
+export function sizeForMediaDimensions(
+  width: number | null,
+  height: number | null,
+  kind: 'image' | 'video',
+) {
+  if (!width || !height || width <= 0 || height <= 0) {
+    return kind === 'video'
+      ? { width: 400, height: 225 }
+      : { width: 340, height: 280 };
+  }
+  const ratio = width / height;
+  const fitScale = Math.min(420 / width, 360 / height);
+  let nextWidth = width * fitScale;
+  let nextHeight = height * fitScale;
+  const shortSide = Math.min(nextWidth, nextHeight);
+  const longSide = Math.max(nextWidth, nextHeight);
+  if (shortSide < 48 && longSide * (48 / shortSide) <= 720) {
+    const readableScale = 48 / shortSide;
+    nextWidth *= readableScale;
+    nextHeight *= readableScale;
+  }
+  if (ratio >= 1) {
+    const roundedWidth = Math.max(1, Math.round(nextWidth));
+    return {
+      width: roundedWidth,
+      height: Math.max(1, Math.round(roundedWidth / ratio)),
+    };
+  }
+  const roundedHeight = Math.max(1, Math.round(nextHeight));
+  return {
+    width: Math.max(1, Math.round(roundedHeight * ratio)),
+    height: roundedHeight,
+  };
+}
+
 export function resolutionLabel(aspect: string) {
   const [w, h] = parseAspect(aspect);
   if (w === h) return '1k';
@@ -145,7 +263,7 @@ export function resolutionLabel(aspect: string) {
 }
 
 export function isGeneratorNode(data: StudioNodeData) {
-  if (data.status === 'generating') return false;
+  if (data.status === 'generating' || data.status === 'uploading') return false;
   if (data.kind === 'text') return !data.text;
   return !data.src;
 }

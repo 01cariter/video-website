@@ -43,6 +43,7 @@ export async function POST(request: Request) {
     videoResolution?: '480p' | '720p';
     generateAudio?: boolean;
     refSrc?: string;
+    refSrcs?: string[];
     requestId?: string;
     projectId?: string;
     nodeId?: string;
@@ -75,6 +76,9 @@ export async function POST(request: Request) {
     body?.modelId,
     restrictToFreeCreditModels,
   );
+  const referenceImage = (
+    Array.isArray(body?.refSrcs) ? body.refSrcs[0] : body?.refSrc
+  )?.trim();
 
   try {
     const metered = await beginMeteredRequest({
@@ -104,10 +108,10 @@ export async function POST(request: Request) {
 
     const { video } = await generateVideo({
       model: model.id,
-      prompt: body?.refSrc
-        ? { image: body.refSrc, text: prompt }
+      prompt: referenceImage
+        ? { image: referenceImage, text: prompt }
         : prompt,
-      aspectRatio: body?.refSrc ? 'adaptive' : aspectRatio,
+      aspectRatio: referenceImage ? 'adaptive' : aspectRatio,
       duration: seconds,
       resolution: videoPixelSize(aspectRatio, resolution),
       providerOptions: {

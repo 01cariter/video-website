@@ -63,7 +63,7 @@ interface NodeInspectorProps {
   onPromptChange: (value: string) => void;
   onFieldChange: (key: string, value: string | number | boolean) => void;
   onAspectChange: (aspect: string) => void;
-  onRefChange: (src?: string) => void;
+  onRefsChange: (srcs: string[]) => void;
   onSubmit: () => void;
 }
 
@@ -85,6 +85,33 @@ const ASPECT_LABELS: Record<string, string> = {
   adaptive: 'Adaptive',
   auto: 'Auto',
 };
+
+function referenceSources(data: StudioNodeData) {
+  const sources = Array.isArray(data.refSrcs)
+    ? data.refSrcs
+    : data.refSrc
+      ? [data.refSrc]
+      : [];
+  return sources.filter(
+    (source, index) =>
+      typeof source === 'string' &&
+      Boolean(source) &&
+      sources.indexOf(source) === index,
+  );
+}
+
+function readReferenceImage(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') resolve(reader.result);
+      else reject(new Error('That reference image could not be read.'));
+    };
+    reader.onerror = () =>
+      reject(new Error('That reference image could not be read.'));
+    reader.readAsDataURL(file);
+  });
+}
 
 function AspectGlyph({ aspect }: { aspect: string }) {
   const [w, h] =
@@ -409,7 +436,7 @@ export default function NodeInspector({
   onPromptChange,
   onFieldChange,
   onAspectChange,
-  onRefChange,
+  onRefsChange,
   onSubmit,
 }: NodeInspectorProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -427,7 +454,8 @@ export default function NodeInspector({
     data.modelId,
     freeCreditModelsOnly,
   );
-  const busy = data.status === 'generating';
+  const busy = data.status === 'generating' || data.status === 'uploading';
+  const references = referenceSources(data).slice(0, spec.maxRefs);
   const values: Record<string, unknown> = {
     ...spec.defaults,
     aspect: data.aspect,
@@ -471,6 +499,35 @@ export default function NodeInspector({
           }}
         >
           <div className="px-3.5 pt-3 pb-2.5">
+            {references.length ? (
+              <div className="mb-2.5 flex flex-wrap gap-1.5">
+                {references.map((src, index) => (
+                  <button
+                    key={`${src.slice(0, 32)}-${index}`}
+                    type="button"
+                    disabled={busy}
+                    aria-label={`Remove reference image ${index + 1}`}
+                    className="group relative h-12 w-[62px] overflow-hidden rounded-[9px] border border-border/80 bg-muted outline-none transition-[border-color,transform] hover:border-foreground/25 active:scale-[0.98] disabled:opacity-60"
+                    onClick={() =>
+                      onRefsChange(
+                        references.filter((_, itemIndex) => itemIndex !== index),
+                      )
+                    }
+                  >
+                    <Image
+                      src={src}
+                      alt=""
+                      fill
+                      unoptimized
+                      className="object-cover"
+                    />
+                    <span className="absolute inset-0 grid place-items-center bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                      <X className="size-3.5" />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <Textarea
               ref={inputRef}
               rows={2}
@@ -504,33 +561,12 @@ export default function NodeInspector({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                disabled={busy}
-                className="relative size-8 overflow-hidden rounded-[9px] text-muted-foreground hover:bg-[var(--studio-composer)] hover:text-foreground"
-                aria-label={data.refSrc ? 'Remove reference image' : 'Add reference image'}
-                onClick={() => {
-                  if (data.refSrc) {
-                    onRefChange(undefined);
-                  } else {
-                    fileRef.current?.click();
-                  }
-                }}
+                disabled={busy || references.length >= spec.maxRefs}
+                className="size-8 rounded-[9px] text-muted-foreground hover:bg-[var(--studio-composer)] hover:text-foreground"
+                aria-label={`Add reference image, ${references.length} of ${spec.maxRefs} added`}
+                onClick={() => fileRef.current?.click()}
               >
-                {data.refSrc ? (
-                  <>
-                    <Image
-                      src={data.refSrc}
-                      alt=""
-                      fill
-                      unoptimized
-                      className="object-cover"
-                    />
-                    <span className="absolute inset-0 grid place-items-center bg-black/0 text-white opacity-0 transition-opacity hover:bg-black/50 hover:opacity-100">
-                      <X className="size-3" />
-                    </span>
-                  </>
-                ) : (
-                  <ImagePlus className="size-3.5" />
-                )}
+                <ImagePlus className="size-3.5" />
               </Button>
             ) : null}
 
@@ -598,7 +634,7 @@ export default function NodeInspector({
                 align="end"
                 side="top"
                 sideOffset={10}
-                className="w-[340px] rounded-[18px] border-border/90 bg-popover p-2 shadow-[0_24px_64px_-28px_rgba(0,0,0,.4),0_8px_24px_-16px_rgba(0,0,0,.25)]"
+                className="w-[368px] rounded-[18px] border-border/90 bg-popover p-2 shadow-[0_24px_64px_-28px_rgba(0,0,0,.4),0_8px_24px_-16px_rgba(0,0,0,.25)]"
                 onWheel={(event) => event.stopPropagation()}
                 onPointerDown={(event) => event.stopPropagation()}
               >
@@ -628,7 +664,7 @@ export default function NodeInspector({
                         aria-selected={selected}
                         disabled={!available}
                         className={cn(
-                          'flex w-full items-center gap-3 rounded-[12px] px-2.5 py-2.5 text-left outline-none transition-colors hover:bg-muted focus-visible:!outline-none focus-visible:ring-1 focus-visible:ring-foreground/20',
+                          'grid w-full grid-cols-[36px_minmax(0,1fr)_16px] items-center gap-3 rounded-[12px] px-2.5 py-2.5 text-left outline-none transition-colors hover:bg-muted focus-visible:!outline-none focus-visible:ring-1 focus-visible:ring-foreground/20',
                           selected && 'bg-muted',
                           !available &&
                             'cursor-not-allowed opacity-40 hover:bg-transparent',
@@ -641,11 +677,11 @@ export default function NodeInspector({
                       >
                         <ModelMark model={model} />
                         <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-2">
+                          <span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
                             <span className="truncate text-[12px] font-semibold">
                               {model.label}
                             </span>
-                            <span className="rounded-[5px] border border-border bg-background px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+                            <span className="whitespace-nowrap rounded-[5px] border border-border bg-background px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
                               {model.tag}
                             </span>
                           </span>
@@ -688,18 +724,25 @@ export default function NodeInspector({
           ref={fileRef}
           type="file"
           accept="image/*"
+          multiple={spec.maxRefs > 1}
           hidden
-          onChange={(event) => {
-            const file = event.target.files?.[0];
+          onChange={async (event) => {
+            const files = Array.from(event.target.files || []);
             event.target.value = '';
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = () => {
-              if (typeof reader.result === 'string') {
-                onRefChange(reader.result);
-              }
-            };
-            reader.readAsDataURL(file);
+            const remaining = Math.max(0, spec.maxRefs - references.length);
+            if (!files.length || !remaining) return;
+            try {
+              const next = await Promise.all(
+                files.slice(0, remaining).map(readReferenceImage),
+              );
+              onRefsChange(
+                [...references, ...next].filter(
+                  (src, index, all) => all.indexOf(src) === index,
+                ),
+              );
+            } catch {
+              // Keep the composer usable when an individual file cannot be read.
+            }
           }}
         />
       ) : null}

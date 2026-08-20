@@ -299,7 +299,9 @@ export function NodeOverlays({
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
       <AnimatePresence>
-        {selected && selected.data.status !== 'generating' ? (
+        {selected &&
+        selected.data.status !== 'generating' &&
+        selected.data.status !== 'uploading' ? (
           <motion.div
             key={selected.id}
             ref={surfaceRef}
@@ -329,8 +331,11 @@ export function NodeOverlays({
                 onAspectChange={(aspect) =>
                   setNodeAspect(selected.id, aspect)
                 }
-                onRefChange={(src) =>
-                  updateNodeData(selected.id, { refSrc: src })
+                onRefsChange={(srcs) =>
+                  updateNodeData(selected.id, {
+                    refSrc: srcs[0],
+                    refSrcs: srcs,
+                  })
                 }
                 onSubmit={() => void generateNode(selected.id)}
               />
