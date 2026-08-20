@@ -14,6 +14,12 @@ export function StudioCanvasNode({ node }: { node: StudioNode }) {
   const locked = node.data.locked === true;
   const visible = node.data.hidden !== true;
   const data = { nodeId: node.id };
+  const contentKey = [
+    node.data.status,
+    node.data.src ? 'asset' : 'empty',
+    node.data.posterSrc ? 'poster' : 'no-poster',
+    node.data.error ? 'error' : 'ok',
+  ].join(':');
 
   return (
     <Frame
@@ -39,7 +45,7 @@ export function StudioCanvasNode({ node }: { node: StudioNode }) {
       resizeChildren
       data={data}
     >
-      <NodeBody node={node} data={data} />
+      <NodeBody key={contentKey} node={node} data={data} />
     </Frame>
   );
 }
