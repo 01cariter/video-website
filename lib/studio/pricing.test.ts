@@ -6,6 +6,7 @@ import {
   STUDIO_PRICING_VERSION,
   estimateStudioAgentInputTokenReserve,
   estimateStudioCredits,
+  estimateStudioInterruptedAgentStepUsage,
   estimateStudioLanguageUpstreamUsdMicros,
   expectedStudioCreditsStatus,
   normalizeStudioRuntimeConfig,
@@ -193,6 +194,16 @@ test('reserves the bounded Agent context across every tool-loop step', () => {
       hasSkills: true,
     }),
     1_608_000,
+  );
+});
+
+test('bounds a partially streamed aborted Agent step without charging all steps', () => {
+  assert.deepEqual(
+    estimateStudioInterruptedAgentStepUsage({
+      reservedInputTokens: 768_000,
+      streamedOutputBytes: 9_000,
+    }),
+    { inputTokens: 96_000, outputTokens: 2_048 },
   );
 });
 

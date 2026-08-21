@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  memo,
   useEffect,
   useRef,
   useState,
@@ -13,10 +14,10 @@ import {
   Check,
   FileText,
   ImageIcon,
-  LoaderCircle,
   Plus,
   Search,
   Sparkles,
+  Square,
   Video,
   X,
 } from 'lucide-react';
@@ -53,7 +54,8 @@ import {
   studioSkillById,
   type StudioSkillId,
 } from '@/lib/studio/skills/catalog';
-import { useStudioCanvas } from './studio-context';
+import type { StudioAgentAttachment } from '@/lib/studio/agent-context';
+import type { StudioNodeKind } from '@/lib/studio/types';
 
 interface AgentPanelProps {
   open: boolean;
@@ -62,8 +64,18 @@ interface AgentPanelProps {
   messages: UIMessage[];
   status: 'submitted' | 'streaming' | 'ready' | 'error';
   error?: Error | undefined;
-  onSend: (text: string, skillIds: StudioSkillId[]) => void;
-  draftRequest?: { id: number; text: string } | null;
+  onSend: (
+    text: string,
+    skillIds: StudioSkillId[],
+    attachmentIds: string[],
+  ) => boolean;
+  onStop: () => void;
+  onAddNode: (kind: StudioNodeKind) => void;
+  draftRequest?: {
+    id: number;
+    text: string;
+    attachments: StudioAgentAttachment[];
+  } | null;
 }
 
 const SKILL_LIST_ID = 'studio-agent-skill-list';
@@ -80,6 +92,7 @@ function textOf(message: UIMessage) {
 function toolLabel(type: string) {
   if (type.includes('readSkillResource')) return 'Read Skill';
   if (type.includes('addCanvasNode')) return 'Add canvas node';
+  if (type.includes('createCanvasVariant')) return 'Create canvas variant';
   if (type.includes('updateCanvasNode')) return 'Update canvas node';
   if (type.includes('removeCanvasNodes')) return 'Remove canvas nodes';
   if (type.includes('Image')) return 'Add image node';
@@ -89,7 +102,7 @@ function toolLabel(type: string) {
   return type.replace(/^tool-/, '');
 }
 
-export default function AgentPanel({
+function AgentPanel({
   open,
   onClose,
   title,
@@ -97,18 +110,21 @@ export default function AgentPanel({
   status,
   error,
   onSend,
+  onStop,
+  onAddNode,
   draftRequest,
 }: AgentPanelProps) {
-  const { addNode } = useStudioCanvas();
   const [inputState, setInputState] = useState<{
     draftId: number | null;
     value: string;
-  }>({ draftId: null, value: '' });
+    attachments: StudioAgentAttachment[];
+  }>({ draftId: null, value: '', attachments: [] });
   const [selectedSkillIds, setSelectedSkillIds] = useState<StudioSkillId[]>([]);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [skillQuery, setSkillQuery] = useState('');
   const [activeSkillIndex, setActiveSkillIndex] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
+  const shouldAutoScroll = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const reduceMotion = Boolean(useReducedMotion());
   const busy = status === 'submitted' || status === 'streaming';
@@ -118,6 +134,10 @@ export default function AgentPanel({
     draftRequest && inputState.draftId !== activeDraftId
       ? draftRequest.text
       : inputState.value;
+  const activeAttachments =
+    draftRequest && inputState.draftId !== activeDraftId
+      ? draftRequest.attachments
+      : inputState.attachments;
   const activeMention = input.match(/(^|\s)[@/]([\w-]*)$/u);
   const selectedSkills = selectedSkillIds.map(studioSkillById);
   const normalizedSkillQuery = skillQuery.trim().toLowerCase();
@@ -126,10 +146,14 @@ export default function AgentPanel({
       .toLowerCase()
       .includes(normalizedSkillQuery),
   );
-  const canSend = input.trim().length > 0 && status === 'ready';
+  const canSend = input.trim().length > 0 && !busy;
 
   const setInput = (value: string) => {
-    setInputState({ draftId: activeDraftId, value });
+    setInputState({
+      draftId: activeDraftId,
+      value,
+      attachments: activeAttachments,
+    });
     const mention = value.match(/(^|\s)[@/]([\w-]*)$/u);
     if (mention) {
       setSkillQuery(mention[2]);
@@ -143,8 +167,12 @@ export default function AgentPanel({
 
   useEffect(() => {
     const el = scroller.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    if (!el || (!shouldAutoScroll.current && status !== 'submitted')) return;
+    const frame = window.requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+      shouldAutoScroll.current = true;
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [messages, status]);
 
   useEffect(() => {
@@ -171,11 +199,30 @@ export default function AgentPanel({
 
   function submit() {
     if (!canSend) return;
-    onSend(input.trim(), selectedSkillIds);
-    setInput('');
+    const sent = onSend(
+      input.trim(),
+      selectedSkillIds,
+      activeAttachments.map((attachment) => attachment.id),
+    );
+    if (!sent) return;
+    setInputState({
+      draftId: activeDraftId,
+      value: '',
+      attachments: [],
+    });
     setSelectedSkillIds([]);
     setSkillPickerOpen(false);
     setSkillQuery('');
+  }
+
+  function removeAttachment(id: string) {
+    setInputState({
+      draftId: activeDraftId,
+      value: input,
+      attachments: activeAttachments.filter(
+        (attachment) => attachment.id !== id,
+      ),
+    });
   }
 
   function selectSkill(skillId: StudioSkillId) {
@@ -265,7 +312,16 @@ export default function AgentPanel({
         </Button>
       </header>
 
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        ref={scroller}
+        className="min-h-0 flex-1 overflow-y-auto"
+        onScroll={(event) => {
+          const element = event.currentTarget;
+          shouldAutoScroll.current =
+            element.scrollHeight - element.scrollTop - element.clientHeight <
+            56;
+        }}
+      >
         {empty ? (
           <motion.div
             className="flex h-full flex-col items-center justify-center px-5 pb-8 text-center"
@@ -397,7 +453,7 @@ export default function AgentPanel({
             ) : null}
             {error ? (
               <p className="text-[12.5px] font-semibold text-destructive">
-                Generation stopped. Try again.
+                {error.message || 'Generation stopped. Try again.'}
               </p>
             ) : null}
           </div>
@@ -411,6 +467,47 @@ export default function AgentPanel({
           submit();
         }}
       >
+        {activeAttachments.length ? (
+          <div
+            className="flex gap-1.5 overflow-x-auto px-0.5 pt-0.5"
+            aria-label="Attached canvas items"
+          >
+            {activeAttachments.map((attachment) => (
+              <div
+                key={attachment.id}
+                className="flex min-w-0 max-w-[220px] shrink-0 items-center gap-1.5 rounded-lg bg-[var(--studio-raised)] p-1 pr-1.5 shadow-[inset_0_0_0_1px_var(--line)]"
+              >
+                <span className="grid size-7 shrink-0 place-items-center overflow-hidden rounded-md bg-muted text-muted-foreground">
+                  {attachment.previewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={attachment.previewUrl}
+                      alt=""
+                      className="size-full object-cover"
+                    />
+                  ) : attachment.kind === 'video' ? (
+                    <Video className="size-3.5" />
+                  ) : attachment.kind === 'text' ? (
+                    <FileText className="size-3.5" />
+                  ) : (
+                    <ImageIcon className="size-3.5" />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[10.5px] font-semibold">
+                  {attachment.title}
+                </span>
+                <button
+                  type="button"
+                  className="grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  onClick={() => removeAttachment(attachment.id)}
+                  aria-label={`Remove ${attachment.title}`}
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
         {selectedSkills.length ? (
           <div
             className="flex flex-wrap gap-1 px-0.5 pt-0.5"
@@ -472,13 +569,13 @@ export default function AgentPanel({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" side="top">
-                <DropdownMenuItem onSelect={() => addNode('image')}>
+                <DropdownMenuItem onSelect={() => onAddNode('image')}>
                   <ImageIcon /> Image generator
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => addNode('video')}>
+                <DropdownMenuItem onSelect={() => onAddNode('video')}>
                   <Video /> Video generator
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => addNode('text')}>
+                <DropdownMenuItem onSelect={() => onAddNode('text')}>
                   <FileText /> Text
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -608,10 +705,10 @@ export default function AgentPanel({
               type="button"
               size="icon-sm"
               className="rounded-lg"
-              disabled
-              aria-label="Agent working"
+              onClick={onStop}
+              aria-label="Stop Agent"
             >
-              <LoaderCircle className="size-3 animate-spin" />
+              <Square className="size-3 fill-current" />
             </Button>
           ) : (
             <Button
@@ -629,3 +726,5 @@ export default function AgentPanel({
     </motion.aside>
   );
 }
+
+export default memo(AgentPanel);

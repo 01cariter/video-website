@@ -275,11 +275,10 @@ export function NodeOverlays({
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [quickEditNodeId, setQuickEditNodeId] = useState<string | null>(null);
   const reduceMotion = Boolean(useReducedMotion());
+  const hasSelectionRect = Boolean(selectionRect);
   const hasPublishable = selectedNodes.some((node) =>
     Boolean(node.data.src || node.data.text?.trim()),
   );
-  const propertiesVisible = Boolean(selected && selected.type !== 'section');
-
   useLayoutEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
@@ -289,7 +288,7 @@ export function NodeOverlays({
     const observer = new ResizeObserver(update);
     observer.observe(stage);
     return () => observer.disconnect();
-  }, [selectionRect, stageRef]);
+  }, [hasSelectionRect, stageRef]);
 
   useLayoutEffect(() => {
     const surface = surfaceRef.current;
@@ -318,12 +317,10 @@ export function NodeOverlays({
     }
     const padding = 10;
     const minLeft = Math.max(padding, leftInset + padding);
-    const maxLeft =
-      stageSize.width -
-      rightInset -
-      (propertiesVisible ? 328 : 0) -
-      surfaceSize.width -
-      padding;
+    const maxLeft = Math.max(
+      minLeft,
+      stageSize.width - rightInset - surfaceSize.width - padding,
+    );
     const generator =
       selected && selected.type !== 'section' && isGeneratorNode(selected.data);
     const preferredTop = generator
@@ -346,7 +343,6 @@ export function NodeOverlays({
     leftInset,
     multiSelected,
     rightInset,
-    propertiesVisible,
     selected,
     selectionRect,
     stageSize.height,

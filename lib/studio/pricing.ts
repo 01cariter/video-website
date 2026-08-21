@@ -376,6 +376,27 @@ export function estimateStudioAgentInputTokenReserve(input: {
   );
 }
 
+/** Conservative one-step usage when a user aborts after receiving partial
+ * output but the provider has not emitted final usage yet. UTF-8 bytes are an
+ * upper bound for token count, while the input reserve is averaged across the
+ * bounded tool loop to avoid charging the full multi-step authorization. */
+export function estimateStudioInterruptedAgentStepUsage(input: {
+  reservedInputTokens: number;
+  streamedOutputBytes: number;
+}) {
+  return {
+    inputTokens: Math.ceil(
+      Math.max(0, input.reservedInputTokens) / STUDIO_AGENT_MAX_STEPS,
+    ),
+    outputTokens: safeInteger(
+      input.streamedOutputBytes,
+      0,
+      0,
+      STUDIO_AGENT_MAX_OUTPUT_TOKENS_PER_STEP,
+    ),
+  };
+}
+
 /** Produces the exact deterministic pre-authorization used by Studio routes.
  * Provider usage that is unknowable before execution is conservatively
  * reserved by the model-specific helpers. */

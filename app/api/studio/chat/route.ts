@@ -1,4 +1,9 @@
-import { consumeStream, createAgentUIStreamResponse, type UIMessage } from 'ai';
+import {
+  consumeStream,
+  createAgentUIStreamResponse,
+  safeValidateUIMessages,
+  type UIMessage,
+} from 'ai';
 import { getStudioRuntimeConfig } from '@/flags';
 import {
   beginMeteredRequest,
@@ -6,13 +11,16 @@ import {
   failMeteredRequest,
   InsufficientCreditsError,
 } from '@/lib/credits/server';
+import { createStudioAgent } from '@/lib/studio/agent';
 import {
-  createStudioAgent,
-  type CanvasNodeSnapshot,
-} from '@/lib/studio/agent';
+  markSelectedCanvasNodes,
+  normalizeCanvasNodeSnapshots,
+  normalizeSelectedCanvasIds,
+} from '@/lib/studio/agent-context';
 import { friendlyAiError } from '@/lib/studio/errors';
 import {
   estimateStudioAgentInputTokenReserve,
+  estimateStudioInterruptedAgentStepUsage,
   estimateStudioLanguageUpstreamUsdMicros,
   isStudioModelEnabled,
   priceStudioUsage,
@@ -39,15 +47,44 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => null)) as {
-    messages?: UIMessage[];
-    canvas?: CanvasNodeSnapshot[];
+    messages?: unknown;
+    canvas?: unknown;
+    selectedIds?: unknown;
     requestId?: string;
     projectId?: string;
     skillIds?: unknown;
   } | null;
-  const messages = Array.isArray(body?.messages) ? body.messages : [];
-  const canvas = Array.isArray(body?.canvas) ? body.canvas.slice(0, 200) : [];
-  const requestId = body?.requestId?.trim();
+  const validatedMessages = await safeValidateUIMessages<UIMessage>({
+    messages: body?.messages,
+  });
+  if (!validatedMessages.success) {
+    return Response.json(
+      { error: 'Invalid Agent message history.' },
+      { status: 400 },
+    );
+  }
+  const messages = validatedMessages.data;
+  const normalizedCanvas = normalizeCanvasNodeSnapshots(body?.canvas);
+  if (!normalizedCanvas) {
+    return Response.json({ error: 'Invalid canvas context.' }, { status: 400 });
+  }
+  const selectedIds = normalizeSelectedCanvasIds(
+    body?.selectedIds,
+    normalizedCanvas,
+  );
+  if (!selectedIds) {
+    return Response.json(
+      { error: 'Invalid canvas selection.' },
+      { status: 400 },
+    );
+  }
+  const canvas = markSelectedCanvasNodes(normalizedCanvas, selectedIds);
+  const requestId =
+    typeof body?.requestId === 'string' ? body.requestId.trim() : '';
+  const projectId =
+    typeof body?.projectId === 'string' && body.projectId.length <= 160
+      ? body.projectId
+      : undefined;
   if (!requestId || requestId.length > 160) {
     return Response.json({ error: 'Invalid request identifier.' }, { status: 400 });
   }
@@ -64,7 +101,7 @@ export async function POST(request: Request) {
   }
   const skillIds = normalizeStudioSkillIds(body?.skillIds);
   const requestInputBytes = new TextEncoder().encode(
-    JSON.stringify({ messages, canvas, skillIds }),
+    JSON.stringify({ messages, canvas, selectedIds, skillIds }),
   ).length;
   if (requestInputBytes > 64_000) {
     return Response.json(
@@ -81,14 +118,15 @@ export async function POST(request: Request) {
         { status: 503 },
       );
     }
+    const reservedInputTokens = estimateStudioAgentInputTokenReserve({
+      requestBytes: requestInputBytes,
+      hasSkills: skillIds.length > 0,
+    });
     const reservedQuote = priceStudioUsage({
       modelId: runtime.agentModelId,
       upstreamUsdMicros: estimateStudioLanguageUpstreamUsdMicros({
         modelId: runtime.agentModelId,
-        inputTokens: estimateStudioAgentInputTokenReserve({
-          requestBytes: requestInputBytes,
-          hasSkills: skillIds.length > 0,
-        }),
+        inputTokens: reservedInputTokens,
         outputTokens:
           STUDIO_AGENT_MAX_STEPS *
           STUDIO_AGENT_MAX_OUTPUT_TOKENS_PER_STEP,
@@ -100,7 +138,7 @@ export async function POST(request: Request) {
       requestId,
       kind: 'agent',
       cost: reservedQuote.credits,
-      projectId: body?.projectId,
+      projectId,
     });
     if (!metered.accepted) {
       return Response.json(
@@ -116,6 +154,9 @@ export async function POST(request: Request) {
     }
 
     let streamFailed = false;
+    const outputEncoder = new TextEncoder();
+    let streamedOutputBytes = 0;
+    let outputBytesAtLastCompletedStep = 0;
     type StepUsage = {
       inputTokens: number | undefined;
       outputTokens: number | undefined;
@@ -133,11 +174,26 @@ export async function POST(request: Request) {
     const settleAgentRequest = (
       completed: boolean,
       error?: string,
+      includeInterruptedStep = false,
     ): Promise<unknown> => {
       if (settlement) return settlement;
-      const steps = agentUsage?.steps.length
+      const finishedSteps = agentUsage?.steps.length
         ? agentUsage.steps
         : completedStepUsage;
+      const interruptedOutputBytes = Math.max(
+        0,
+        streamedOutputBytes - outputBytesAtLastCompletedStep,
+      );
+      const steps =
+        includeInterruptedStep && interruptedOutputBytes > 0
+          ? [
+              ...finishedSteps,
+              estimateStudioInterruptedAgentStepUsage({
+                reservedInputTokens,
+                streamedOutputBytes: interruptedOutputBytes,
+              }),
+            ]
+          : finishedSteps;
       if (!steps.length) {
         settlement = failMeteredRequest({
           userId: user.id,
@@ -203,18 +259,39 @@ export async function POST(request: Request) {
     return createAgentUIStreamResponse({
       agent,
       uiMessages: withoutSkillResourceHistory(messages),
+      abortSignal: request.signal,
+      experimental_transform: () =>
+        new TransformStream({
+          transform(chunk, controller) {
+            const delta =
+              chunk.type === 'text-delta' || chunk.type === 'reasoning-delta'
+                ? chunk.text
+                : chunk.type === 'tool-input-delta'
+                  ? chunk.delta
+                  : '';
+            if (delta) {
+              streamedOutputBytes += outputEncoder.encode(delta).length;
+            }
+            controller.enqueue(chunk);
+          },
+        }),
       consumeSseStream: ({ stream }) => consumeStream({ stream }),
       onStepEnd: (step) => {
         completedStepUsage.push({
           inputTokens: step.usage.inputTokens,
           outputTokens: step.usage.outputTokens,
         });
+        outputBytesAtLastCompletedStep = streamedOutputBytes;
       },
       onError: (error) => {
         streamFailed = true;
         const message =
           error instanceof Error ? error.message : 'Agent request failed.';
-        void settleAgentRequest(false, message).catch(() => undefined);
+        void settleAgentRequest(
+          false,
+          message,
+          request.signal.aborted,
+        ).catch(() => undefined);
         return friendlyAiError(message);
       },
       onEnd: async ({ isAborted, finishReason }) => {
@@ -222,6 +299,7 @@ export async function POST(request: Request) {
           await settleAgentRequest(
             false,
             isAborted ? 'Agent request aborted' : 'Agent stream failed',
+            isAborted,
           );
           return;
         }

@@ -32,21 +32,111 @@ export interface StudioPlacementOptions {
   ignoreIds?: string[];
 }
 
+interface StudioPlacementIndex {
+  cellSize: number;
+  cells: Map<string, StudioNode[]>;
+  all: StudioNode[];
+  oversized: StudioNode[];
+}
+
+const MAX_PLACEMENT_INDEX_CELLS = 256;
+
+function placementCellRange(start: number, end: number, cellSize: number) {
+  return {
+    first: Math.floor(start / cellSize),
+    last: Math.floor(end / cellSize),
+  };
+}
+
+function placementCellCount(
+  columns: ReturnType<typeof placementCellRange>,
+  rows: ReturnType<typeof placementCellRange>,
+) {
+  const columnCount = columns.last - columns.first + 1;
+  const rowCount = rows.last - rows.first + 1;
+  if (
+    !Number.isFinite(columnCount) ||
+    !Number.isFinite(rowCount) ||
+    columnCount < 1 ||
+    rowCount < 1
+  ) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return columnCount * rowCount;
+}
+
+function createPlacementIndex(blockers: StudioNode[]): StudioPlacementIndex {
+  const cellSize = 384;
+  const cells = new Map<string, StudioNode[]>();
+  const oversized: StudioNode[] = [];
+  for (const node of blockers) {
+    const columns = placementCellRange(node.x, node.x + node.width, cellSize);
+    const rows = placementCellRange(node.y, node.y + node.height, cellSize);
+    if (
+      placementCellCount(columns, rows) > MAX_PLACEMENT_INDEX_CELLS
+    ) {
+      oversized.push(node);
+      continue;
+    }
+    for (let column = columns.first; column <= columns.last; column += 1) {
+      for (let row = rows.first; row <= rows.last; row += 1) {
+        const key = `${column}:${row}`;
+        const bucket = cells.get(key);
+        if (bucket) bucket.push(node);
+        else cells.set(key, [node]);
+      }
+    }
+  }
+  return { cellSize, cells, all: blockers, oversized };
+}
+
+function nearbyPlacementBlockers(
+  index: StudioPlacementIndex,
+  position: { x: number; y: number },
+  size: { width: number; height: number },
+  gap: number,
+) {
+  const columns = placementCellRange(
+    position.x - gap,
+    position.x + size.width + gap,
+    index.cellSize,
+  );
+  const rows = placementCellRange(
+    position.y - gap,
+    position.y + size.height + gap,
+    index.cellSize,
+  );
+  if (placementCellCount(columns, rows) > MAX_PLACEMENT_INDEX_CELLS) {
+    return new Set(index.all);
+  }
+  const nearby = new Set(index.oversized);
+  for (let column = columns.first; column <= columns.last; column += 1) {
+    for (let row = rows.first; row <= rows.last; row += 1) {
+      for (const node of index.cells.get(`${column}:${row}`) ?? []) {
+        nearby.add(node);
+      }
+    }
+  }
+  return nearby;
+}
+
 function placementIsOpen(
-  blockers: StudioNode[],
+  index: StudioPlacementIndex,
   position: { x: number; y: number },
   size: { width: number; height: number },
   gap: number,
 ) {
   const right = position.x + size.width;
   const bottom = position.y + size.height;
-  return blockers.every(
-    (node) =>
+  for (const node of nearbyPlacementBlockers(index, position, size, gap)) {
+    const separated =
       right + gap <= node.x ||
       position.x >= node.x + node.width + gap ||
       bottom + gap <= node.y ||
-      position.y >= node.y + node.height + gap,
-  );
+      position.y >= node.y + node.height + gap;
+    if (!separated) return false;
+  }
+  return true;
 }
 
 /** Finds the nearest predictable grid position that does not cover content. */
@@ -64,7 +154,8 @@ export function findOpenStudioPosition(
       node.type !== 'section' &&
       node.data.hidden !== true,
   );
-  if (placementIsOpen(blockers, preferred, size, gap)) return preferred;
+  const placementIndex = createPlacementIndex(blockers);
+  if (placementIsOpen(placementIndex, preferred, size, gap)) return preferred;
 
   const nearby = [...blockers].sort((a, b) => {
     const distanceA = Math.hypot(a.x - preferred.x, a.y - preferred.y);
@@ -79,7 +170,7 @@ export function findOpenStudioPosition(
       { x: preferred.x, y: blocker.y - size.height - gap },
     ];
     const open = candidates.find((candidate) =>
-      placementIsOpen(blockers, candidate, size, gap),
+      placementIsOpen(placementIndex, candidate, size, gap),
     );
     if (open) return open;
   }
@@ -96,28 +187,28 @@ export function findOpenStudioPosition(
         x: preferred.x + ring * stepX,
         y: preferred.y + row * stepY,
       };
-      if (placementIsOpen(blockers, right, size, gap)) return right;
+      if (placementIsOpen(placementIndex, right, size, gap)) return right;
     }
     for (const column of offsets) {
       const bottom = {
         x: preferred.x + column * stepX,
         y: preferred.y + ring * stepY,
       };
-      if (placementIsOpen(blockers, bottom, size, gap)) return bottom;
+      if (placementIsOpen(placementIndex, bottom, size, gap)) return bottom;
     }
     for (const row of offsets) {
       const left = {
         x: preferred.x - ring * stepX,
         y: preferred.y + row * stepY,
       };
-      if (placementIsOpen(blockers, left, size, gap)) return left;
+      if (placementIsOpen(placementIndex, left, size, gap)) return left;
     }
     for (const column of offsets) {
       const top = {
         x: preferred.x + column * stepX,
         y: preferred.y - ring * stepY,
       };
-      if (placementIsOpen(blockers, top, size, gap)) return top;
+      if (placementIsOpen(placementIndex, top, size, gap)) return top;
     }
   }
 

@@ -11,6 +11,7 @@ interface StudioProjectRow extends Record<string, unknown> {
     nodes?: unknown[];
     viewport?: Record<string, unknown>;
     revision?: number;
+    appliedToolCallIds?: unknown[];
   };
   messages: unknown[];
   cover_urls: string[];
@@ -25,11 +26,19 @@ function iso(value: string | Date) {
 }
 
 function fromRow(row: StudioProjectRow): StudioProject {
+  const storedToolReceipts = Array.isArray(row.document?.appliedToolCallIds)
+    ? {
+        appliedToolCallIds: row.document.appliedToolCallIds.filter(
+          (id): id is string => typeof id === 'string',
+        ),
+      }
+    : {};
   const project = normalizeStudioProject({
     id: row.id,
     title: row.title,
     nodes: row.document?.nodes || [],
     viewport: row.document?.viewport || undefined,
+    ...storedToolReceipts,
     messages: Array.isArray(row.messages) ? row.messages : [],
     coverUrls: Array.isArray(row.cover_urls) ? row.cover_urls : [],
     pendingPrompt: row.pending_prompt || undefined,
@@ -47,6 +56,7 @@ function projectDocument(project: StudioProject) {
     nodes: project.nodes,
     viewport: project.viewport,
     revision: project.revision,
+    appliedToolCallIds: project.appliedToolCallIds || [],
   });
 }
 

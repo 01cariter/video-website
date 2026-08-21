@@ -66,6 +66,7 @@ export interface StudioProject {
   nodes: StudioNode[];
   viewport: StudioViewport;
   messages: UIMessage[];
+  appliedToolCallIds?: string[];
   pendingPrompt?: string;
   pendingGeneration?: StudioPendingGeneration;
   agentOpen: boolean;
@@ -84,6 +85,7 @@ export type StudioCanvasOperation =
   | {
       type: 'add_node';
       node: {
+        id?: string;
         kind: StudioNodeKind;
         prompt?: string;
         title?: string;
@@ -95,6 +97,13 @@ export type StudioCanvasOperation =
       };
     }
   | {
+      type: 'create_variant';
+      id?: string;
+      sourceId: string;
+      prompt?: string;
+      title?: string;
+    }
+  | {
       type: 'update_node';
       id: string;
       patch: Partial<StudioNodeData> & {
@@ -104,8 +113,7 @@ export type StudioCanvasOperation =
         height?: number;
         rotation?: number;
       };
-    }
-  | { type: 'remove_nodes'; ids: string[] };
+    };
 
 export const STUDIO_STORAGE_KEY = 'snackd-studio-v2';
 export const STUDIO_LEGACY_STORAGE_KEY = 'snackd-studio-v1';

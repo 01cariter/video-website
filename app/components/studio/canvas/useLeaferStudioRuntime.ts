@@ -107,13 +107,15 @@ function selectAppNodes(app: App | null, ids: string[]) {
   const editor = app?.editor as
     | { target?: IUI | IUI[]; select?: (targets: IUI[]) => void }
     | undefined;
-  if (!editor) return;
+  if (!editor) return 0;
   const targets = ids
     .map((id) => app?.findId(id))
     .filter((target): target is IUI => Boolean(target));
+  if (ids.length && targets.length !== ids.length) return targets.length;
   editor.select?.(targets);
   editor.target =
     targets.length === 1 ? targets[0] : targets.length > 1 ? targets : undefined;
+  return targets.length;
 }
 
 function eventCanvasPoint(event: {
@@ -345,6 +347,7 @@ export function useLeaferStudioRuntime({
   const [zoom, setZoom] = useState(initialViewport.zoom);
   const [selectionRect, setSelectionRect] =
     useState<StudioFloatingRect | null>(null);
+  const revealedSelectionKeyRef = useRef('');
   const [sectionDraftRect, setSectionDraftRect] =
     useState<StudioFloatingRect | null>(null);
   const [snapGuides, setSnapGuides] = useState<StudioCanvasSnapGuide[]>([]);
@@ -749,28 +752,48 @@ export function useLeaferStudioRuntime({
   );
 
   const readNodesFromFrames = useCallback(
-    () =>
-      nodesRef.current.map((node) => {
+    () => {
+      let changed = false;
+      const current = nodesRef.current;
+      const next = current.map((node) => {
         const frame = findFrame(node.id);
         if (!frame) return node;
         const minimumSize =
           node.type === 'image' || node.type === 'video' ? 1 : 40;
+        const x = Math.round(Number(frame.x ?? node.x));
+        const y = Math.round(Number(frame.y ?? node.y));
+        const width = Math.max(
+          minimumSize,
+          Math.round(Number(frame.width ?? node.width)),
+        );
+        const height = Math.max(
+          minimumSize,
+          Math.round(Number(frame.height ?? node.height)),
+        );
+        const zIndex = Math.round(Number(frame.zIndex ?? node.zIndex));
+        if (
+          x === node.x &&
+          y === node.y &&
+          width === node.width &&
+          height === node.height &&
+          node.rotation === 0 &&
+          zIndex === node.zIndex
+        ) {
+          return node;
+        }
+        changed = true;
         return {
           ...node,
-          x: Math.round(Number(frame.x ?? node.x)),
-          y: Math.round(Number(frame.y ?? node.y)),
-          width: Math.max(
-            minimumSize,
-            Math.round(Number(frame.width ?? node.width)),
-          ),
-          height: Math.max(
-            minimumSize,
-            Math.round(Number(frame.height ?? node.height)),
-          ),
+          x,
+          y,
+          width,
+          height,
           rotation: 0,
-          zIndex: Math.round(Number(frame.zIndex ?? node.zIndex)),
+          zIndex,
         };
-      }),
+      });
+      return changed ? next : current;
+    },
     [findFrame],
   );
 
@@ -1118,9 +1141,77 @@ export function useLeaferStudioRuntime({
   ]);
 
   useEffect(() => {
-    selectAppNodes(appRef.current, selectedIds);
-    scheduleSelectionRect();
+    let frame = 0;
+    let attempts = 0;
+    const syncSelection = () => {
+      const selectedCount = selectAppNodes(appRef.current, selectedIds);
+      scheduleSelectionRect();
+      attempts += 1;
+      if (selectedCount < selectedIds.length && attempts < 12) {
+        frame = window.requestAnimationFrame(syncSelection);
+      }
+    };
+    syncSelection();
+    return () => window.cancelAnimationFrame(frame);
   }, [scheduleSelectionRect, selectedIds]);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    const tree = appRef.current?.tree as unknown as
+      | {
+          x?: number;
+          y?: number;
+          forceUpdate?: () => void;
+        }
+      | undefined;
+    if (!host || !tree || !selectionRect || !selectedIds.length) {
+      if (!selectedIds.length) revealedSelectionKeyRef.current = '';
+      return;
+    }
+    const key = `${selectedIds.join(':')}:${insetLeft}:${insetRight}:${insetTop}:${insetBottom}:${host.clientWidth}:${host.clientHeight}`;
+    if (revealedSelectionKeyRef.current === key) return;
+    revealedSelectionKeyRef.current = key;
+
+    const margin = 18;
+    const safeLeft = insetLeft + margin;
+    const safeRight = host.clientWidth - insetRight - margin;
+    const safeTop = insetTop + margin;
+    const safeBottom = host.clientHeight - insetBottom - margin;
+    let deltaX = 0;
+    let deltaY = 0;
+    if (selectionRect.width <= safeRight - safeLeft) {
+      if (selectionRect.right > safeRight) {
+        deltaX = safeRight - selectionRect.right;
+      } else if (selectionRect.left < safeLeft) {
+        deltaX = safeLeft - selectionRect.left;
+      }
+    }
+    if (selectionRect.height <= safeBottom - safeTop) {
+      if (selectionRect.bottom > safeBottom) {
+        deltaY = safeBottom - selectionRect.bottom;
+      } else if (selectionRect.top < safeTop) {
+        deltaY = safeTop - selectionRect.top;
+      }
+    }
+    if (!deltaX && !deltaY) return;
+    const viewport = currentViewport();
+    setTreeViewport(tree, {
+      x: viewport.x + deltaX,
+      y: viewport.y + deltaY,
+      zoom: viewport.zoom,
+    });
+    callbacksRef.current.onViewportChange(currentViewport());
+    scheduleSelectionRect();
+  }, [
+    currentViewport,
+    insetBottom,
+    insetLeft,
+    insetRight,
+    insetTop,
+    scheduleSelectionRect,
+    selectedIds,
+    selectionRect,
+  ]);
 
   useEffect(() => {
     const app = appRef.current as (App & {

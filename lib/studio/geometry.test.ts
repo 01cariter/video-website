@@ -154,4 +154,45 @@ describe('studio collision-free placement', () => {
       { x: 0, y: 0 },
     );
   });
+
+  it('keeps collision checks correct across negative spatial-grid cells', () => {
+    const blockers = [
+      node('n1', -410, -220),
+      node('n2', -282, -220),
+      node('n3', -154, -220),
+    ];
+    const position = findOpenStudioPosition(
+      blockers,
+      { x: -410, y: -220 },
+      { width: 100, height: 80 },
+    );
+
+    assert.deepEqual(position, { x: -410, y: -112 });
+  });
+
+  it('falls back safely for an oversized legacy blocker', () => {
+    const oversized = {
+      ...node('n1', 0, 0),
+      width: 1_000_000_000,
+      height: 1_000_000_000,
+    };
+    const position = findOpenStudioPosition(
+      [oversized],
+      { x: 0, y: 0 },
+      { width: 100, height: 80 },
+    );
+
+    assert.deepEqual(position, { x: 1_000_000_028, y: 0 });
+  });
+
+  it('falls back safely for an oversized placement query', () => {
+    const position = findOpenStudioPosition(
+      [node('n1', 0, 0)],
+      { x: 0, y: 0 },
+      { width: 1_000_000_000, height: 1_000_000_000 },
+    );
+
+    assert.equal(Number.isFinite(position.x), true);
+    assert.equal(Number.isFinite(position.y), true);
+  });
 });

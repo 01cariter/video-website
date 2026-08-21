@@ -21,6 +21,7 @@ interface StudioStoreFile {
 }
 
 const DEFAULT_VIEWPORT: StudioViewport = { x: 72, y: 64, zoom: 1 };
+const MAX_STUDIO_NODE_DIMENSION = 10_000;
 
 function nowIso() {
   return new Date().toISOString();
@@ -60,6 +61,29 @@ function normalizeNodeTitle(kind: StudioNodeKind, value: unknown) {
         : 'Text';
 }
 
+function legacyAppliedToolCallIds(messages: unknown[]) {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (!message || typeof message !== 'object') continue;
+    const parts = (message as { parts?: unknown }).parts;
+    if (!Array.isArray(parts)) continue;
+    for (const part of parts) {
+      if (!part || typeof part !== 'object') continue;
+      const value = part as Record<string, unknown>;
+      if (
+        typeof value.type === 'string' &&
+        value.type.startsWith('tool-') &&
+        value.state === 'output-available' &&
+        typeof value.toolCallId === 'string' &&
+        value.toolCallId.length <= 160
+      ) {
+        ids.add(value.toolCallId);
+      }
+    }
+  }
+  return [...ids];
+}
+
 function normalizeNode(value: unknown, index: number): StudioNode | null {
   if (!value || typeof value !== 'object') return null;
   const legacy = value as Record<string, unknown>;
@@ -78,8 +102,14 @@ function normalizeNode(value: unknown, index: number): StudioNode | null {
       ? (legacy.style as { width?: number; height?: number })
       : undefined;
   const defaults = sizeForAspect(String(rawData.aspect || '1:1'), kind);
-  const width = numberValue(legacy.width ?? style?.width, defaults.width);
-  const height = numberValue(legacy.height ?? style?.height, defaults.height);
+  const width = Math.min(
+    MAX_STUDIO_NODE_DIMENSION,
+    Math.max(1, numberValue(legacy.width ?? style?.width, defaults.width)),
+  );
+  const height = Math.min(
+    MAX_STUDIO_NODE_DIMENSION,
+    Math.max(1, numberValue(legacy.height ?? style?.height, defaults.height)),
+  );
   const normalizedStatus =
     rawData.status === 'generating' || rawData.status === 'uploading'
       ? 'idle'
@@ -145,6 +175,11 @@ export function normalizeStudioProject(value: unknown): StudioProject | null {
               : undefined,
         }
       : undefined;
+  const messages = Array.isArray(project.messages) ? project.messages : [];
+  const hasExplicitToolReceipts = Object.prototype.hasOwnProperty.call(
+    project,
+    'appliedToolCallIds',
+  );
   return {
     id: String(project.id),
     title: normalizeProjectTitle(project.title),
@@ -164,7 +199,18 @@ export function normalizeStudioProject(value: unknown): StudioProject | null {
       y: numberValue(project.viewport?.y, DEFAULT_VIEWPORT.y),
       zoom: Math.min(4, Math.max(0.1, numberValue(project.viewport?.zoom, 1))),
     },
-    messages: Array.isArray(project.messages) ? project.messages : [],
+    messages,
+    appliedToolCallIds: Array.isArray(project.appliedToolCallIds)
+      ? [
+          ...new Set(
+            project.appliedToolCallIds.filter(
+              (id): id is string => typeof id === 'string' && id.length <= 160,
+            ),
+          ),
+        ]
+      : hasExplicitToolReceipts
+        ? []
+        : legacyAppliedToolCallIds(messages),
     pendingPrompt:
       typeof project.pendingPrompt === 'string' ? project.pendingPrompt : undefined,
     pendingGeneration,
@@ -331,6 +377,7 @@ function seedStore(): StudioStoreFile {
         ],
         viewport: DEFAULT_VIEWPORT,
         messages: [],
+        appliedToolCallIds: [],
         agentOpen: true,
       },
     ],
@@ -521,6 +568,7 @@ export function createStudioProjectDraft(input: {
     nodes,
     viewport: DEFAULT_VIEWPORT,
     messages: [],
+    appliedToolCallIds: [],
     pendingPrompt:
       input.blank || input.pendingGeneration ? undefined : pendingPrompt,
     pendingGeneration: input.blank ? undefined : input.pendingGeneration,

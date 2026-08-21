@@ -196,6 +196,8 @@
 }
 .studio-canvas-surface{
   background-color:var(--studio-canvas,#f4f5f2);
+  background-image:radial-gradient(circle,var(--studio-dot) 1px,transparent 1px);
+  background-size:24px 24px;
 }
 [data-theme="dark"] .studio-canvas-surface{
   background-color:var(--studio-canvas,#121512);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import type { IUI } from 'leafer-editor';
 import { Frame, Img, Rect, Txt } from '@/lib/leafer-react';
 import type { StudioNode } from '@/lib/studio/types';
@@ -10,7 +10,11 @@ const NODE_STROKE = '#d9cec1';
 const NODE_RADIUS = 6;
 const NODE_EDIT_CONFIG = { rotateable: false };
 
-export function StudioCanvasNode({ node }: { node: StudioNode }) {
+export const StudioCanvasNode = memo(function StudioCanvasNode({
+  node,
+}: {
+  node: StudioNode;
+}) {
   const locked = node.data.locked === true;
   const visible = node.data.hidden !== true;
   const data = { nodeId: node.id };
@@ -48,7 +52,7 @@ export function StudioCanvasNode({ node }: { node: StudioNode }) {
       <NodeBody key={contentKey} node={node} data={data} />
     </Frame>
   );
-}
+});
 
 function NodeBody({
   node,

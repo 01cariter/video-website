@@ -15,18 +15,13 @@ import {
   readStudioSkillResource,
   studioSkillSelectionText,
 } from './skills/server';
+import {
+  canvasInventoryText,
+  studioAgentOperationId,
+  type CanvasNodeSnapshot,
+} from './agent-context';
 
-export interface CanvasNodeSnapshot {
-  id: string;
-  kind: string;
-  title: string;
-  prompt: string;
-  status: string;
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-}
+export type { CanvasNodeSnapshot } from './agent-context';
 
 interface StudioAgentUsageEvent {
   usage: {
@@ -37,16 +32,6 @@ interface StudioAgentUsageEvent {
     inputTokens: number | undefined;
     outputTokens: number | undefined;
   }>;
-}
-
-function inventoryText(canvas: CanvasNodeSnapshot[]) {
-  if (!canvas.length) return 'The canvas is currently empty.';
-  return canvas
-    .map(
-      (node) =>
-        `- ${node.kind} ${node.id} "${node.title}" — status: ${node.status}; position: ${Math.round(node.x || 0)},${Math.round(node.y || 0)}; prompt: ${node.prompt || '(empty)'}`,
-    )
-    .join('\n');
 }
 
 const kindSchema = z.enum(['image', 'video', 'text', 'section']);
@@ -134,10 +119,10 @@ export function createStudioAgent(
 Working rules:
 - Respond concisely in the language used by the user. Understand the creative goal, then use tools to edit the canvas directly.
 - Use image for image requests; video for shots, motion, or clips; text for copy or storyboard cards; and section to organize related content.
-- Every new generation node must include a production-ready prompt. The client starts generation automatically.
+- Every new generation node must include a production-ready prompt. Agent-created generators stay as drafts so the user can review the model, parameters, and visible credit quote before pressing Generate.
 - Prefer one to three essential nodes per step. A series may use more, but group and arrange them clearly with sections.
-- Prefer updateCanvasNode when revising existing work. Do not create redundant nodes.
-- Confirm that the user clearly intends deletion before removing anything.
+- Use createCanvasVariant when revising generated work. Preserve the source node and inherit its model, parameters, and references. Use updateCanvasNode only for names, text, and layout.
+- You cannot delete canvas content. If deletion is requested, tell the user to confirm it with the canvas toolbar.
 - Respect the enabled model policy enforced by the generation endpoints. AI Gateway account credits are not a per-model capability.
 - Node coordinates use canvas world space. Common sizes: image 300×300, video 300×169, text 280×176, section 720×460.
 - After tools finish, summarize what changed in one or two sentences without exposing internal tool details.
@@ -157,12 +142,12 @@ ${activeSkillText}
 }
 
 Current canvas:
-${inventoryText(canvas)}`,
+${canvasInventoryText(canvas)}`,
     tools: {
       ...skillTools,
       addCanvasNode: tool({
         description:
-          'Add image, video, text, or section nodes to the infinite canvas. Image, video, and text nodes generate automatically when a prompt is provided.',
+          'Add an image, video, text, or section draft to the infinite canvas. Generator drafts do not spend credits until the user reviews the quote and presses Generate.',
         inputSchema: z.object({
           kind: kindSchema,
           title: z.string().max(80).optional(),
@@ -173,18 +158,43 @@ ${inventoryText(canvas)}`,
           width: z.number().min(80).max(2400).optional(),
           height: z.number().min(60).max(2400).optional(),
         }),
-        execute: async (node) => ({
-          operation: { type: 'add_node' as const, node },
+        execute: async (node, { toolCallId }) => ({
+          operation: {
+            type: 'add_node' as const,
+            node: { ...node, id: studioAgentOperationId(toolCallId) },
+          },
         }),
+      }),
+      createCanvasVariant: tool({
+        description:
+          'Create a new draft beside an existing generated node while preserving the original and inheriting its model, parameters, and references.',
+        inputSchema: z.object({
+          sourceId: z.string().max(160),
+          prompt: z.string().max(4000).optional(),
+          title: z.string().max(80).optional(),
+        }),
+        execute: async ({ sourceId, prompt, title }, { toolCallId }) => {
+          if (!canvas.some((node) => node.id === sourceId)) {
+            return { error: 'The source canvas node no longer exists.' };
+          }
+          return {
+            operation: {
+              type: 'create_variant' as const,
+              id: studioAgentOperationId(toolCallId),
+              sourceId,
+              prompt,
+              title,
+            },
+          };
+        },
       }),
       updateCanvasNode: tool({
         description:
-          'Update the content, generation prompt, position, or size of an existing node.',
+          'Update the name, text, position, or size of an existing node. Use createCanvasVariant for a new generation direction.',
         inputSchema: z.object({
           id: z.string(),
           patch: z.object({
             title: z.string().max(80).optional(),
-            prompt: z.string().max(4000).optional(),
             text: z.string().max(8000).optional(),
             x: z.number().optional(),
             y: z.number().optional(),
@@ -192,19 +202,14 @@ ${inventoryText(canvas)}`,
             height: z.number().min(40).max(2400).optional(),
           }),
         }),
-        execute: async ({ id, patch }) => ({
-          operation: { type: 'update_node' as const, id, patch },
-        }),
-      }),
-      removeCanvasNodes: tool({
-        description:
-          'Remove one or more canvas nodes only when the user clearly asks for deletion.',
-        inputSchema: z.object({
-          ids: z.array(z.string()).min(1).max(50),
-        }),
-        execute: async ({ ids }) => ({
-          operation: { type: 'remove_nodes' as const, ids },
-        }),
+        execute: async ({ id, patch }) => {
+          if (!canvas.some((node) => node.id === id)) {
+            return { error: 'The canvas node no longer exists.' };
+          }
+          return {
+            operation: { type: 'update_node' as const, id, patch },
+          };
+        },
       }),
     },
     onEnd: onEnd

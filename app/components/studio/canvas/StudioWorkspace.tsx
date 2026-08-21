@@ -2,7 +2,13 @@
 
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
-import { LoaderCircle } from 'lucide-react';
+import {
+  FileText,
+  ImageIcon,
+  LoaderCircle,
+  Sparkles,
+  Video as VideoIcon,
+} from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import type { DragEvent as ReactDragEvent } from 'react';
@@ -31,6 +37,13 @@ import {
   type StudioRuntimeConfig,
 } from '@/lib/studio/pricing';
 import {
+  applyNewStudioToolOutputs,
+  attachmentsForStudioNodes,
+  buildCanvasNodeSnapshots,
+  MAX_SELECTED_CANVAS_NODES,
+  type StudioAgentAttachment,
+} from '@/lib/studio/agent-context';
+import {
   getStudioProjectSynced,
   saveStudioProjectSynced,
 } from '@/lib/studio/client-store';
@@ -47,6 +60,7 @@ import { cn } from '@/lib/utils';
 import ComposeModal from '@/app/components/compose/ComposeModal';
 import type { ComposeDraft } from '@/app/components/compose/types';
 import { PUBLISHED_EVENT } from '@/app/components/shell/compose-events';
+import { Button } from '@/app/components/ui/button';
 import AgentPanel from './AgentPanel';
 import CanvasContextMenu from './CanvasContextMenu';
 import {
@@ -66,6 +80,7 @@ import {
   useLeaferStudioRuntime,
   type StudioCanvasMenuState,
 } from './useLeaferStudioRuntime';
+import type { StudioSkillId } from '@/lib/studio/skills/catalog';
 
 interface StudioWorkspaceProps {
   projectId: string;
@@ -74,6 +89,7 @@ interface StudioWorkspaceProps {
 }
 
 interface AddNodeExtras {
+  id?: string;
   prompt?: string;
   title?: string;
   text?: string;
@@ -86,6 +102,7 @@ interface AddNodeExtras {
 interface AgentDraftRequest {
   id: number;
   text: string;
+  attachments: StudioAgentAttachment[];
 }
 
 const STUDIO_DROP_FILE_LIMIT = 8;
@@ -209,57 +226,6 @@ function composeDraftFromNodes(project: StudioProject, nodes: StudioNode[]) {
   } satisfies ComposeDraft;
 }
 
-function operationFromOutput(output: unknown): StudioCanvasOperation[] {
-  if (!output || typeof output !== 'object') return [];
-  const value = output as Record<string, unknown>;
-  if (Array.isArray(value.operations)) {
-    return value.operations.filter(Boolean) as StudioCanvasOperation[];
-  }
-  if (value.operation && typeof value.operation === 'object') {
-    return [value.operation as StudioCanvasOperation];
-  }
-  if (typeof value.type === 'string') {
-    return [value as unknown as StudioCanvasOperation];
-  }
-  if (
-    typeof value.kind === 'string' &&
-    ['image', 'video', 'text', 'section'].includes(value.kind)
-  ) {
-    return [
-      {
-        type: 'add_node',
-        node: {
-          kind: value.kind as StudioNodeKind,
-          prompt: typeof value.prompt === 'string' ? value.prompt : undefined,
-          title: typeof value.title === 'string' ? value.title : undefined,
-          text: typeof value.text === 'string' ? value.text : undefined,
-        },
-      },
-    ];
-  }
-  return [];
-}
-
-function applyProcessedTools(
-  messages: UIMessage[],
-  seen: Set<string>,
-  applyOperation: (operation: StudioCanvasOperation) => void,
-) {
-  for (const message of messages) {
-    for (const part of message.parts) {
-      if (!part.type.startsWith('tool-')) continue;
-      const id = 'toolCallId' in part ? String(part.toolCallId) : '';
-      const state = 'state' in part ? String(part.state) : '';
-      if (!id || seen.has(id) || state !== 'output-available') continue;
-      seen.add(id);
-      const output = 'output' in part ? part.output : null;
-      for (const operation of operationFromOutput(output)) {
-        applyOperation(operation);
-      }
-    }
-  }
-}
-
 function CanvasWorkspace({
   project,
   runtimeConfig,
@@ -274,7 +240,8 @@ function CanvasWorkspace({
   const localPersistTimer = useRef<number | null>(null);
   const generating = useRef(new Set<string>());
   const videoPosterProbes = useRef(new Set<string>());
-  const seenTools = useRef(new Set<string>());
+  const seenTools = useRef(new Set(project.appliedToolCallIds ?? []));
+  const appliedToolCallIdsRef = useRef(project.appliedToolCallIds ?? []);
   const [nodes, setNodes] = useState(project.nodes);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [viewport, setViewport] = useState(project.viewport);
@@ -293,6 +260,8 @@ function CanvasWorkspace({
   const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
   const [agentDraftRequest, setAgentDraftRequest] =
     useState<AgentDraftRequest | null>(null);
+  const [agentContextError, setAgentContextError] = useState<Error>();
+  const [toolReceiptRevision, setToolReceiptRevision] = useState(0);
   const nodesRef = useRef(nodes);
   const viewportRef = useRef(viewport);
   const titleRef = useRef(title);
@@ -585,6 +554,10 @@ function CanvasWorkspace({
 
   const addNode = useCallback(
     (kind: StudioNodeKind, extras: AddNodeExtras = {}) => {
+      if (extras.id) {
+        const existing = nodesRef.current.find((node) => node.id === extras.id);
+        if (existing) return existing.id;
+      }
       const center = canvasCenterRef.current();
       const preferred = extras.position || {
         x: center.x - (extras.size?.width ?? 280) / 2,
@@ -617,6 +590,7 @@ function CanvasWorkspace({
       const top = Math.max(0, ...nodesRef.current.map((item) => item.zIndex));
       const next: StudioNode = {
         ...node,
+        id: extras.id || node.id,
         ...position,
         ...size,
         zIndex: kind === 'section' ? -1 : top + 1,
@@ -696,12 +670,18 @@ function CanvasWorkspace({
     (
       id: string,
       operation: 'reuse' | 'regenerate' | 'quick-edit',
-      options: { prompt?: string; autoGenerate?: boolean } = {},
+      options: {
+        id?: string;
+        prompt?: string;
+        title?: string;
+        autoGenerate?: boolean;
+      } = {},
     ) => {
       const source = nodesRef.current.find((node) => node.id === id);
-      if (!source || source.type === 'section') return;
+      if (!source || source.type === 'section') return undefined;
       const prompt = options.prompt ?? source.data.prompt;
       const data = derivedNodeData(source, operation, prompt);
+      if (options.title) data.title = options.title;
       if (operation === 'quick-edit') {
         const reference =
           source.type === 'image'
@@ -714,7 +694,8 @@ function CanvasWorkspace({
           data.refSrcs = [reference];
         }
       }
-      addNode(source.type, {
+      return addNode(source.type, {
+        id: options.id,
         data,
         position: {
           x: source.x + source.width + 28,
@@ -775,22 +756,19 @@ function CanvasWorkspace({
 
   const sendNodesToAgent = useCallback(
     (ids: string[]) => {
-      const byId = new Map(nodesRef.current.map((node) => [node.id, node]));
-      const selected = ids
-        .map((id) => byId.get(id))
-        .filter((node): node is StudioNode => Boolean(node));
-      if (!selected.length) return;
-      const references = selected
-        .map(
-          (node) =>
-            `- ${node.data.title || node.type} [${node.id}]${
-              node.data.prompt ? `\n  Prompt: ${node.data.prompt}` : ''
-            }`,
-        )
-        .join('\n');
+      const contextIds = ids.slice(0, MAX_SELECTED_CANVAS_NODES);
+      const attachments = attachmentsForStudioNodes(
+        nodesRef.current,
+        contextIds,
+      );
+      if (!attachments.length) return;
       setAgentDraftRequest({
         id: Date.now(),
-        text: `Use these selected canvas items as context:\n${references}\n\nHelp me refine or continue this direction.`,
+        text:
+          ids.length > MAX_SELECTED_CANVAS_NODES
+            ? `Help me refine or continue the first ${MAX_SELECTED_CANVAS_NODES} of ${ids.length} selected canvas items.`
+            : 'Help me refine or continue these selected canvas items.',
+        attachments,
       });
       updateAgentOpen(true);
     },
@@ -839,6 +817,12 @@ function CanvasWorkspace({
     [updateNodeData],
   );
 
+  const propertiesPanelInset = useMemo(() => {
+    if (selectedIds.length !== 1) return 0;
+    const selected = nodes.find((node) => node.id === selectedIds[0]);
+    return selected && selected.type !== 'section' ? 340 : 0;
+  }, [nodes, selectedIds]);
+
   const {
     hostRef,
     runtimeReady,
@@ -878,6 +862,7 @@ function CanvasWorkspace({
     onContextMenu: setMenu,
     viewportInsets: {
       left: layersOpen ? 264 : 0,
+      right: propertiesPanelInset,
     },
   });
   useEffect(() => {
@@ -1032,7 +1017,14 @@ function CanvasWorkspace({
   const applyOperation = useCallback(
     (operation: StudioCanvasOperation) => {
       if (operation.type === 'add_node') {
+        if (
+          operation.node.id &&
+          nodesRef.current.some((node) => node.id === operation.node.id)
+        ) {
+          return;
+        }
         addNode(operation.node.kind, {
+          id: operation.node.id,
           prompt: operation.node.prompt,
           title: operation.node.title,
           text: operation.node.text,
@@ -1049,12 +1041,28 @@ function CanvasWorkspace({
                   height: operation.node.height,
                 }
               : undefined,
+          autoGenerate: false,
         });
         return;
       }
-      if (operation.type === 'remove_nodes') {
-        removeNodes(operation.ids);
+      if (operation.type === 'create_variant') {
+        if (
+          operation.id &&
+          nodesRef.current.some((node) => node.id === operation.id)
+        ) {
+          return;
+        }
+        const createdId = createDerivedNode(operation.sourceId, 'reuse', {
+          id: operation.id,
+          prompt: operation.prompt,
+          title: operation.title,
+          autoGenerate: false,
+        });
+        if (!createdId) throw new Error('Variant source no longer exists.');
         return;
+      }
+      if (!nodesRef.current.some((node) => node.id === operation.id)) {
+        throw new Error('Canvas node no longer exists.');
       }
       const {
         x,
@@ -1074,7 +1082,23 @@ function CanvasWorkspace({
         updateNodeData(operation.id, dataPatch);
       }
     },
-    [addNode, removeNodes, updateNode, updateNodeData],
+    [addNode, createDerivedNode, updateNode, updateNodeData],
+  );
+
+  const applyPendingToolOutputs = useCallback(
+    (nextMessages: UIMessage[]) => {
+      const applied = applyNewStudioToolOutputs(
+        nextMessages,
+        seenTools.current,
+        applyOperation,
+      );
+      if (!applied.length) return;
+      appliedToolCallIdsRef.current = [
+        ...new Set([...appliedToolCallIdsRef.current, ...applied]),
+      ];
+      setToolReceiptRevision((revision) => revision + 1);
+    },
+    [applyOperation],
   );
 
   const buildProjectSnapshot = useCallback(
@@ -1084,6 +1108,7 @@ function CanvasWorkspace({
       nodes: nodesRef.current,
       viewport: viewportRef.current,
       messages: nextMessages,
+      appliedToolCallIds: appliedToolCallIdsRef.current,
       pendingPrompt: undefined,
       pendingGeneration: undefined,
       agentOpen: agentOpenRef.current,
@@ -1092,55 +1117,77 @@ function CanvasWorkspace({
   );
 
   const transport = useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: '/api/studio/chat',
-        body: () => ({
-          requestId: requestId(),
-          projectId: project.id,
-          canvas: nodes.map((node) => ({
-            id: node.id,
-            kind: node.type,
-            title: node.data.title,
-            prompt: node.data.prompt,
-            status: node.data.status,
-            x: node.x,
-            y: node.y,
-            width: node.width,
-            height: node.height,
-          })),
-          selectedIds,
-        }),
-      }),
-    [nodes, project.id, selectedIds],
+    () => new DefaultChatTransport({ api: '/api/studio/chat' }),
+    [],
   );
 
-  const { messages, sendMessage, status, error } = useChat({
+  const { messages, sendMessage, stop, status, error } = useChat({
     id: project.id,
     transport,
     messages: project.messages,
+    throttle: 50,
     onFinish: ({ messages: next }) => {
       window.dispatchEvent(new Event('credits:changed'));
       messagesRef.current = next;
+      applyPendingToolOutputs(next);
       void saveStudioProjectSynced(buildProjectSnapshot(next));
     },
   });
 
   useEffect(() => {
     messagesRef.current = messages;
-    applyProcessedTools(messages, seenTools.current, applyOperation);
-  }, [applyOperation, messages]);
+    applyPendingToolOutputs(messages);
+  }, [applyPendingToolOutputs, messages]);
+
+  const sendAgentMessage = useCallback(
+    (
+      text: string,
+      skillIds: StudioSkillId[] = [],
+      requestedIds: readonly string[] = selectedIds,
+    ) => {
+      const existing = new Set(nodesRef.current.map((node) => node.id));
+      if (requestedIds.some((id) => !existing.has(id))) {
+        setAgentContextError(
+          new Error(
+            'One or more attached canvas items no longer exist. Remove them or attach the current selection again.',
+          ),
+        );
+        return false;
+      }
+      const contextIds = requestedIds
+        .filter(
+          (id, index) =>
+            existing.has(id) && requestedIds.indexOf(id) === index,
+        )
+        .slice(0, MAX_SELECTED_CANVAS_NODES);
+      setAgentContextError(undefined);
+      void sendMessage(
+        { text },
+        {
+          body: {
+            requestId: requestId(),
+            projectId: project.id,
+            canvas: buildCanvasNodeSnapshots(nodesRef.current, contextIds),
+            selectedIds: contextIds,
+            skillIds,
+          },
+        },
+      );
+      return true;
+    },
+    [project.id, selectedIds, sendMessage],
+  );
 
   useEffect(() => {
     if (localPersistTimer.current) {
       window.clearTimeout(localPersistTimer.current);
     }
     localPersistTimer.current = window.setTimeout(() => {
-      saveStudioProject(buildProjectSnapshot(messages));
+      saveStudioProject(buildProjectSnapshot());
     }, 60);
     if (persistTimer.current) window.clearTimeout(persistTimer.current);
     persistTimer.current = window.setTimeout(() => {
-      void saveStudioProjectSynced(buildProjectSnapshot(messages));
+      void saveStudioProjectSynced(buildProjectSnapshot());
     }, 420);
     return () => {
       if (localPersistTimer.current) {
@@ -1148,7 +1195,14 @@ function CanvasWorkspace({
       }
       if (persistTimer.current) window.clearTimeout(persistTimer.current);
     };
-  }, [agentOpen, buildProjectSnapshot, messages, nodes, title, viewport]);
+  }, [
+    agentOpen,
+    buildProjectSnapshot,
+    nodes,
+    title,
+    toolReceiptRevision,
+    viewport,
+  ]);
 
   useEffect(() => {
     const flushLocal = () => {
@@ -1189,19 +1243,21 @@ function CanvasWorkspace({
     )
       ? 'video'
       : 'image';
-    addNode(kind, {
+    const nodeId = addNode(kind, {
       prompt: project.pendingPrompt,
       title: project.title,
     });
-    void sendMessage({
-      text: `Develop this creative direction and continue organizing the canvas: ${project.pendingPrompt}`,
-    });
+    void sendAgentMessage(
+      `Develop this creative direction and continue organizing the canvas: ${project.pendingPrompt}`,
+      [],
+      [nodeId],
+    );
   }, [
     addNode,
     project.pendingGeneration,
     project.pendingPrompt,
     project.title,
-    sendMessage,
+    sendAgentMessage,
   ]);
 
   useEffect(() => {
@@ -1300,6 +1356,47 @@ function CanvasWorkspace({
     ],
   );
 
+  const renderedNodes = useMemo(
+    () =>
+      nodes
+        .toSorted((a, b) => a.zIndex - b.zIndex)
+        .map((node) => <StudioCanvasNode key={node.id} node={node} />),
+    [nodes],
+  );
+  const uploadingNodes = useMemo(
+    () => nodes.filter((node) => node.data.status === 'uploading'),
+    [nodes],
+  );
+  const closeAgent = useCallback(() => updateAgentOpen(false), [updateAgentOpen]);
+  const addAgentNode = useCallback(
+    (kind: StudioNodeKind) => addNode(kind),
+    [addNode],
+  );
+  const sendFromAgentPanel = useCallback(
+    (text: string, skillIds: StudioSkillId[], attachmentIds: string[]) => {
+      const contextIds = agentDraftRequest
+        ? attachmentIds
+        : attachmentIds.length
+          ? attachmentIds
+          : selectedIds;
+      const sent = sendAgentMessage(text, skillIds, contextIds);
+      if (sent) {
+        setAgentDraftRequest(null);
+      }
+      return sent;
+    },
+    [agentDraftRequest, selectedIds, sendAgentMessage],
+  );
+  const stopAgent = useCallback(() => void stop(), [stop]);
+  const askAgentFromEmptyCanvas = useCallback(() => {
+    setAgentDraftRequest({
+      id: Date.now(),
+      text: 'Help me plan the first steps for this canvas.',
+      attachments: [],
+    });
+    updateAgentOpen(true);
+  }, [updateAgentOpen]);
+
   return (
     <StudioCanvasProvider value={api}>
       <div className="studio-shell relative flex h-dvh overflow-hidden bg-background text-foreground">
@@ -1342,17 +1439,72 @@ function CanvasWorkspace({
                   isSnap={false}
                   onCreated={handleLayerCreated}
                 >
-                  {[...nodes]
-                    .sort((a, b) => a.zIndex - b.zIndex)
-                    .map((node) => (
-                      <StudioCanvasNode key={node.id} node={node} />
-                    ))}
+                  {renderedNodes}
                 </Frame>
               </Leafer>
 
-              {nodes
-                .filter((node) => node.data.status === 'uploading')
-                .map((node) => {
+              {runtimeReady && nodes.length === 0 ? (
+                <section
+                  data-testid="studio-empty-state"
+                  className="pointer-events-none absolute inset-0 z-10 grid place-items-center p-6"
+                  aria-label="Start building your canvas"
+                >
+                  <div className="pointer-events-auto w-full max-w-[420px] rounded-2xl border border-border bg-card/92 p-5 text-center shadow-[0_18px_60px_-40px_rgba(60,36,24,.45)] backdrop-blur-xl">
+                    <span className="mx-auto grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground">
+                      <Sparkles className="size-4" />
+                    </span>
+                    <h2 className="mt-3 text-[15px] font-semibold tracking-tight">
+                      Start building your canvas
+                    </h2>
+                    <p className="mx-auto mt-1.5 max-w-[330px] text-[12px] leading-5 text-muted-foreground">
+                      Ask the Agent to plan the first step, or add a generator
+                      and shape the direction yourself.
+                    </p>
+                    <div className="mt-4 flex flex-wrap justify-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 rounded-lg"
+                        onClick={askAgentFromEmptyCanvas}
+                      >
+                        <Sparkles /> Ask Agent
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 rounded-lg"
+                        onClick={() => addNode('image')}
+                      >
+                        <ImageIcon /> Image
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 rounded-lg"
+                        onClick={() => addNode('video')}
+                      >
+                        <VideoIcon /> Video
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 rounded-lg"
+                        onClick={() => addNode('text')}
+                      >
+                        <FileText /> Text
+                      </Button>
+                    </div>
+                    <p className="mt-3 text-[10.5px] text-muted-foreground/80">
+                      Tip: double-click anywhere to add an image generator.
+                    </p>
+                  </div>
+                </section>
+              ) : null}
+
+              {uploadingNodes.map((node) => {
                   const iconSize = Math.max(10, 18 * viewport.zoom);
                   return (
                     <LoaderCircle
@@ -1453,26 +1605,34 @@ function CanvasWorkspace({
                 open={layersOpen}
                 onClose={() => setLayersOpen(false)}
               />
-              <div className="pointer-events-none absolute right-3 bottom-3 z-20">
+              <div
+                className="pointer-events-none absolute bottom-3 z-20"
+                style={{ right: 12 + propertiesPanelInset }}
+              >
                 <div className="pointer-events-auto">
                   <ZoomControl />
                 </div>
               </div>
-              <NodeOverlays stageRef={hostRef} selectionRect={selectionRect} />
+              <NodeOverlays
+                stageRef={hostRef}
+                selectionRect={selectionRect}
+                leftInset={layersOpen ? 264 : 0}
+                rightInset={propertiesPanelInset}
+              />
               <CanvasContextMenu menu={menu} onClose={() => setMenu(null)} />
             </div>
           </div>
         </div>
         <AgentPanel
           open={agentOpen}
-          onClose={() => updateAgentOpen(false)}
+          onClose={closeAgent}
           title={title}
           messages={messages}
           status={status}
-          error={error}
-          onSend={(text, skillIds) =>
-            void sendMessage({ text }, { body: { skillIds } })
-          }
+          error={agentContextError ?? error}
+          onSend={sendFromAgentPanel}
+          onStop={stopAgent}
+          onAddNode={addAgentNode}
           draftRequest={agentDraftRequest}
         />
         <AnimatePresence>
@@ -1539,6 +1699,7 @@ export default function StudioWorkspace({
 
   return (
     <CanvasWorkspace
+      key={project.id}
       project={project}
       runtimeConfig={runtimeConfig}
       user={user}
