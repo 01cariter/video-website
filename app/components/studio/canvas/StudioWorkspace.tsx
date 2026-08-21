@@ -183,7 +183,7 @@ function composeDraftFromNodes(project: StudioProject, nodes: StudioNode[]) {
     if (
       (node.type !== 'image' && node.type !== 'video') ||
       typeof node.data.src !== 'string' ||
-      !/^https:\/\//i.test(node.data.src)
+      !node.data.src.trim()
     ) {
       return [];
     }
@@ -674,6 +674,7 @@ function CanvasWorkspace({
         id?: string;
         prompt?: string;
         title?: string;
+        data?: Partial<StudioNodeData>;
         autoGenerate?: boolean;
       } = {},
     ) => {
@@ -694,6 +695,7 @@ function CanvasWorkspace({
           data.refSrcs = [reference];
         }
       }
+      if (options.data) Object.assign(data, options.data);
       return addNode(source.type, {
         id: options.id,
         data,
@@ -718,7 +720,11 @@ function CanvasWorkspace({
   );
 
   const quickEditNode = useCallback(
-    (id: string, instruction: string) => {
+    (
+      id: string,
+      instruction: string,
+      overrides?: Partial<StudioNodeData>,
+    ) => {
       const source = nodesRef.current.find((node) => node.id === id);
       const trimmed = instruction.trim();
       if (!source || !trimmed) return;
@@ -728,6 +734,7 @@ function CanvasWorkspace({
           : trimmed;
       createDerivedNode(id, 'quick-edit', {
         prompt,
+        data: overrides,
         autoGenerate: true,
       });
     },
@@ -1263,7 +1270,13 @@ function CanvasWorkspace({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, [contenteditable="true"]')) return;
+      if (
+        target?.closest(
+          'input, textarea, select, button, a, [contenteditable="true"], [role="button"], [role="dialog"], [role="listbox"], [role="menuitem"], [role="option"]',
+        )
+      ) {
+        return;
+      }
       const command = event.metaKey || event.ctrlKey;
       if (command && event.key.toLowerCase() === 'd') {
         event.preventDefault();
@@ -1414,7 +1427,20 @@ function CanvasWorkspace({
             <div
               ref={hostRef}
               data-testid="studio-leafer-canvas"
-              className="studio-canvas-surface absolute inset-0 overflow-hidden"
+              tabIndex={0}
+              aria-label="Canvas workspace"
+              className="studio-canvas-surface absolute inset-0 overflow-hidden focus:outline-none"
+              onPointerDown={(event) => {
+                const target = event.target as HTMLElement | null;
+                if (
+                  target?.closest(
+                    'button, a, input, textarea, select, [contenteditable="true"], [data-moodboard-floating-occluder]',
+                  )
+                ) {
+                  return;
+                }
+                event.currentTarget.focus({ preventScroll: true });
+              }}
               onDragOver={onCanvasDragOver}
               onDrop={onCanvasDrop}
             >
@@ -1447,58 +1473,54 @@ function CanvasWorkspace({
                 <section
                   data-testid="studio-empty-state"
                   className="pointer-events-none absolute inset-0 z-10 grid place-items-center p-6"
-                  aria-label="Start building your canvas"
+                  aria-label="Start creating"
                 >
-                  <div className="pointer-events-auto w-full max-w-[420px] rounded-2xl border border-border bg-card/92 p-5 text-center shadow-[0_18px_60px_-40px_rgba(60,36,24,.45)] backdrop-blur-xl">
-                    <span className="mx-auto grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground">
-                      <Sparkles className="size-4" />
-                    </span>
-                    <h2 className="mt-3 text-[15px] font-semibold tracking-tight">
-                      Start building your canvas
+                  <div className="flex max-w-[520px] flex-col items-center text-center">
+                    <h2 className="text-[16px] font-semibold tracking-[-0.02em] text-foreground/90">
+                      What do you want to make?
                     </h2>
-                    <p className="mx-auto mt-1.5 max-w-[330px] text-[12px] leading-5 text-muted-foreground">
-                      Ask the Agent to plan the first step, or add a generator
-                      and shape the direction yourself.
+                    <p className="mt-1 text-[12px] text-muted-foreground">
+                      Ask Agent, drop a file, or choose a starting point.
                     </p>
-                    <div className="mt-4 flex flex-wrap justify-center gap-2">
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5">
                       <Button
                         type="button"
                         size="sm"
-                        className="h-9 rounded-lg"
+                        className="pointer-events-auto h-9 rounded-full px-3.5 shadow-none"
                         onClick={askAgentFromEmptyCanvas}
                       >
                         <Sparkles /> Ask Agent
                       </Button>
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        className="h-9 rounded-lg"
+                        className="pointer-events-auto h-9 rounded-full px-3 text-muted-foreground hover:text-foreground"
                         onClick={() => addNode('image')}
                       >
                         <ImageIcon /> Image
                       </Button>
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        className="h-9 rounded-lg"
+                        className="pointer-events-auto h-9 rounded-full px-3 text-muted-foreground hover:text-foreground"
                         onClick={() => addNode('video')}
                       >
                         <VideoIcon /> Video
                       </Button>
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        className="h-9 rounded-lg"
+                        className="pointer-events-auto h-9 rounded-full px-3 text-muted-foreground hover:text-foreground"
                         onClick={() => addNode('text')}
                       >
                         <FileText /> Text
                       </Button>
                     </div>
-                    <p className="mt-3 text-[10.5px] text-muted-foreground/80">
-                      Tip: double-click anywhere to add an image generator.
+                    <p className="mt-3 text-[10.5px] text-muted-foreground/65">
+                      Double-click anywhere for an image generator
                     </p>
                   </div>
                 </section>

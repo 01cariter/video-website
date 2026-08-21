@@ -407,10 +407,6 @@ export default function StudioHome({
     return false;
   }
 
-  function openProject(id: string) {
-    router.push(`/studio/${id}`);
-  }
-
   async function createFromPrompt() {
     const text = prompt.trim();
     if (!text || !requireAccount()) return;
@@ -734,10 +730,9 @@ export default function StudioHome({
                   whileHover={reduceMotion ? undefined : { y: -3 }}
                   transition={studioSnap}
                 >
-                  <button
-                    type="button"
-                    className="flex w-full min-w-0 flex-col border-0 bg-transparent p-0 text-left text-inherit"
-                    onClick={() => openProject(project.id)}
+                  <Link
+                    href={`/studio/${project.id}`}
+                    className="flex w-full min-w-0 cursor-pointer flex-col border-0 bg-transparent p-0 text-left text-inherit"
                   >
                     <span
                       className={cn(
@@ -769,7 +764,7 @@ export default function StudioHome({
                         Updated {formatStudioDate(project.updatedAt)}
                       </small>
                     </span>
-                  </button>
+                  </Link>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button

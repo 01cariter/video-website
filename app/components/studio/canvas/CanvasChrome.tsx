@@ -35,6 +35,8 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
+  useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -47,6 +49,11 @@ import type {
   StudioNodeKind,
 } from '@/lib/studio/types';
 import { isGeneratorNode } from '@/lib/studio/geometry';
+import {
+  isStudioModelAvailable,
+  modelOptionsForKind,
+  modelSpecFor,
+} from '@/lib/studio/model-catalog';
 import { studioSnap } from '@/lib/studio/motion';
 import { cn } from '@/lib/utils';
 import { Button } from '@/app/components/ui/button';
@@ -67,6 +74,7 @@ import {
 } from '@/app/components/ui/tooltip';
 import NodeInspector from './NodeInspector';
 import NodePropertiesPanel from './NodePropertiesPanel';
+import QuickEditComposer from './QuickEditComposer';
 import { useStudioCanvas } from './studio-context';
 import type { StudioFloatingRect } from './useLeaferStudioRuntime';
 
@@ -122,6 +130,40 @@ function ToolButton({
         {shortcut ? (
           <span className="ml-1.5 text-muted-foreground">{shortcut}</span>
         ) : null}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ToolbarDivider() {
+  return <span className="mx-0.5 h-5 w-px shrink-0 bg-border/70" aria-hidden />;
+}
+
+function ContextIconButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="size-8 rounded-lg [&_svg]:size-3.5"
+          aria-label={label}
+          onClick={onClick}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={5}>
+        {label}
       </TooltipContent>
     </Tooltip>
   );
@@ -256,6 +298,7 @@ export function NodeOverlays({
     arrangeNodes,
     updateNodeData,
     setNodeAspect,
+    fitView,
     runtimeConfig,
   } = useStudioCanvas();
   const selected =
@@ -279,6 +322,74 @@ export function NodeOverlays({
   const hasPublishable = selectedNodes.some((node) =>
     Boolean(node.data.src || node.data.text?.trim()),
   );
+  const hasQuickEditModel = modelOptionsForKind('image').some(
+    (model) =>
+      isStudioModelAvailable(model, runtimeConfig) &&
+      modelSpecFor('image', model.id, runtimeConfig).maxRefs > 0,
+  );
+  const selectedId = selected?.id ?? null;
+  const selectedType = selected?.type ?? null;
+  const selectedSrc = selected?.data.src ?? '';
+  const quickEditOpen = Boolean(
+    hasQuickEditModel &&
+      selectedId === quickEditNodeId &&
+      selectedType === 'image' &&
+      selectedSrc,
+  );
+  const effectiveRightInset = quickEditOpen ? 0 : rightInset;
+  const openQuickEdit = useCallback(() => {
+    if (
+      !hasQuickEditModel ||
+      !selectedId ||
+      selectedType !== 'image' ||
+      !selectedSrc
+    ) {
+      return;
+    }
+    fitView([selectedId]);
+    window.requestAnimationFrame(() => setQuickEditNodeId(selectedId));
+  }, [fitView, hasQuickEditModel, selectedId, selectedSrc, selectedType]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() =>
+      setQuickEditNodeId(null),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectionKey]);
+
+  useEffect(() => {
+    if (
+      !hasQuickEditModel ||
+      !selectedId ||
+      selectedType !== 'image' ||
+      !selectedSrc
+    ) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key !== 'Tab' ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        quickEditOpen
+      ) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest(
+          'input, textarea, button, a, [contenteditable="true"], [role="menu"]',
+        )
+      ) {
+        return;
+      }
+      event.preventDefault();
+      openQuickEdit();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [hasQuickEditModel, openQuickEdit, quickEditOpen, selectedId, selectedSrc, selectedType]);
   useLayoutEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
@@ -304,7 +415,7 @@ export function NodeOverlays({
     const observer = new ResizeObserver(update);
     observer.observe(surface);
     return () => observer.disconnect();
-  }, [selected?.id, selected?.data.status, selectionKey]);
+  }, [quickEditOpen, selected?.id, selected?.data.status, selectionKey]);
 
   const chrome = useMemo(() => {
     if (
@@ -319,11 +430,11 @@ export function NodeOverlays({
     const minLeft = Math.max(padding, leftInset + padding);
     const maxLeft = Math.max(
       minLeft,
-      stageSize.width - rightInset - surfaceSize.width - padding,
+      stageSize.width - effectiveRightInset - surfaceSize.width - padding,
     );
     const generator =
       selected && selected.type !== 'section' && isGeneratorNode(selected.data);
-    const preferredTop = generator
+    const preferredTop = generator || quickEditOpen
       ? selectionRect.bottom + 10
       : selectionRect.top - surfaceSize.height - 10;
     return {
@@ -342,8 +453,9 @@ export function NodeOverlays({
   }, [
     leftInset,
     multiSelected,
-    rightInset,
+    effectiveRightInset,
     selected,
+    quickEditOpen,
     selectionRect,
     stageSize.height,
     stageSize.width,
@@ -365,6 +477,10 @@ export function NodeOverlays({
             style={{
               left: chrome.left,
               top: chrome.top,
+              maxWidth: Math.max(
+                240,
+                stageSize.width - leftInset - effectiveRightInset - 20,
+              ),
               visibility: chrome.visible ? 'visible' : 'hidden',
             }}
             initial={reduceMotion ? false : { opacity: 0, y: 5, scale: 0.98 }}
@@ -425,13 +541,19 @@ export function NodeOverlays({
                 }
                 onSubmit={() => void generateNode(selected.id)}
               />
+            ) : selected && quickEditOpen ? (
+              <QuickEditComposer
+                node={selected}
+                onCancel={() => setQuickEditNodeId(null)}
+              />
             ) : selected ? (
               <SelectionToolbar
                 node={selected}
                 canPublish={hasPublishable}
+                canQuickEdit={hasQuickEditModel}
                 onPublish={() => publishNodes([selected.id])}
                 onSendToAgent={() => sendNodesToAgent([selected.id])}
-                onQuickEdit={() => setQuickEditNodeId(selected.id)}
+                onQuickEdit={openQuickEdit}
                 onRegenerate={() => regenerateNode(selected.id)}
                 onDuplicate={() => duplicateNode(selected.id)}
                 onDelete={() => removeNode(selected.id)}
@@ -440,15 +562,8 @@ export function NodeOverlays({
           </motion.div>
         ) : null}
       </AnimatePresence>
-      {selected && selected.type !== 'section' ? (
-        <NodePropertiesPanel
-          key={selected.id}
-          node={selected}
-          quickEditOpen={quickEditNodeId === selected.id}
-          onQuickEditOpenChange={(open) =>
-            setQuickEditNodeId(open ? selected.id : null)
-          }
-        />
+      {selected && selected.type !== 'section' && !quickEditOpen ? (
+        <NodePropertiesPanel key={selected.id} node={selected} />
       ) : null}
     </div>
   );
@@ -488,38 +603,42 @@ function MultiSelectionToolbar({
       <div
         data-testid="studio-multi-selection-toolbar"
         data-moodboard-floating-occluder
-        className="flex max-w-[calc(100vw-20px)] items-center gap-1 overflow-x-auto rounded-xl border border-border bg-card/95 p-1 shadow-[0_10px_34px_-22px_rgba(0,0,0,.58)] backdrop-blur-xl"
+        className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-border bg-card/95 p-0.5 shadow-[0_1px_2px_rgba(0,0,0,.04)] backdrop-blur-xl"
         role="toolbar"
         aria-label={`${count} selected items`}
       >
         <span className="px-2.5 text-xs font-medium text-muted-foreground tabular-nums">
           {count} selected
         </span>
-        <span className="mx-0.5 h-6 w-px bg-border" aria-hidden />
+        <ToolbarDivider />
         {canPublish ? (
-          <Button
-            type="button"
-            size="sm"
-            className="h-10 rounded-lg"
-            onClick={onPublish}
-          >
-            <Upload /> Publish
-          </Button>
+          <>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 rounded-lg px-2 text-xs [&_svg]:size-3.5"
+              onClick={onPublish}
+            >
+              <Upload /> Publish
+            </Button>
+            <ToolbarDivider />
+          </>
         ) : null}
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="h-10 rounded-lg"
+          className="h-8 rounded-lg px-2 text-xs [&_svg]:size-3.5"
           onClick={onSendToAgent}
         >
           <Bot /> Send to Agent
         </Button>
+        <ToolbarDivider />
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="h-10 rounded-lg"
+          className="h-8 rounded-lg px-2 text-xs [&_svg]:size-3.5"
           onClick={onOrganize}
         >
           <LayoutGrid />
@@ -531,7 +650,7 @@ function MultiSelectionToolbar({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-10 rounded-lg"
+              className="h-8 rounded-lg px-2 text-xs [&_svg]:size-3.5"
             >
               <AlignHorizontalJustifyCenter />
               Align
@@ -579,13 +698,13 @@ function MultiSelectionToolbar({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <span className="mx-0.5 h-6 w-px bg-border" aria-hidden />
-        <ToolButton label="Duplicate selected" onClick={onDuplicate}>
+        <ToolbarDivider />
+        <ContextIconButton label="Duplicate selected" onClick={onDuplicate}>
           <Copy />
-        </ToolButton>
-        <ToolButton label="Delete selected" onClick={onDelete}>
+        </ContextIconButton>
+        <ContextIconButton label="Delete selected" onClick={onDelete}>
           <Trash2 />
-        </ToolButton>
+        </ContextIconButton>
       </div>
     </TooltipProvider>
   );
@@ -594,6 +713,7 @@ function MultiSelectionToolbar({
 function SelectionToolbar({
   node,
   canPublish,
+  canQuickEdit,
   onPublish,
   onSendToAgent,
   onQuickEdit,
@@ -603,6 +723,7 @@ function SelectionToolbar({
 }: {
   node: StudioNode;
   canPublish: boolean;
+  canQuickEdit: boolean;
   onPublish: () => void;
   onSendToAgent: () => void;
   onQuickEdit: () => void;
@@ -610,78 +731,79 @@ function SelectionToolbar({
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
+  const showQuickEdit =
+    canQuickEdit && node.type === 'image' && Boolean(node.data.src);
+  const canRegenerate =
+    node.type !== 'section' && Boolean(node.data.prompt.trim());
   return (
-    <div
-      data-testid="studio-selection-toolbar"
-      className="flex max-w-[calc(100vw-20px)] items-center gap-1 overflow-x-auto rounded-xl border border-border bg-card/95 p-1 shadow-[0_10px_34px_-22px_rgba(0,0,0,.58)] backdrop-blur-xl"
-      role="toolbar"
-      aria-label="Selected item actions"
-    >
-      {canPublish ? (
-        <Button
-          type="button"
-          size="sm"
-          className="h-10 rounded-lg"
-          onClick={onPublish}
-        >
-          <Upload /> Publish
-        </Button>
-      ) : null}
-      {node.type !== 'section' ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-10 rounded-lg"
-          onClick={onSendToAgent}
-        >
-          <Bot /> Send to Agent
-        </Button>
-      ) : null}
-      {node.type !== 'section' && (node.data.src || node.data.text) ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-10 rounded-lg"
-          onClick={onQuickEdit}
-        >
-          <PencilLine /> Quick Edit
-        </Button>
-      ) : null}
-      {node.type !== 'section' && node.data.prompt.trim() ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-10 rounded-lg"
-          onClick={onRegenerate}
-        >
-          <Wand2 />
-          Regenerate
-        </Button>
-      ) : null}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-lg"
-        className="rounded-lg"
-        aria-label="Duplicate"
-        onClick={onDuplicate}
+    <TooltipProvider delayDuration={120}>
+      <div
+        data-testid="studio-selection-toolbar"
+        className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-border bg-card/95 p-0.5 shadow-[0_1px_2px_rgba(0,0,0,.04)] backdrop-blur-xl"
+        role="toolbar"
+        aria-label="Selected item actions"
       >
-        <Copy />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-lg"
-        className="rounded-lg"
-        aria-label="Delete"
-        onClick={onDelete}
-      >
-        <Trash2 />
-      </Button>
-    </div>
+        {canPublish ? (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 rounded-lg px-2 text-xs [&_svg]:size-3.5"
+              onClick={onPublish}
+            >
+              <Upload /> Publish
+            </Button>
+            <ToolbarDivider />
+          </>
+        ) : null}
+        {node.type !== 'section' ? (
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-lg px-2 text-xs [&_svg]:size-3.5"
+              onClick={onSendToAgent}
+            >
+              <Bot /> Send to Agent
+            </Button>
+            <ToolbarDivider />
+          </>
+        ) : null}
+        {showQuickEdit ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 rounded-lg px-2 text-xs"
+            onClick={onQuickEdit}
+          >
+            <PencilLine className="size-3.5" /> Quick edit
+            <span className="ml-0.5 rounded border border-border/80 px-1 py-0.5 text-[9px] leading-none text-muted-foreground">
+              Tab
+            </span>
+          </Button>
+        ) : null}
+        {canRegenerate ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 rounded-lg px-2 text-xs [&_svg]:size-3.5"
+            onClick={onRegenerate}
+          >
+            <Wand2 /> Regenerate
+          </Button>
+        ) : null}
+        {canQuickEdit || canRegenerate ? <ToolbarDivider /> : null}
+        <ContextIconButton label="Duplicate" onClick={onDuplicate}>
+          <Copy />
+        </ContextIconButton>
+        <ContextIconButton label="Delete" onClick={onDelete}>
+          <Trash2 />
+        </ContextIconButton>
+      </div>
+    </TooltipProvider>
   );
 }
 

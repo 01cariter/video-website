@@ -30,7 +30,11 @@ export interface StudioCanvasApi {
   generateNode: (id: string) => Promise<void>;
   reuseNode: (id: string) => void;
   regenerateNode: (id: string) => void;
-  quickEditNode: (id: string, instruction: string) => void;
+  quickEditNode: (
+    id: string,
+    instruction: string,
+    overrides?: Partial<StudioNodeData>,
+  ) => void;
   publishNodes: (ids: string[]) => void;
   sendNodesToAgent: (ids: string[]) => void;
   removeNode: (id: string) => void;

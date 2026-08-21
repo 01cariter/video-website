@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { X } from 'lucide-react';
@@ -27,6 +27,7 @@ export default function ComposeModal({
 }: ComposeModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const prefersReducedMotion = Boolean(useReducedMotion());
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -36,17 +37,17 @@ export default function ComposeModal({
   }, []);
 
   function closeFromBackdrop(event: MouseEvent<HTMLDialogElement>) {
-    if (event.target === event.currentTarget) onClose();
+    if (!busy && event.target === event.currentTarget) onClose();
   }
 
   return (
     <dialog
       ref={dialogRef}
       className="create-modal"
-      aria-label="Post"
+      aria-labelledby="compose-modal-title"
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        if (!busy) onClose();
       }}
       onClick={closeFromBackdrop}
     >
@@ -64,28 +65,42 @@ export default function ComposeModal({
       >
         <div className="solo-shell">
           <header className="solo-header">
-            <div className="solo-header-left">
+            <div className="solo-header-copy">
+              <span className="mark" aria-hidden="true" />
+              <div>
+                <h1 id="compose-modal-title">Create post</h1>
+                <p>Share work from your canvas or add media from your device.</p>
+              </div>
+            </div>
+            <div className="solo-actions">
+              {busy ? (
+                <span className="solo-status" role="status">
+                  Finishing…
+                </span>
+              ) : initialDraft ? (
+                <span className="solo-status">
+                  {initialDraft.assets?.length
+                    ? `${initialDraft.assets.length} selected`
+                    : 'Canvas draft'}
+                </span>
+              ) : null}
               <button
                 type="button"
-                className="back"
+                className="solo-close disabled:cursor-not-allowed disabled:opacity-40"
                 onClick={onClose}
-                aria-label="Close"
-                title="Close"
+                disabled={busy}
+                aria-label={busy ? 'Wait for the current action to finish' : 'Close'}
+                title={busy ? 'Wait for the current action to finish' : 'Close'}
               >
                 <X aria-hidden="true" />
-                <span>Close</span>
               </button>
-              <span className="solo-divider" />
-              <div className="stitle">
-                <span className="mark" />
-                <span>Post</span>
-              </div>
             </div>
           </header>
           <MediaUploader
             user={user}
             initialDraft={initialDraft}
             onPublished={onPublished}
+            onBusyChange={setBusy}
           />
         </div>
       </motion.div>

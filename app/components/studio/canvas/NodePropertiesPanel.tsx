@@ -1,63 +1,89 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Bot, CopyPlus, ImageIcon, Sparkles, Video } from 'lucide-react';
-import { fieldSummary, resolveStudioModel } from '@/lib/studio/model-catalog';
-import type { StudioNode } from '@/lib/studio/types';
+import { Bot, CopyPlus, ImageIcon, Video } from 'lucide-react';
+import {
+  modelForKind,
+  modelOptionsForKind,
+  modelSpecFor,
+  type CatalogField,
+} from '@/lib/studio/model-catalog';
+import type { StudioNode, StudioNodeData } from '@/lib/studio/types';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
+import { ModelMark } from './NodeInspector';
 import { useStudioCanvas } from './studio-context';
 
-export default function NodePropertiesPanel({
-  node,
-  quickEditOpen,
-  onQuickEditOpenChange,
-}: {
-  node: StudioNode;
-  quickEditOpen: boolean;
-  onQuickEditOpenChange: (open: boolean) => void;
-}) {
-  const {
-    runtimeConfig,
-    quickEditNode,
-    reuseNode,
-    sendNodesToAgent,
-    updateNodeData,
-  } = useStudioCanvas();
-  const [instruction, setInstruction] = useState('');
-  const quickEditRef = useRef<HTMLTextAreaElement>(null);
+function displayValue(
+  field: CatalogField,
+  data: StudioNodeData,
+  defaults: Record<string, string | number | boolean>,
+) {
+  const value = data[field.key] ?? defaults[field.key];
+  if (field.type === 'toggle') return value ? 'On' : 'Off';
+  if (field.type === 'enum') {
+    return (
+      field.options.find((option) => option.id === String(value))?.label ??
+      String(value)
+    );
+  }
+  if (field.type === 'range') return `${String(value)}${field.unit}`;
+  return String(value);
+}
+
+export default function NodePropertiesPanel({ node }: { node: StudioNode }) {
+  const { reuseNode, sendNodesToAgent, updateNodeData } = useStudioCanvas();
   const hasContent = Boolean(node.data.src || node.data.text?.trim());
   const isGenerated = hasContent && Boolean(node.data.prompt.trim());
+  const storedModelId =
+    node.type === 'section'
+      ? null
+      : node.data.modelId || modelForKind(node.type).id;
   const model =
     node.type === 'section'
       ? null
-      : resolveStudioModel(node.type, node.data.modelId, runtimeConfig);
-
-  useEffect(() => {
-    if (!quickEditOpen) return;
-    window.requestAnimationFrame(() => quickEditRef.current?.focus());
-  }, [quickEditOpen]);
+      : modelOptionsForKind(node.type).find(
+          (option) => option.id === storedModelId,
+        ) ?? null;
+  const spec =
+    model && node.type !== 'section'
+      ? modelSpecFor(node.type, model.id)
+      : null;
+  const parameterItems = spec
+    ? spec.fields.map((field) => ({
+        key: field.key,
+        label: field.label,
+        value: displayValue(field, node.data, spec.defaults),
+      }))
+    : [];
+  const references = Array.isArray(node.data.refSrcs)
+    ? node.data.refSrcs.length
+    : node.data.refSrc
+      ? 1
+      : 0;
 
   return (
     <aside
       data-testid="studio-node-properties"
       data-moodboard-floating-occluder
-      className="pointer-events-auto absolute top-3 right-3 flex max-h-[calc(100%-24px)] w-[316px] max-w-[calc(100%-24px)] flex-col overflow-hidden rounded-xl border border-border bg-card/95 shadow-[0_16px_50px_-28px_rgba(0,0,0,.48)] backdrop-blur-xl"
+      className="pointer-events-auto absolute top-3 right-3 flex max-h-[calc(100%-24px)] w-[328px] max-w-[calc(100%-24px)] flex-col overflow-hidden rounded-xl border border-border bg-card/95 shadow-[0_16px_50px_-28px_rgba(0,0,0,.48)] backdrop-blur-xl"
       aria-label="Node properties"
     >
-      <header className="border-b border-border px-4 py-3">
+      <header className="flex h-11 items-center justify-between border-b border-border px-4">
         <p className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
           Properties
         </p>
+        <span className="text-[10.5px] font-medium text-muted-foreground/70 capitalize">
+          {node.type}
+        </span>
       </header>
 
       <div className="min-h-0 overflow-y-auto p-4">
-        <label className="grid gap-1.5 text-xs font-semibold">
+        <label className="grid gap-1.5 text-[11px] font-semibold text-muted-foreground">
           Name
           <Input
             value={node.data.title}
-            className="h-10 rounded-lg bg-background/70 text-[13px]"
+            className="h-9 rounded-lg bg-background/70 text-[13px] font-medium text-foreground"
             onChange={(event) =>
               updateNodeData(node.id, { title: event.target.value })
             }
@@ -65,7 +91,9 @@ export default function NodePropertiesPanel({
         </label>
 
         <section className="mt-4 grid gap-1.5">
-          <span className="text-xs font-semibold">Preview</span>
+          <span className="text-[11px] font-semibold text-muted-foreground">
+            Preview
+          </span>
           <div className="grid min-h-32 place-items-center overflow-hidden rounded-xl border border-border bg-[var(--studio-raised)]">
             {node.type === 'image' && node.data.src ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -102,72 +130,72 @@ export default function NodePropertiesPanel({
 
         {isGenerated ? (
           <>
-            <label className="mt-4 grid gap-1.5 text-xs font-semibold">
+            <label className="mt-4 grid gap-1.5 text-[11px] font-semibold text-muted-foreground">
               Prompt
               <Textarea
                 value={node.data.prompt}
                 rows={4}
-                className="min-h-24 resize-y rounded-lg bg-background/70 text-[13px] leading-5"
+                className="min-h-24 resize-y rounded-lg bg-background/70 text-[13px] leading-5 text-foreground"
                 onChange={(event) =>
                   updateNodeData(node.id, { prompt: event.target.value })
                 }
               />
             </label>
-            <section className="mt-4 rounded-xl border border-border bg-background/55 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[11px] font-medium text-muted-foreground">
-                  Model
-                </span>
-                <span className="truncate text-right text-xs font-semibold">
-                  {model?.label ?? node.data.modelId ?? 'Default'}
-                </span>
-              </div>
-              <div className="mt-2 border-t border-border pt-2 text-[11px] leading-5 text-muted-foreground">
-                {fieldSummary(
-                  node.type,
-                  node.data,
-                  node.data.modelId,
-                  runtimeConfig,
-                )}
-              </div>
-              {Array.isArray(node.data.refSrcs) && node.data.refSrcs.length ? (
-                <div className="mt-2 text-[11px] text-muted-foreground">
-                  {node.data.refSrcs.length} reference
-                  {node.data.refSrcs.length === 1 ? '' : 's'}
-                </div>
-              ) : null}
-            </section>
-          </>
-        ) : null}
 
-        {quickEditOpen && hasContent ? (
-          <form
-            className="mt-4 rounded-xl border border-primary/25 bg-primary/[0.035] p-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!instruction.trim()) return;
-              quickEditNode(node.id, instruction);
-              setInstruction('');
-              onQuickEditOpenChange(false);
-            }}
-          >
-            <label className="grid gap-1.5 text-xs font-semibold">
-              Quick edit
-              <Textarea
-                ref={quickEditRef}
-                value={instruction}
-                rows={3}
-                placeholder="Describe the change…"
-                className="min-h-20 resize-none rounded-lg bg-background text-[13px]"
-                onChange={(event) => setInstruction(event.target.value)}
-              />
-            </label>
-            <div className="mt-2 flex justify-end">
-              <Button type="submit" size="sm" disabled={!instruction.trim()}>
-                <Sparkles /> Create edit
-              </Button>
-            </div>
-          </form>
+            {storedModelId ? (
+              <section className="mt-4 grid gap-1.5">
+                <span className="text-[11px] font-semibold text-muted-foreground">
+                  Generation
+                </span>
+                <div className="overflow-hidden rounded-xl border border-border bg-background/45">
+                  <div className="flex items-center gap-2.5 px-3 py-2.5">
+                    {model ? <ModelMark model={model} compact /> : null}
+                    <div className="min-w-0">
+                      <p className="truncate text-[12px] font-semibold">
+                        {model?.label ?? storedModelId}
+                      </p>
+                      {model ? (
+                        <p className="truncate text-[10px] text-muted-foreground">
+                          {model.provider} · {model.tag}
+                        </p>
+                      ) : (
+                        <p className="truncate text-[10px] text-muted-foreground">
+                          Saved model
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {spec && (parameterItems.length || references) ? (
+                    <div className="grid grid-cols-2 gap-px border-t border-border bg-border">
+                      {parameterItems.map((item) => (
+                        <div
+                          key={item.key}
+                          className="min-w-0 bg-card px-3 py-2.5"
+                        >
+                          <p className="truncate text-[9.5px] font-medium text-muted-foreground">
+                            {item.label}
+                          </p>
+                          <p className="mt-0.5 truncate text-[11.5px] font-semibold tabular-nums">
+                            {item.value}
+                          </p>
+                        </div>
+                      ))}
+                      {references ? (
+                        <div className="min-w-0 bg-card px-3 py-2.5">
+                          <p className="truncate text-[9.5px] font-medium text-muted-foreground">
+                            References
+                          </p>
+                          <p className="mt-0.5 truncate text-[11.5px] font-semibold tabular-nums">
+                            {references} image{references === 1 ? '' : 's'}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
+          </>
         ) : null}
       </div>
 
@@ -175,7 +203,7 @@ export default function NodePropertiesPanel({
         <Button
           type="button"
           variant="outline"
-          className="h-10 rounded-lg"
+          className="h-9 rounded-lg"
           onClick={() => reuseNode(node.id)}
         >
           <CopyPlus /> Reuse
@@ -183,7 +211,7 @@ export default function NodePropertiesPanel({
         <Button
           type="button"
           variant="outline"
-          className="h-10 rounded-lg"
+          className="h-9 rounded-lg"
           onClick={() => sendNodesToAgent([node.id])}
         >
           <Bot /> Send to Agent

@@ -75,6 +75,13 @@ interface NodeInspectorProps {
   onAspectChange: (aspect: string) => void;
   onRefsChange: (srcs: string[]) => void;
   onSubmit: () => void;
+  requireReferenceCapableModel?: boolean;
+  submitLabel?: string;
+  promptHint?: string;
+  onCancel?: () => void;
+  submitShortcut?: 'enter' | 'mod-enter';
+  className?: string;
+  lockedReferenceCount?: number;
 }
 
 const PROVIDER_ICONS = {
@@ -453,6 +460,13 @@ export default function NodeInspector({
   onAspectChange,
   onRefsChange,
   onSubmit,
+  requireReferenceCapableModel = false,
+  submitLabel = 'Generate',
+  promptHint,
+  onCancel,
+  submitShortcut = 'enter',
+  className,
+  lockedReferenceCount = 0,
 }: NodeInspectorProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -460,13 +474,15 @@ export default function NodeInspector({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [referencesBusy, setReferencesBusy] = useState(false);
   const modelOptions = modelOptionsForKind(kind);
-  const modelAvailable = hasAvailableStudioModel(kind, runtimeConfig);
   const selectedModel = resolveStudioModel(
     kind,
     data.modelId,
     runtimeConfig,
   );
   const spec = modelSpecFor(kind, selectedModel.id, runtimeConfig);
+  const modelAvailable =
+    hasAvailableStudioModel(kind, runtimeConfig) &&
+    (!requireReferenceCapableModel || spec.maxRefs > 0);
   const busy =
     data.status === 'generating' ||
     data.status === 'uploading' ||
@@ -507,7 +523,10 @@ export default function NodeInspector({
 
   return (
     <Card
-      className="w-[min(560px,calc(100vw-24px))] gap-0 overflow-hidden rounded-[18px] border border-border/90 bg-[var(--studio-raised)] p-0 shadow-[0_24px_60px_-32px_rgba(0,0,0,.48),0_5px_18px_-12px_rgba(0,0,0,.22)]"
+      className={cn(
+        'w-[min(560px,calc(100vw-24px))] max-w-full gap-0 overflow-hidden rounded-[18px] border border-border/90 bg-[var(--studio-raised)] p-0 shadow-[0_24px_60px_-32px_rgba(0,0,0,.48),0_5px_18px_-12px_rgba(0,0,0,.22)]',
+        className,
+      )}
       onWheel={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
     >
@@ -526,13 +545,19 @@ export default function NodeInspector({
                     key={`${src.slice(0, 32)}-${index}`}
                     type="button"
                     disabled={busy}
-                    aria-label={`Remove reference image ${index + 1}`}
+                    aria-disabled={index < lockedReferenceCount}
+                    aria-label={
+                      index < lockedReferenceCount
+                        ? 'Source image'
+                        : `Remove reference image ${index + 1}`
+                    }
                     className="group relative h-12 w-[62px] overflow-hidden rounded-[9px] border border-border/80 bg-muted outline-none transition-[border-color,transform] hover:border-foreground/25 active:scale-[0.98] disabled:opacity-60"
-                    onClick={() =>
+                    onClick={() => {
+                      if (index < lockedReferenceCount) return;
                       onRefsChange(
                         references.filter((_, itemIndex) => itemIndex !== index),
-                      )
-                    }
+                      );
+                    }}
                   >
                     <Image
                       src={src}
@@ -541,9 +566,15 @@ export default function NodeInspector({
                       unoptimized
                       className="object-cover"
                     />
-                    <span className="absolute inset-0 grid place-items-center bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                      <X className="size-3.5" />
-                    </span>
+                    {index < lockedReferenceCount ? (
+                      <span className="absolute right-1 bottom-1 rounded bg-black/65 px-1 py-0.5 text-[8px] font-medium leading-none text-white">
+                        Source
+                      </span>
+                    ) : (
+                      <span className="absolute inset-0 grid place-items-center bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                        <X className="size-3.5" />
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -553,11 +584,20 @@ export default function NodeInspector({
               rows={2}
               value={data.prompt}
               disabled={busy}
-              placeholder={promptPlaceholder(kind)}
+              placeholder={promptHint ?? promptPlaceholder(kind)}
               className="max-h-32 min-h-[58px] resize-none border-0 bg-transparent px-0 py-0 text-[13.5px] leading-[21px] shadow-none placeholder:text-muted-foreground/65 focus-visible:ring-0"
               onChange={(event) => onPromptChange(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
+                if (event.key === 'Escape' && onCancel) {
+                  event.preventDefault();
+                  onCancel();
+                  return;
+                }
+                const shouldSubmit =
+                  submitShortcut === 'mod-enter'
+                    ? event.key === 'Enter' && (event.metaKey || event.ctrlKey)
+                    : event.key === 'Enter' && !event.shiftKey;
+                if (shouldSubmit) {
                   event.preventDefault();
                   if (canSubmit && modelAvailable) onSubmit();
                 }
@@ -570,7 +610,9 @@ export default function NodeInspector({
             ) : null}
             {!modelAvailable ? (
               <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">
-                No video model is available with Vercel free credit.
+                {requireReferenceCapableModel
+                  ? 'Choose an available model that supports image editing.'
+                  : `No ${kind} model is currently available.`}
               </p>
             ) : null}
           </div>
@@ -668,10 +710,14 @@ export default function NodeInspector({
                 </PopoverHeader>
                 <div className="grid gap-1" role="listbox" aria-label="Generation model">
                   {modelOptions.map((model) => {
-                    const available = isStudioModelAvailable(
-                      model,
+                    const optionSpec = modelSpecFor(
+                      kind,
+                      model.id,
                       runtimeConfig,
                     );
+                    const available =
+                      isStudioModelAvailable(model, runtimeConfig) &&
+                      (!requireReferenceCapableModel || optionSpec.maxRefs > 0);
                     const selected =
                       available && model.id === selectedModel.id;
                     return (
@@ -740,12 +786,12 @@ export default function NodeInspector({
               aria-label={
                 creditCost === null
                   ? 'Generation parameters are unavailable'
-                  : `Generate for ${creditCost} ${creditCost === 1 ? 'credit' : 'credits'}`
+                  : `${submitLabel} for ${creditCost} ${creditCost === 1 ? 'credit' : 'credits'}`
               }
               className="h-8 min-w-[124px] gap-1.5 rounded-[9px] px-3 text-[11px] !text-primary-foreground shadow-none active:translate-y-px disabled:!text-primary-foreground/45"
             >
               <Zap className="size-3.5" />
-              <span>Generate</span>
+              <span>{submitLabel}</span>
               <span className="opacity-65">
                 ·{' '}
                 {creditCost === null
