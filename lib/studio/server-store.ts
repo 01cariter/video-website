@@ -12,6 +12,7 @@ interface StudioProjectRow extends Record<string, unknown> {
     nodes?: unknown[];
     viewport?: Record<string, unknown>;
     revision?: number;
+    persistenceVersion?: number;
     appliedToolCallIds?: unknown[];
   } | string;
   messages: unknown[] | string;
@@ -52,6 +53,7 @@ function fromRow(row: StudioProjectRow): StudioProject {
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
     revision: document.revision,
+    persistenceVersion: document.persistenceVersion,
   });
   if (!project) throw new Error('Stored Studio project is invalid.');
   return project;

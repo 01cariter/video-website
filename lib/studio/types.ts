@@ -74,6 +74,7 @@ export interface StudioProject {
   createdAt: string;
   updatedAt: string;
   revision: number;
+  persistenceVersion?: number;
   coverUrls: string[];
   nodes: StudioNode[];
   viewport: StudioViewport;
@@ -138,3 +139,4 @@ export type StudioCanvasOperation =
 export const STUDIO_STORAGE_KEY = 'snackd-studio-v2';
 export const STUDIO_LEGACY_STORAGE_KEY = 'snackd-studio-v1';
 export const STUDIO_STORE_VERSION = 2;
+export const STUDIO_PERSISTENCE_VERSION = 2;

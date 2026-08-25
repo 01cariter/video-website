@@ -1,4 +1,7 @@
-import type { StudioProject } from './types';
+import {
+  STUDIO_PERSISTENCE_VERSION,
+  type StudioProject,
+} from './types';
 
 export function decodeStudioJsonb<T>(value: unknown, fallback: T): T {
   if (typeof value !== 'string') return (value ?? fallback) as T;
@@ -15,6 +18,7 @@ export function studioProjectJsonFields(project: StudioProject) {
       nodes: project.nodes,
       viewport: project.viewport,
       revision: project.revision,
+      persistenceVersion: STUDIO_PERSISTENCE_VERSION,
       appliedToolCallIds: project.appliedToolCallIds || [],
     },
     messages: project.messages,

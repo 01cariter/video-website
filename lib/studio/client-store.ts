@@ -10,6 +10,7 @@ import {
   saveStudioProject,
 } from './store';
 import type { StudioPendingGeneration, StudioProject } from './types';
+import { STUDIO_PERSISTENCE_VERSION } from './types';
 
 async function jsonOrNull(response: Response) {
   return response.json().catch(() => null) as Promise<Record<string, unknown> | null>;
@@ -25,6 +26,36 @@ function isNewerProject(candidate: StudioProject, baseline: StudioProject) {
     return candidate.revision > baseline.revision;
   }
   return projectUpdatedAt(candidate) > projectUpdatedAt(baseline);
+}
+
+function hasProjectContent(project: StudioProject) {
+  return Boolean(
+    project.nodes.length ||
+      project.messages.length ||
+      project.pendingPrompt ||
+      project.pendingGeneration,
+  );
+}
+
+function shouldRecoverLegacyLocal(
+  local: StudioProject,
+  remote: StudioProject,
+) {
+  return (
+    remote.persistenceVersion !== STUDIO_PERSISTENCE_VERSION &&
+    hasProjectContent(local) &&
+    !hasProjectContent(remote)
+  );
+}
+
+function recoverLegacyLocal(local: StudioProject, remote: StudioProject) {
+  const rebased = {
+    ...local,
+    revision: Math.max(local.revision, remote.revision),
+    persistenceVersion: STUDIO_PERSISTENCE_VERSION,
+  };
+  void saveStudioProjectSynced(rebased);
+  return getStudioProject(local.id) ?? rebased;
 }
 
 interface StudioProjectSaveOptions {
@@ -47,6 +78,9 @@ export async function listStudioProjectsSynced() {
       const merged = remote.map((project) => {
         const cached = localById.get(project.id);
         localById.delete(project.id);
+        if (cached && shouldRecoverLegacyLocal(cached, project)) {
+          return recoverLegacyLocal(cached, project);
+        }
         if (cached && isNewerProject(cached, project)) {
           void saveStudioProjectSynced(cached);
           return cached;
@@ -74,6 +108,9 @@ export async function getStudioProjectSynced(id: string) {
       const payload = await jsonOrNull(response);
       const project = normalizeStudioProject(payload?.project);
       if (project) {
+        if (cached && shouldRecoverLegacyLocal(cached, project)) {
+          return recoverLegacyLocal(cached, project);
+        }
         if (cached && isNewerProject(cached, project)) {
           void saveStudioProjectSynced(cached);
           return cached;

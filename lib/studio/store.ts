@@ -11,6 +11,7 @@ import type {
 } from './types';
 import {
   STUDIO_LEGACY_STORAGE_KEY,
+  STUDIO_PERSISTENCE_VERSION,
   STUDIO_STORAGE_KEY,
   STUDIO_STORE_VERSION,
 } from './types';
@@ -186,6 +187,10 @@ export function normalizeStudioProject(value: unknown): StudioProject | null {
     createdAt,
     updatedAt: String(project.updatedAt || createdAt),
     revision: Math.max(0, Math.trunc(numberValue(project.revision, 0))),
+    persistenceVersion:
+      numberValue(project.persistenceVersion, 0) > 0
+        ? Math.trunc(numberValue(project.persistenceVersion, 0))
+        : undefined,
     coverUrls: Array.isArray(project.coverUrls)
       ? project.coverUrls.filter((url): url is string => typeof url === 'string')
       : [],
@@ -564,6 +569,7 @@ export function createStudioProjectDraft(input: {
     createdAt: now,
     updatedAt: now,
     revision: 0,
+    persistenceVersion: STUDIO_PERSISTENCE_VERSION,
     coverUrls: template ? [template.cover] : [],
     nodes,
     viewport: DEFAULT_VIEWPORT,
