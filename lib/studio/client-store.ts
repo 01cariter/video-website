@@ -291,13 +291,23 @@ export async function saveStudioProjectSynced(
       const remote = normalizeStudioProject(payload?.project);
       if (remote) {
         const latest = getStudioProject(project.id, options.storageScope);
-        if (
-          latest &&
-          latest.revision === remote.revision &&
-          !sameProjectContent(latest, remote)
-        ) {
+        const contentMatches = latest
+          ? sameProjectContent(latest, remote)
+          : false;
+        const explicitConflict = payload?.accepted === false;
+        const legacyConflict =
+          payload?.accepted === undefined &&
+          latest?.revision === remote.revision &&
+          !contentMatches;
+        if (explicitConflict && contentMatches) {
+          return cacheStudioProject(remote, options.storageScope);
+        }
+        if (latest && (explicitConflict || legacyConflict)) {
           if ((options.conflictRetries ?? 0) < 2) {
-            return saveStudioProjectSynced(latest, {
+            return saveStudioProjectSynced({
+              ...latest,
+              revision: Math.max(latest.revision, remote.revision),
+            }, {
               ...options,
               conflictRetries: (options.conflictRetries ?? 0) + 1,
             });

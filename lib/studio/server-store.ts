@@ -143,10 +143,10 @@ export async function saveStudioProjectForUser(
   `;
   if (!row) {
     const current = await getStudioProjectForUser(userId, project.id);
-    if (current) return current;
+    if (current) return { project: current, accepted: false } as const;
     throw new Error('Project id belongs to another account.');
   }
-  return fromRow(row);
+  return { project: fromRow(row), accepted: true } as const;
 }
 
 export async function deleteStudioProjectForUser(userId: string, id: string) {

@@ -40,7 +40,10 @@ export async function PUT(request: Request, context: RouteContext) {
     return NextResponse.json({ error: 'Invalid project data.' }, { status: 400 });
   }
   const saved = await saveStudioProjectForUser(user.id, project);
-  return NextResponse.json({ project: saved });
+  return NextResponse.json({
+    project: saved.project,
+    accepted: saved.accepted,
+  });
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {

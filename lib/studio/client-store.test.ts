@@ -353,8 +353,10 @@ test('same-revision cross-device conflicts rebase and retry local edits', async 
     writes.push(body.project);
     if (writes.length === 1) {
       return Response.json({
+        accepted: false,
         project: {
           ...body.project,
+          revision: body.project.revision + 100,
           nodes: [
             {
               ...body.project.nodes[0],
@@ -364,14 +366,57 @@ test('same-revision cross-device conflicts rebase and retry local edits', async 
         },
       });
     }
-    return Response.json({ project: body.project });
+    return Response.json({ project: body.project, accepted: true });
   };
 
   try {
     const saved = await saveStudioProjectSynced(local);
     assert.equal(writes.length, 2);
-    assert.ok(writes[1].revision > writes[0].revision);
+    assert.ok(writes[1].revision > writes[0].revision + 100);
     assert.equal(saved.nodes[0].data.text, 'Local edit');
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalWindow) {
+      Object.defineProperty(globalThis, 'window', originalWindow);
+    } else {
+      Reflect.deleteProperty(globalThis, 'window');
+    }
+  }
+});
+
+test('an explicitly accepted cloud save never enters the conflict retry loop', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const values = new Map<string, string>();
+  let writes = 0;
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+      },
+    },
+  });
+  const project = createStudioProjectDraft({ blank: true });
+  globalThis.fetch = async (_input, init) => {
+    writes += 1;
+    const body = JSON.parse(String(init?.body)) as {
+      project: typeof project;
+    };
+    return Response.json({
+      accepted: true,
+      project: {
+        ...body.project,
+        coverUrls: ['https://example.com/server-canonical-cover.jpg'],
+      },
+    });
+  };
+
+  try {
+    const saved = await saveStudioProjectSynced(project);
+    assert.equal(writes, 1);
+    assert.equal(saved.coverUrls.length, 1);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalWindow) {

@@ -30,5 +30,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid project data.' }, { status: 400 });
   }
   const saved = await saveStudioProjectForUser(user.id, project);
-  return NextResponse.json({ project: saved }, { status: 201 });
+  return NextResponse.json(
+    { project: saved.project, accepted: saved.accepted },
+    { status: 201 },
+  );
 }
