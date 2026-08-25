@@ -2,6 +2,7 @@
   "name": "video-website",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "npm@11.6.2",
   "description": "Video Website — a short-form learning/play video app. Next.js (App Router) on Vercel with Supabase Postgres and Supabase Auth.",
   "scripts": {
     "dev": "next dev -p 3000",
