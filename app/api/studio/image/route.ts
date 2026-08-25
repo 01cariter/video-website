@@ -56,6 +56,14 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  const projectId = optionalTrimmedString(body.projectId);
+  const nodeId = optionalTrimmedString(body.nodeId);
+  if ((projectId?.length ?? 0) > 160 || (nodeId?.length ?? 0) > 160) {
+    return Response.json(
+      { error: 'Invalid project or node identifier.' },
+      { status: 400 },
+    );
+  }
 
   let prepared: ReturnType<typeof prepareStudioImageRequest>;
   let pricing: ReturnType<typeof estimateStudioCredits>;
@@ -137,8 +145,8 @@ export async function POST(request: Request) {
       requestId,
       kind: 'image',
       cost: pricing.credits,
-      projectId: optionalTrimmedString(body.projectId),
-      nodeId: optionalTrimmedString(body.nodeId),
+      projectId,
+      nodeId,
     });
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
@@ -193,7 +201,7 @@ export async function POST(request: Request) {
       images.map((image, index) =>
         storeGeneratedAsset({
           userId: user.id,
-          projectId: optionalTrimmedString(body.projectId),
+          projectId,
           requestId,
           index,
           kind: 'image',

@@ -23,6 +23,21 @@ interface StudioStoreFile {
 
 const DEFAULT_VIEWPORT: StudioViewport = { x: 72, y: 64, zoom: 1 };
 const MAX_STUDIO_NODE_DIMENSION = 10_000;
+const MAX_STUDIO_PROJECT_ID_LENGTH = 160;
+const MAX_STUDIO_PROJECT_TITLE_LENGTH = 160;
+const MAX_STUDIO_NODES = 500;
+const MAX_STUDIO_MESSAGES = 400;
+const MAX_STUDIO_NODE_ID_LENGTH = 160;
+const MAX_STUDIO_NODE_TITLE_LENGTH = 160;
+const MAX_STUDIO_PROMPT_LENGTH = 20_000;
+const MAX_STUDIO_TEXT_LENGTH = 100_000;
+const STUDIO_STORAGE_OWNER_KEY = `${STUDIO_STORAGE_KEY}:legacy-owner`;
+
+function studioStorageKey(storageScope?: string) {
+  return storageScope
+    ? `${STUDIO_STORAGE_KEY}:${storageScope}`
+    : STUDIO_STORAGE_KEY;
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -46,13 +61,17 @@ function numberValue(value: unknown, fallback: number) {
 
 function normalizeProjectTitle(value: unknown) {
   const title = String(value || '').trim();
-  return !title || title === '未命名项目' ? 'Untitled project' : title;
+  return !title || title === '未命名项目'
+    ? 'Untitled project'
+    : title.slice(0, MAX_STUDIO_PROJECT_TITLE_LENGTH);
 }
 
 function normalizeNodeTitle(kind: StudioNodeKind, value: unknown) {
   const title = String(value || '').trim();
   const legacyDefaults = new Set(['分组', '图片生成', '视频生成', '文本']);
-  if (title && !legacyDefaults.has(title)) return title;
+  if (title && !legacyDefaults.has(title)) {
+    return title.slice(0, MAX_STUDIO_NODE_TITLE_LENGTH);
+  }
   return kind === 'section'
     ? 'Group'
     : kind === 'image'
@@ -123,7 +142,12 @@ function normalizeNode(value: unknown, index: number): StudioNode | null {
       ? [rawData.refSrc]
       : [];
   return {
-    id: String(legacy.id || createStudioId('n')),
+    id:
+      typeof legacy.id === 'string' &&
+      legacy.id.length > 0 &&
+      legacy.id.length <= MAX_STUDIO_NODE_ID_LENGTH
+        ? legacy.id
+        : createStudioId('n'),
     type: kind,
     x: numberValue(legacy.x ?? position?.x, 80 + index * 24),
     y: numberValue(legacy.y ?? position?.y, 80 + index * 24),
@@ -133,7 +157,11 @@ function normalizeNode(value: unknown, index: number): StudioNode | null {
     zIndex: numberValue(legacy.zIndex, index),
     data: {
       ...rawData,
-      prompt: String(rawData.prompt || ''),
+      prompt: String(rawData.prompt || '').slice(0, MAX_STUDIO_PROMPT_LENGTH),
+      text:
+        typeof rawData.text === 'string'
+          ? rawData.text.slice(0, MAX_STUDIO_TEXT_LENGTH)
+          : '',
       status: normalizedStatus as StudioNodeData['status'],
       aspect: String(rawData.aspect || (kind === 'video' ? '16:9' : '1:1')),
       kind,
@@ -150,7 +178,13 @@ export function normalizeStudioProject(value: unknown): StudioProject | null {
     viewport?: Partial<StudioViewport>;
     nodes?: unknown[];
   };
-  if (!project.id) return null;
+  if (
+    typeof project.id !== 'string' ||
+    !project.id ||
+    project.id.length > MAX_STUDIO_PROJECT_ID_LENGTH
+  ) {
+    return null;
+  }
   const createdAt = String(project.createdAt || nowIso());
   const pendingGenerationValue =
     project.pendingGeneration &&
@@ -162,7 +196,9 @@ export function normalizeStudioProject(value: unknown): StudioProject | null {
   ) as StudioPendingGeneration['kind'];
   const pendingGenerationPrompt = String(
     pendingGenerationValue?.prompt || '',
-  ).trim();
+  )
+    .trim()
+    .slice(0, MAX_STUDIO_PROMPT_LENGTH);
   const pendingGeneration =
     ['image', 'video', 'text'].includes(pendingGenerationKind) &&
     pendingGenerationPrompt
@@ -176,7 +212,16 @@ export function normalizeStudioProject(value: unknown): StudioProject | null {
               : undefined,
         }
       : undefined;
-  const messages = Array.isArray(project.messages) ? project.messages : [];
+  const messages = Array.isArray(project.messages)
+    ? project.messages.slice(-MAX_STUDIO_MESSAGES)
+    : [];
+  const nodes = Array.isArray(project.nodes)
+    ? project.nodes
+        .slice(0, MAX_STUDIO_NODES)
+        .map((node, index) => normalizeNode(node, index))
+        .filter((node): node is StudioNode => Boolean(node))
+    : [];
+  const availableNodeIds = new Set(nodes.map((node) => node.id));
   const hasExplicitToolReceipts = Object.prototype.hasOwnProperty.call(
     project,
     'appliedToolCallIds',
@@ -192,13 +237,11 @@ export function normalizeStudioProject(value: unknown): StudioProject | null {
         ? Math.trunc(numberValue(project.persistenceVersion, 0))
         : undefined,
     coverUrls: Array.isArray(project.coverUrls)
-      ? project.coverUrls.filter((url): url is string => typeof url === 'string')
+      ? project.coverUrls
+          .filter((url): url is string => typeof url === 'string')
+          .slice(0, 4)
       : [],
-    nodes: Array.isArray(project.nodes)
-      ? project.nodes
-          .map((node, index) => normalizeNode(node, index))
-          .filter((node): node is StudioNode => Boolean(node))
-      : [],
+    nodes,
     viewport: {
       x: numberValue(project.viewport?.x, DEFAULT_VIEWPORT.x),
       y: numberValue(project.viewport?.y, DEFAULT_VIEWPORT.y),
@@ -217,8 +260,22 @@ export function normalizeStudioProject(value: unknown): StudioProject | null {
         ? []
         : legacyAppliedToolCallIds(messages),
     pendingPrompt:
-      typeof project.pendingPrompt === 'string' ? project.pendingPrompt : undefined,
+      typeof project.pendingPrompt === 'string'
+        ? project.pendingPrompt.slice(0, MAX_STUDIO_PROMPT_LENGTH)
+        : undefined,
     pendingGeneration,
+    pendingAgentAttachmentIds: Array.isArray(
+      project.pendingAgentAttachmentIds,
+    )
+      ? [
+          ...new Set(
+            project.pendingAgentAttachmentIds.filter(
+              (id): id is string =>
+                typeof id === 'string' && availableNodeIds.has(id),
+            ),
+          ),
+        ].slice(0, 50)
+      : undefined,
     agentOpen: project.agentOpen !== false,
   };
 }
@@ -239,25 +296,42 @@ function parseStore(raw: string | null): StudioStoreFile | null {
   }
 }
 
-function readStore(): StudioStoreFile {
+function readStore(storageScope?: string): StudioStoreFile {
   if (typeof window === 'undefined') return emptyStore();
-  const current = parseStore(window.localStorage.getItem(STUDIO_STORAGE_KEY));
+  const current = parseStore(
+    window.localStorage.getItem(studioStorageKey(storageScope)),
+  );
   if (current) return current;
+
+  if (storageScope) {
+    const legacy =
+      parseStore(window.localStorage.getItem(STUDIO_STORAGE_KEY)) ||
+      parseStore(window.localStorage.getItem(STUDIO_LEGACY_STORAGE_KEY));
+    const claimedBy = window.localStorage.getItem(STUDIO_STORAGE_OWNER_KEY);
+    if (legacy && (!claimedBy || claimedBy === storageScope)) {
+      window.localStorage.setItem(STUDIO_STORAGE_OWNER_KEY, storageScope);
+      writeStore(legacy, storageScope);
+      return legacy;
+    }
+    return seedStore(storageScope);
+  }
+
   const legacy = parseStore(
     window.localStorage.getItem(STUDIO_LEGACY_STORAGE_KEY),
   );
   if (legacy) {
-    writeStore(legacy);
+    writeStore(legacy, storageScope);
     return legacy;
   }
-  return seedStore();
+  return seedStore(storageScope);
 }
 
-function writeStore(file: StudioStoreFile) {
+function writeStore(file: StudioStoreFile, storageScope?: string) {
   if (typeof window === 'undefined') return;
   const next = { ...file, version: STUDIO_STORE_VERSION };
+  const storageKey = studioStorageKey(storageScope);
   try {
-    window.localStorage.setItem(STUDIO_STORAGE_KEY, JSON.stringify(next));
+    window.localStorage.setItem(storageKey, JSON.stringify(next));
   } catch {
     const slim = {
       ...next,
@@ -287,7 +361,7 @@ function writeStore(file: StudioStoreFile) {
       })),
     };
     try {
-      window.localStorage.setItem(STUDIO_STORAGE_KEY, JSON.stringify(slim));
+      window.localStorage.setItem(storageKey, JSON.stringify(slim));
     } catch {
       // Keep the current in-memory canvas usable if storage is exhausted.
     }
@@ -323,7 +397,7 @@ function demoImageNode(
   };
 }
 
-function seedStore(): StudioStoreFile {
+function seedStore(storageScope?: string): StudioStoreFile {
   const created = nowIso();
   const file: StudioStoreFile = {
     version: STUDIO_STORE_VERSION,
@@ -387,22 +461,30 @@ function seedStore(): StudioStoreFile {
       },
     ],
   };
-  writeStore(file);
+  writeStore(file, storageScope);
   return file;
 }
 
-export function listStudioProjects(): StudioProject[] {
-  return [...readStore().projects].sort((a, b) =>
+export function listStudioProjects(storageScope?: string): StudioProject[] {
+  return [...readStore(storageScope).projects].sort((a, b) =>
     a.updatedAt < b.updatedAt ? 1 : -1,
   );
 }
 
-export function getStudioProject(id: string): StudioProject | null {
-  return readStore().projects.find((project) => project.id === id) ?? null;
+export function getStudioProject(
+  id: string,
+  storageScope?: string,
+): StudioProject | null {
+  return (
+    readStore(storageScope).projects.find((project) => project.id === id) ?? null
+  );
 }
 
-export function saveStudioProject(next: StudioProject): StudioProject {
-  const file = readStore();
+export function saveStudioProject(
+  next: StudioProject,
+  storageScope?: string,
+): StudioProject {
+  const file = readStore(storageScope);
   const index = file.projects.findIndex((item) => item.id === next.id);
   const previous = index >= 0 ? file.projects[index] : null;
   const covers = next.nodes
@@ -417,12 +499,15 @@ export function saveStudioProject(next: StudioProject): StudioProject {
   };
   if (index >= 0) file.projects[index] = project;
   else file.projects.unshift(project);
-  writeStore(file);
+  writeStore(file, storageScope);
   return project;
 }
 
-export function cacheStudioProject(next: StudioProject): StudioProject {
-  const file = readStore();
+export function cacheStudioProject(
+  next: StudioProject,
+  storageScope?: string,
+): StudioProject {
+  const file = readStore(storageScope);
   const covers = next.nodes
     .map((node) => node.data.src)
     .filter((src): src is string => Boolean(src))
@@ -434,23 +519,27 @@ export function cacheStudioProject(next: StudioProject): StudioProject {
   const index = file.projects.findIndex((item) => item.id === project.id);
   if (index >= 0) file.projects[index] = project;
   else file.projects.unshift(project);
-  writeStore(file);
+  writeStore(file, storageScope);
   return project;
 }
 
-export function deleteStudioProject(id: string) {
-  const file = readStore();
+export function deleteStudioProject(id: string, storageScope?: string) {
+  const file = readStore(storageScope);
   file.projects = file.projects.filter((project) => project.id !== id);
-  writeStore(file);
+  writeStore(file, storageScope);
 }
 
-export function renameStudioProject(id: string, title: string) {
-  const current = getStudioProject(id);
+export function renameStudioProject(
+  id: string,
+  title: string,
+  storageScope?: string,
+) {
+  const current = getStudioProject(id, storageScope);
   if (!current) return null;
   return saveStudioProject({
     ...current,
     title: title.trim() || 'Untitled project',
-  });
+  }, storageScope);
 }
 
 export function createBlankNode(
@@ -538,6 +627,8 @@ export function createStudioProjectDraft(input: {
   title?: string;
   pendingPrompt?: string;
   pendingGeneration?: StudioPendingGeneration;
+  pendingAgentAttachmentIds?: string[];
+  initialNodes?: StudioNode[];
   templateId?: string;
   blank?: boolean;
 }): StudioProject {
@@ -546,7 +637,7 @@ export function createStudioProjectDraft(input: {
     (input.title || template?.title || 'Untitled project').trim() ||
     'Untitled project';
   const pendingPrompt = input.pendingPrompt || template?.prompt;
-  const nodes: StudioNode[] = [];
+  const nodes: StudioNode[] = [...(input.initialNodes ?? [])];
   if (template) {
     nodes.push(
       createBlankNode(
@@ -578,6 +669,11 @@ export function createStudioProjectDraft(input: {
     pendingPrompt:
       input.blank || input.pendingGeneration ? undefined : pendingPrompt,
     pendingGeneration: input.blank ? undefined : input.pendingGeneration,
+    pendingAgentAttachmentIds: input.blank
+      ? undefined
+      : input.pendingAgentAttachmentIds?.filter((id) =>
+          nodes.some((node) => node.id === id),
+        ),
     agentOpen: true,
   };
 }
@@ -586,19 +682,25 @@ export function createStudioProject(input: {
   title?: string;
   pendingPrompt?: string;
   pendingGeneration?: StudioPendingGeneration;
+  pendingAgentAttachmentIds?: string[];
+  initialNodes?: StudioNode[];
   templateId?: string;
   blank?: boolean;
-}): StudioProject {
-  return saveStudioProject(createStudioProjectDraft(input));
+}, storageScope?: string): StudioProject {
+  return saveStudioProject(createStudioProjectDraft(input), storageScope);
 }
 
 export function updateStudioGraph(
   id: string,
   patch: Partial<StudioProject>,
+  storageScope?: string,
 ): StudioProject | null {
-  const current = getStudioProject(id);
+  const current = getStudioProject(id, storageScope);
   if (!current) return null;
-  return saveStudioProject({ ...current, ...patch, id: current.id });
+  return saveStudioProject(
+    { ...current, ...patch, id: current.id },
+    storageScope,
+  );
 }
 
 export function formatStudioDate(value: string) {

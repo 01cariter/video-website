@@ -4,6 +4,7 @@ import {
   buildStudioVideoGeneratePayload,
   estimateStudioVideoUpstreamUsdMicros,
   normalizeStudioVideoRequest,
+  normalizeStudioVideoPrompt,
   STUDIO_VIDEO_MODEL_IDS,
   VideoGenerationValidationError,
   videoParametersFromBody,
@@ -51,6 +52,14 @@ const VALID_PARAMETERS = {
 } as const;
 
 describe('Studio video contract matrix', () => {
+  it('bounds and normalizes prompts before provider work starts', () => {
+    assert.equal(normalizeStudioVideoPrompt('  Slow dolly forward.  '), 'Slow dolly forward.');
+    assert.throws(
+      () => normalizeStudioVideoPrompt('x'.repeat(20_001)),
+      /prompt is too long/i,
+    );
+  });
+
   it('accepts every configured model at its provider limits', () => {
     for (const modelId of STUDIO_VIDEO_MODEL_IDS) {
       const request = normalizeStudioVideoRequest({

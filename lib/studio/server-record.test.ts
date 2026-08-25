@@ -21,3 +21,16 @@ test('legacy JSONB scalar strings remain readable during migration', () => {
   assert.deepEqual(document, { nodes: [{ id: 'n_1' }], revision: 7 });
   assert.deepEqual(messages, [{ id: 'm_1' }]);
 });
+
+test('pending homepage generation intent survives the server round trip', () => {
+  const project = createStudioProjectDraft({
+    pendingGeneration: {
+      kind: 'image',
+      prompt: 'A product portrait',
+      data: { modelId: 'spacexai/grok-imagine-image-2.0', aspect: '4:5' },
+    },
+  });
+  const fields = studioProjectJsonFields(project);
+
+  assert.deepEqual(fields.document.pendingGeneration, project.pendingGeneration);
+});

@@ -10,6 +10,7 @@ export default async function StudioPage() {
   return (
     <StudioHome
       authenticated={Boolean(user)}
+      userId={user?.id}
       runtimeConfig={runtimeConfig}
     />
   );

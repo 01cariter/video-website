@@ -3,6 +3,9 @@ import test from 'node:test';
 import type { UIMessage } from 'ai';
 import {
   buildStudioWorkflowSummaryMessage,
+  composerTriggerAtEnd,
+  filterCanvasMentionNodes,
+  removeComposerTrigger,
   studioWorkflowLanguage,
   studioWorkflowSummaryMessageId,
   workflowProgress,
@@ -169,4 +172,84 @@ test('keeps a workflow run active until every generated node settles', () => {
       : '',
     /任务结束，1 个任务失败/,
   );
+});
+
+test('distinguishes canvas @ mentions from / skill triggers', () => {
+  assert.deepEqual(composerTriggerAtEnd('Compare @主视觉'), {
+    kind: 'canvas',
+    query: '主视觉',
+    start: 8,
+  });
+  assert.deepEqual(composerTriggerAtEnd('Use /storyboard'), {
+    kind: 'skill',
+    query: 'storyboard',
+    start: 4,
+  });
+  assert.equal(composerTriggerAtEnd('email@example.com'), undefined);
+});
+
+test('finds canvas content by title, prompt, type, and model while excluding attached nodes', () => {
+  const nodes: StudioNode[] = [
+    {
+      id: 'hero',
+      type: 'image',
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 300,
+      rotation: 0,
+      zIndex: 0,
+      data: {
+        kind: 'image',
+        title: '主视觉',
+        prompt: 'orange astronaut portrait',
+        status: 'ready',
+        aspect: '1:1',
+        modelId: 'spacexai/grok-imagine-image-2.0',
+      },
+    },
+    {
+      id: 'script',
+      type: 'text',
+      x: 320,
+      y: 0,
+      width: 300,
+      height: 220,
+      rotation: 0,
+      zIndex: 1,
+      data: {
+        kind: 'text',
+        title: 'Opening script',
+        prompt: '',
+        text: 'A quiet station at dawn',
+        status: 'ready',
+        aspect: '1:1',
+      },
+    },
+  ];
+
+  assert.deepEqual(
+    filterCanvasMentionNodes(nodes, '宇航员', []).map((node) => node.id),
+    [],
+  );
+  assert.deepEqual(
+    filterCanvasMentionNodes(nodes, 'astronaut', []).map((node) => node.id),
+    ['hero'],
+  );
+  assert.deepEqual(
+    filterCanvasMentionNodes(nodes, 'text', []).map((node) => node.id),
+    ['script'],
+  );
+  assert.deepEqual(
+    filterCanvasMentionNodes(nodes, 'grok', []).map((node) => node.id),
+    ['hero'],
+  );
+  assert.deepEqual(filterCanvasMentionNodes(nodes, '', ['hero']), [nodes[1]]);
+});
+
+test('removes only the active composer trigger after an attachment is chosen', () => {
+  const input = 'Compare this with @主视觉';
+  const trigger = composerTriggerAtEnd(input);
+  assert.ok(trigger);
+  assert.equal(removeComposerTrigger(input, trigger), 'Compare this with ');
 });

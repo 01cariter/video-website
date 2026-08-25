@@ -5,6 +5,58 @@ import type { StudioAgentUIMessage } from '@/lib/studio/agent-context';
 import type { StudioAgentWorkflowReceipt } from '@/lib/studio/agent-workflow';
 import type { StudioNode } from '@/lib/studio/types';
 
+export interface ComposerTrigger {
+  kind: 'canvas' | 'skill';
+  query: string;
+  start: number;
+}
+
+export function composerTriggerAtEnd(
+  input: string,
+): ComposerTrigger | undefined {
+  const match = input.match(/(?:^|\s)([@/])([^\s@/]*)$/u);
+  if (!match || match.index === undefined) return undefined;
+  const marker = match[1];
+  return {
+    kind: marker === '@' ? 'canvas' : 'skill',
+    query: match[2],
+    start: match.index + match[0].indexOf(marker),
+  };
+}
+
+export function removeComposerTrigger(
+  input: string,
+  trigger: ComposerTrigger,
+) {
+  return input.slice(0, trigger.start);
+}
+
+export function filterCanvasMentionNodes(
+  nodes: readonly StudioNode[],
+  query: string,
+  excludedIds: readonly string[],
+) {
+  const excluded = new Set(excludedIds);
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  return nodes.filter((node) => {
+    if (excluded.has(node.id)) return false;
+    if (!normalizedQuery) return true;
+    return [
+      node.id,
+      node.type,
+      node.data.title,
+      node.data.prompt,
+      node.data.text,
+      node.data.modelId,
+      node.data.status,
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .join(' ')
+      .toLocaleLowerCase()
+      .includes(normalizedQuery);
+  });
+}
+
 export function workflowReceiptFromPart(
   part: unknown,
 ): StudioAgentWorkflowReceipt | undefined {

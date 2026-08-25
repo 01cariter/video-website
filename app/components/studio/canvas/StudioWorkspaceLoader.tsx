@@ -20,7 +20,7 @@ export default function StudioWorkspaceLoader({
 }: {
   projectId: string;
   runtimeConfig: StudioRuntimeConfig;
-  user: AppUser | null;
+  user: AppUser;
 }) {
   return (
     <StudioWorkspace

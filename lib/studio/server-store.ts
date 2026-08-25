@@ -14,6 +14,8 @@ interface StudioProjectRow extends Record<string, unknown> {
     revision?: number;
     persistenceVersion?: number;
     appliedToolCallIds?: unknown[];
+    pendingGeneration?: unknown;
+    pendingAgentAttachmentIds?: unknown[];
   } | string;
   messages: unknown[] | string;
   cover_urls: string[];
@@ -49,6 +51,8 @@ function fromRow(row: StudioProjectRow): StudioProject {
     messages: Array.isArray(messages) ? messages : [],
     coverUrls: Array.isArray(row.cover_urls) ? row.cover_urls : [],
     pendingPrompt: row.pending_prompt || undefined,
+    pendingGeneration: document.pendingGeneration,
+    pendingAgentAttachmentIds: document.pendingAgentAttachmentIds,
     agentOpen: row.agent_open,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),

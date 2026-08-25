@@ -17,14 +17,15 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: 'Invalid video id.' }, { status: 400 });
   }
 
-  // A missing `toggle_video_like` (an unapplied migration) reads as a bare 500
-  // with nothing in it. Postgres always says what it objected to — keep it.
   try {
     const result = await toggleLike({ userId: user.id, videoId });
     return NextResponse.json(result);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error('[snackd] like failed', { videoId, detail });
-    return NextResponse.json({ error: 'The like could not be saved.', detail }, { status: 500 });
+    return NextResponse.json(
+      { error: 'The like could not be saved.' },
+      { status: 500 },
+    );
   }
 }

@@ -1,6 +1,7 @@
 import type Stripe from 'stripe';
 import { getStripe, getStripeWebhookSecret } from '@/lib/billing/stripe';
-import { sql } from '@/lib/db';
+import { runIdempotentWebhookEvent } from '@/lib/billing/webhook';
+import { sql, sqlJson } from '@/lib/db';
 
 export const runtime = 'nodejs';
 
@@ -47,6 +48,57 @@ async function processCheckout(
   `;
 }
 
+async function processStripeEvent(event: Stripe.Event) {
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    if (session.payment_status === 'paid') {
+      await processCheckout(session, event.id);
+    }
+  } else if (event.type === 'checkout.session.async_payment_succeeded') {
+    await processCheckout(event.data.object, event.id);
+  } else if (
+    event.type === 'checkout.session.expired' ||
+    event.type === 'checkout.session.async_payment_failed'
+  ) {
+    const session = event.data.object;
+    const orderId = session.metadata?.orderId;
+    if (orderId) {
+      await sql`
+        UPDATE public.credit_orders
+        SET status = ${
+          event.type === 'checkout.session.expired' ? 'expired' : 'failed'
+        }, updated_at = now()
+        WHERE id = ${orderId}::uuid AND status = 'pending'
+      `;
+    }
+  }
+}
+
+async function hasProcessedStripeEvent(eventId: string) {
+  const [event] = await sql<{ provider_event_id: string }[]>`
+    SELECT provider_event_id
+    FROM public.billing_events
+    WHERE provider_event_id = ${eventId}
+    LIMIT 1
+  `;
+  return Boolean(event);
+}
+
+async function recordStripeEvent(event: Stripe.Event) {
+  await sql`
+    INSERT INTO public.billing_events (
+      provider_event_id, provider, event_type, payload
+    )
+    VALUES (
+      ${event.id},
+      ${'stripe'},
+      ${event.type},
+      ${sqlJson(event)}
+    )
+    ON CONFLICT (provider_event_id) DO NOTHING
+  `;
+}
+
 export async function POST(request: Request) {
   const signature = request.headers.get('stripe-signature');
   if (!signature) {
@@ -61,70 +113,30 @@ export async function POST(request: Request) {
       signature,
       getStripeWebhookSecret(),
     );
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? `Invalid Stripe webhook: ${error.message}`
-            : 'Invalid Stripe webhook.',
-      },
-      { status: 400 },
-    );
+  } catch {
+    return Response.json({ error: 'Invalid Stripe webhook.' }, { status: 400 });
   }
 
-  const inserted = await sql<{ provider_event_id: string }[]>`
-    INSERT INTO public.billing_events (
-      provider_event_id, provider, event_type, payload
-    )
-    VALUES (
-      ${event.id},
-      ${'stripe'},
-      ${event.type},
-      ${JSON.stringify(event)}::jsonb
-    )
-    ON CONFLICT (provider_event_id) DO NOTHING
-    RETURNING provider_event_id
-  `;
-  if (!inserted.length) return Response.json({ received: true, duplicate: true });
-
   try {
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object;
-      if (session.payment_status === 'paid') {
-        await processCheckout(session, event.id);
-      }
-    } else if (event.type === 'checkout.session.async_payment_succeeded') {
-      await processCheckout(event.data.object, event.id);
-    } else if (
-      event.type === 'checkout.session.expired' ||
-      event.type === 'checkout.session.async_payment_failed'
-    ) {
-      const session = event.data.object;
-      const orderId = session.metadata?.orderId;
-      if (orderId) {
-        await sql`
-          UPDATE public.credit_orders
-          SET status = ${
-            event.type === 'checkout.session.expired' ? 'expired' : 'failed'
-          }, updated_at = now()
-          WHERE id = ${orderId}::uuid AND status = 'pending'
-        `;
-      }
-    }
-    return Response.json({ received: true });
+    const result = await runIdempotentWebhookEvent({
+      event,
+      eventId: event.id,
+      hasProcessed: hasProcessedStripeEvent,
+      process: processStripeEvent,
+      record: recordStripeEvent,
+    });
+    return Response.json({
+      received: true,
+      ...(result === 'duplicate' ? { duplicate: true } : {}),
+    });
   } catch (error) {
-    await sql`
-      DELETE FROM public.billing_events
-      WHERE provider_event_id = ${event.id}
-    `.catch(() => undefined);
+    console.error('[snackd] Stripe webhook processing failed', {
+      eventId: event.id,
+      eventType: event.type,
+      detail: error instanceof Error ? error.message : String(error),
+    });
     return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Stripe event processing failed.',
-      },
+      { error: 'Stripe event processing failed.' },
       { status: 500 },
     );
   }

@@ -23,6 +23,9 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error('[snackd] save failed', { videoId, detail });
-    return NextResponse.json({ error: 'The save could not be recorded.', detail }, { status: 500 });
+    return NextResponse.json(
+      { error: 'The save could not be recorded.' },
+      { status: 500 },
+    );
   }
 }

@@ -6,11 +6,11 @@ import { useRouter } from 'next/navigation';
 import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowRight,
-  AtSign,
   Check,
   ChevronDown,
   FolderLock,
   ImagePlus,
+  LoaderCircle,
   Mic,
   MoreHorizontal,
   Pencil,
@@ -27,7 +27,12 @@ import {
   listStudioProjectsSynced,
   renameStudioProjectSynced,
 } from '@/lib/studio/client-store';
-import { formatStudioDate } from '@/lib/studio/store';
+import {
+  createBlankNode,
+  formatStudioDate,
+} from '@/lib/studio/store';
+import { sizeForMediaDimensions } from '@/lib/studio/geometry';
+import { uploadStudioMedia } from '@/lib/studio/media-upload';
 import type { StudioProject } from '@/lib/studio/types';
 import {
   studioItem,
@@ -296,9 +301,11 @@ function FreeformControls({
 
 export default function StudioHome({
   authenticated = false,
+  userId,
   runtimeConfig = DEFAULT_STUDIO_RUNTIME_CONFIG,
 }: {
   authenticated?: boolean;
+  userId?: string;
   runtimeConfig?: StudioRuntimeConfig;
 }) {
   const router = useRouter();
@@ -314,25 +321,36 @@ export default function StudioHome({
   const [modelOpen, setModelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [listening, setListening] = useState(false);
+  const [uploadingReference, setUploadingReference] = useState(false);
+  const [referenceUploadError, setReferenceUploadError] = useState('');
   const [projects, setProjects] = useState<StudioProject[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(authenticated);
+  const [projectsError, setProjectsError] = useState('');
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const reduceMotion = Boolean(useReducedMotion());
 
   const refreshProjects = useCallback(async () => {
     if (!authenticated) {
       setProjects([]);
+      setProjectsError('');
       setProjectsLoading(false);
       return;
     }
     try {
-      setProjects(await listStudioProjectsSynced());
+      setProjectsError('');
+      setProjects(
+        await listStudioProjectsSynced(userId, {
+          onRemoteFailure: (error) => setProjectsError(error.message),
+        }),
+      );
     } finally {
       setProjectsLoading(false);
     }
-  }, [authenticated]);
+  }, [authenticated, userId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void refreshProjects(), 0);
@@ -426,35 +444,50 @@ export default function StudioHome({
                 ),
               },
             },
-          })
+          }, userId)
         : await createStudioProjectSynced({
             title: text.slice(0, 18),
             pendingPrompt: `Plan the task and canvas structure before executing: ${text}`,
-          });
+          }, userId);
     router.push(`/studio/${project.id}`);
   }
 
   async function createBlank() {
     if (!requireAccount()) return;
-    const project = await createStudioProjectSynced({
-      title: 'Untitled project',
-      blank: true,
-    });
+    const project = await createStudioProjectSynced(
+      {
+        title: 'Untitled project',
+        blank: true,
+      },
+      userId,
+    );
     router.push(`/studio/${project.id}`);
   }
 
   async function submitRename() {
     if (!renameId) return;
-    await renameStudioProjectSynced(renameId, renameTitle);
+    await renameStudioProjectSynced(renameId, renameTitle, userId);
     setRenameId(null);
     await refreshProjects();
   }
 
   async function submitDelete() {
-    if (!deleteId) return;
-    await deleteStudioProjectSynced(deleteId);
-    setDeleteId(null);
-    await refreshProjects();
+    if (!deleteId || deleting) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await deleteStudioProjectSynced(deleteId, userId);
+      setDeleteId(null);
+      await refreshProjects();
+    } catch (error) {
+      setDeleteError(
+        error instanceof Error
+          ? error.message
+          : 'The project could not be deleted.',
+      );
+    } finally {
+      setDeleting(false);
+    }
   }
 
   function startVoice() {
@@ -547,11 +580,19 @@ export default function StudioHome({
                 size="icon"
                 className="rounded-xl"
                 aria-label="Upload reference image"
+                disabled={uploadingReference}
                 onClick={() => {
-                  if (requireAccount()) fileRef.current?.click();
+                  if (requireAccount()) {
+                    setReferenceUploadError('');
+                    fileRef.current?.click();
+                  }
                 }}
               >
-                <Upload />
+                {uploadingReference ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Upload />
+                )}
               </Button>
               <MotionTabs
                 value={mode}
@@ -589,16 +630,6 @@ export default function StudioHome({
               ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="rounded-xl max-sm:hidden"
-                aria-label="Mention an item"
-                onClick={() => setPrompt((current) => `${current}@`)}
-              >
-                <AtSign />
-              </Button>
               <motion.div
                 animate={listening ? { scale: [1, 1.08, 1] } : { scale: 1 }}
                 transition={
@@ -633,6 +664,14 @@ export default function StudioHome({
               </Button>
             </div>
           </div>
+          {referenceUploadError ? (
+            <p
+              role="alert"
+              className="px-3 pb-1 pt-2 text-xs font-medium text-destructive"
+            >
+              {referenceUploadError}
+            </p>
+          ) : null}
           <input
             ref={fileRef}
             type="file"
@@ -642,12 +681,70 @@ export default function StudioHome({
               const file = event.target.files?.[0];
               event.target.value = '';
               if (!file || !requireAccount()) return;
-              const project = await createStudioProjectSynced({
-                title: file.name.replace(/\.[^.]+$/, '') || 'Reference study',
-                pendingPrompt:
-                  prompt.trim() || `Create from this reference image: ${file.name}`,
-              });
-              router.push(`/studio/${project.id}`);
+              setUploadingReference(true);
+              setReferenceUploadError('');
+              try {
+                const uploaded = await uploadStudioMedia(file);
+                const size = sizeForMediaDimensions(
+                  uploaded.width,
+                  uploaded.height,
+                  'image',
+                );
+                const referenceNode = {
+                  ...createBlankNode(
+                    'image',
+                    { x: 80, y: 80 },
+                    {
+                      title: file.name,
+                      status: 'ready',
+                      src: uploaded.url,
+                      uploadMime: uploaded.mime,
+                      sourceWidth: uploaded.width,
+                      sourceHeight: uploaded.height,
+                      aspect:
+                        uploaded.width && uploaded.height
+                          ? `${uploaded.width}:${uploaded.height}`
+                          : 'auto',
+                    },
+                  ),
+                  ...size,
+                };
+                const requestedPrompt =
+                  prompt.trim() ||
+                  `Create from this reference image: ${file.name}`;
+                const project = await createStudioProjectSynced(
+                  {
+                    title:
+                      file.name.replace(/\.[^.]+$/, '') || 'Reference study',
+                    initialNodes: [referenceNode],
+                    ...(mode === 'design'
+                      ? {
+                          pendingGeneration: {
+                            kind: freeformKind,
+                            prompt: requestedPrompt,
+                            data: {
+                              ...(freeformValues as Partial<StudioNodeData>),
+                              modelId: selectedFreeformModel.id,
+                              refSrc: uploaded.url,
+                              refSrcs: [uploaded.url],
+                            },
+                          },
+                        }
+                      : {
+                          pendingPrompt: requestedPrompt,
+                          pendingAgentAttachmentIds: [referenceNode.id],
+                        }),
+                  },
+                  userId,
+                );
+                router.push(`/studio/${project.id}`);
+              } catch (error) {
+                setReferenceUploadError(
+                  error instanceof Error ? error.message : 'Upload failed.',
+                );
+              } finally {
+                setUploadingReference(false);
+              }
             }}
           />
         </motion.form>
@@ -707,7 +804,30 @@ export default function StudioHome({
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
+            <div className="space-y-4">
+              {projectsError ? (
+                <div
+                  role="alert"
+                  className="flex items-center justify-between gap-4 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm"
+                >
+                  <span>
+                    {projectsError} No cloud data was deleted.
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 rounded-lg"
+                    onClick={() => {
+                      setProjectsLoading(true);
+                      void refreshProjects();
+                    }}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : null}
+              <div className="grid grid-cols-3 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
               <motion.button
                 type="button"
                 className="group flex min-h-[230px] flex-col items-center justify-center gap-3 rounded-[20px] border border-dashed bg-card/55 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
@@ -792,7 +912,10 @@ export default function StudioHome({
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         variant="destructive"
-                        onSelect={() => setDeleteId(project.id)}
+                        onSelect={() => {
+                          setDeleteError('');
+                          setDeleteId(project.id);
+                        }}
                       >
                         <Trash2 /> Delete
                       </DropdownMenuItem>
@@ -800,6 +923,7 @@ export default function StudioHome({
                   </DropdownMenu>
                 </motion.div>
               ))}
+              </div>
             </div>
           )}
         </motion.section>
@@ -848,15 +972,24 @@ export default function StudioHome({
             <AlertDialogTitle>Delete this project?</AlertDialogTitle>
             <AlertDialogDescription>
               This cannot be undone. Every node on the canvas will be removed.
+              {deleteError ? (
+                <span className="mt-2 block text-destructive">
+                  {deleteError}
+                </span>
+              ) : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              onClick={() => void submitDelete()}
+              disabled={deleting}
+              onClick={(event) => {
+                event.preventDefault();
+                void submitDelete();
+              }}
             >
-              Delete
+              {deleting ? 'Deleting…' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -549,13 +549,14 @@ export async function deleteVideo({
 // it, so every post read 0 views forever. One view is one open of the player.
 // The direct connection owns the table, so this needs no migration and no
 // counter function — unlike likes, a view has no row of its own to protect.
+// The public feed refreshes every 60 seconds; invalidating it for every view
+// turns a hot write endpoint into a global cache miss storm.
 export async function recordVideoView(videoId: number): Promise<number> {
   const [row] = await sql<Array<{ views_count: number }>>`
     UPDATE videos SET views_count = views_count + 1
     WHERE id = ${videoId}
     RETURNING views_count
   `;
-  revalidateTag('videos-feed', 'max');
   return row?.views_count ?? 0;
 }
 

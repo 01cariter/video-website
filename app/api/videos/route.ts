@@ -92,7 +92,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ video }, { status: 201 });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: 'The post could not be published.', detail }, { status: 400 });
+    console.error('[snackd] publish failed', { userId: user.id, detail });
+    return NextResponse.json(
+      { error: 'The post could not be published.' },
+      { status: 500 },
+    );
   }
 }
 

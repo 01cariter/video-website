@@ -39,6 +39,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error('[snackd] comment failed', { videoId, detail });
-    return NextResponse.json({ error: 'The comment could not be posted.', detail }, { status: 500 });
+    return NextResponse.json(
+      { error: 'The comment could not be posted.' },
+      { status: 500 },
+    );
   }
 }

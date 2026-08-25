@@ -25,6 +25,9 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error('[snackd] follow failed', { authorId, detail });
-    return NextResponse.json({ error: 'The follow could not be saved.', detail }, { status: 500 });
+    return NextResponse.json(
+      { error: 'The follow could not be saved.' },
+      { status: 500 },
+    );
   }
 }

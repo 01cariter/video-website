@@ -1,6 +1,7 @@
 import 'server-only';
 
-import { sql } from '@/lib/db';
+import { sql, sqlJson } from '@/lib/db';
+import { decodeJsonb } from '@/lib/jsonb';
 import {
   CREDIT_COSTS,
   WELCOME_CREDITS,
@@ -19,7 +20,7 @@ interface CreditLedgerRow extends Record<string, unknown> {
   balance_after: number | string;
   entry_type: string;
   reference_id: string | null;
-  metadata: Record<string, unknown>;
+  metadata: Record<string, unknown> | string;
   created_at: string;
 }
 
@@ -40,7 +41,7 @@ export interface CreditPackage extends Record<string, unknown> {
 interface BeginRequestRow extends Record<string, unknown> {
   request_status: 'pending' | 'completed' | 'failed';
   balance: number | string;
-  result: Record<string, unknown> | null;
+  result: Record<string, unknown> | string | null;
   accepted: boolean;
 }
 
@@ -63,7 +64,7 @@ function mapCreditLedgerRow(entry: CreditLedgerRow) {
     balanceAfter: numeric(entry.balance_after),
     type: entry.entry_type,
     referenceId: entry.reference_id,
-    metadata: entry.metadata,
+    metadata: decodeJsonb<Record<string, unknown>>(entry.metadata, {}),
     createdAt: entry.created_at,
   };
 }
@@ -84,7 +85,7 @@ export async function ensureCreditAccount(userId: string) {
       ${'welcome'},
       ${`welcome:${userId}`},
       ${userId},
-      ${JSON.stringify({ source: 'signup' })}::jsonb
+      ${sqlJson({ source: 'signup' })}
     )
   `;
   await sql`
@@ -191,7 +192,7 @@ export async function beginMeteredRequest(input: {
     return {
       status: row.request_status,
       balance: numeric(row.balance),
-      result: row.result,
+      result: decodeJsonb<Record<string, unknown> | null>(row.result, null),
       accepted: row.accepted,
     };
   } catch (error) {
@@ -211,7 +212,7 @@ export async function completeMeteredRequest(input: {
       SELECT public.complete_metered_ai_generation_request(
         ${input.userId},
         ${input.requestId},
-        ${JSON.stringify(input.result)}::jsonb,
+        ${sqlJson(input.result)},
         ${Math.max(1, Math.round(input.actualCost))}
       ) AS balance
     `;
@@ -221,7 +222,7 @@ export async function completeMeteredRequest(input: {
     SELECT public.complete_ai_generation_request(
       ${input.userId},
       ${input.requestId},
-      ${JSON.stringify(input.result)}::jsonb
+      ${sqlJson(input.result)}
     )
   `;
 }

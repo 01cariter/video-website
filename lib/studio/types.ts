@@ -82,6 +82,7 @@ export interface StudioProject {
   appliedToolCallIds?: string[];
   pendingPrompt?: string;
   pendingGeneration?: StudioPendingGeneration;
+  pendingAgentAttachmentIds?: string[];
   agentOpen: boolean;
 }
 

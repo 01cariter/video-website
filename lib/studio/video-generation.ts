@@ -184,6 +184,19 @@ export class VideoGenerationValidationError extends Error {
   }
 }
 
+export function normalizeStudioVideoPrompt(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new VideoGenerationValidationError('Add a prompt first.');
+  }
+  const prompt = value.trim();
+  if (prompt.length > 20_000) {
+    throw new VideoGenerationValidationError(
+      'The video prompt is too long. Use 20,000 characters or fewer.',
+    );
+  }
+  return prompt;
+}
+
 export interface NormalizedStudioVideoRequest {
   modelId: StudioVideoModelId;
   aspect: StudioVideoAspect;

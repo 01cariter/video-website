@@ -29,7 +29,7 @@ interface CreateMediaInput {
   width?: number | null;
   height?: number | null;
   durationSeconds?: number | null;
-  ownerId?: string | null;
+  ownerId: string;
 }
 
 export async function createMediaFromUrl({
@@ -39,7 +39,7 @@ export async function createMediaFromUrl({
   width = null,
   height = null,
   durationSeconds = null,
-  ownerId = null,
+  ownerId,
 }: CreateMediaInput): Promise<Media> {
   const [row] = await sql<Media[]>`
     INSERT INTO media (kind, mime, url, width, height, duration_seconds, owner_id)
@@ -174,19 +174,15 @@ export async function getMedia(id: number): Promise<Media | null> {
 }
 
 export async function listMedia({
-  ownerId = null,
+  ownerId,
   limit = 60,
-}: { ownerId?: string | null; limit?: number } = {}): Promise<Media[]> {
-  if (ownerId) {
-    return sql<Media[]>`
-      SELECT id, kind, mime, url, width, height, duration_seconds, created_at
-      FROM media WHERE owner_id = ${ownerId}
-      ORDER BY id DESC LIMIT ${limit}
-    `;
-  }
+}: { ownerId: string; limit?: number }): Promise<Media[]> {
   return sql<Media[]>`
     SELECT id, kind, mime, url, width, height, duration_seconds, created_at
-    FROM media ORDER BY id DESC LIMIT ${limit}
+    FROM media
+    WHERE owner_id = ${ownerId}
+    ORDER BY id DESC
+    LIMIT ${limit}
   `;
 }
 

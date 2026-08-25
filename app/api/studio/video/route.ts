@@ -16,6 +16,7 @@ import {
 import {
   buildStudioVideoGeneratePayload,
   estimateStudioVideoUpstreamUsdMicros,
+  normalizeStudioVideoPrompt,
   normalizeStudioVideoRequest,
   STUDIO_VIDEO_MODEL_IDS,
   VideoGenerationValidationError,
@@ -59,11 +60,7 @@ export async function POST(request: Request) {
 
   const parsedBody: unknown = await request.json().catch(() => null);
   const body = isRecord(parsedBody) ? parsedBody : {};
-  const prompt = stringField(body, 'prompt');
   const requestId = stringField(body, 'requestId');
-  if (!prompt) {
-    return Response.json({ error: 'Add a prompt first.' }, { status: 400 });
-  }
   if (!requestId || requestId.length > 160) {
     return Response.json(
       { error: 'Invalid request identifier.' },
@@ -73,20 +70,29 @@ export async function POST(request: Request) {
 
   const projectId = stringField(body, 'projectId');
   const nodeId = stringField(body, 'nodeId');
-  const runtime = await getStudioRuntimeConfig();
-  const modelId =
-    body.modelId ??
-    STUDIO_VIDEO_MODEL_IDS.find((candidate) =>
-      isStudioModelEnabled(candidate, runtime),
-    );
-  if (!modelId) {
+  if ((projectId?.length ?? 0) > 160 || (nodeId?.length ?? 0) > 160) {
     return Response.json(
-      { error: 'Video generation is currently disabled.' },
-      { status: 403 },
+      { error: 'Invalid project or node identifier.' },
+      { status: 400 },
     );
   }
-  let videoRequest;
+  let prompt: string;
+  let runtime: Awaited<ReturnType<typeof getStudioRuntimeConfig>>;
+  let videoRequest: ReturnType<typeof normalizeStudioVideoRequest>;
   try {
+    prompt = normalizeStudioVideoPrompt(body.prompt);
+    runtime = await getStudioRuntimeConfig();
+    const modelId =
+      body.modelId ??
+      STUDIO_VIDEO_MODEL_IDS.find((candidate) =>
+        isStudioModelEnabled(candidate, runtime),
+      );
+    if (!modelId) {
+      return Response.json(
+        { error: 'Video generation is currently disabled.' },
+        { status: 403 },
+      );
+    }
     videoRequest = normalizeStudioVideoRequest({
       modelId: body.modelId === undefined ? modelId : body.modelId,
       parameters: videoParametersFromBody(body),
@@ -96,7 +102,11 @@ export async function POST(request: Request) {
     if (error instanceof VideoGenerationValidationError) {
       return Response.json({ error: error.message }, { status: 400 });
     }
-    throw error;
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Could not prepare video generation.';
+    return Response.json({ error: friendlyAiError(message) }, { status: 500 });
   }
 
   let meteredAccepted = false;

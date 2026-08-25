@@ -23,15 +23,12 @@ interface MediaJsonBody {
   durationSeconds?: number | string | null;
 }
 
-export async function GET(request: NextRequest) {
-  const mine = request.nextUrl.searchParams.get('mine');
-  let ownerId: string | null = null;
-  if (mine) {
-    const user = await getAuthUser();
-    if (!user) return NextResponse.json({ error: 'Sign in required.' }, { status: 401 });
-    ownerId = user.id;
+export async function GET() {
+  const user = await getAuthUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Sign in required.' }, { status: 401 });
   }
-  const media = await listMedia({ ownerId });
+  const media = await listMedia({ ownerId: user.id });
   return NextResponse.json({ media });
 }
 
@@ -114,7 +111,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ media }, { status: 201 });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: 'Upload failed.', detail }, { status: 500 });
+    console.error('[snackd] media upload failed', { userId: user.id, detail });
+    return NextResponse.json({ error: 'Upload failed.' }, { status: 500 });
   }
 }
 

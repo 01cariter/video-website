@@ -11,6 +11,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowUp,
   AlertCircle,
+  AtSign,
   BookOpen,
   Check,
   CheckCircle2,
@@ -59,6 +60,8 @@ import {
   type StudioSkillId,
 } from '@/lib/studio/skills/catalog';
 import {
+  attachmentsForStudioNodes,
+  MAX_SELECTED_CANVAS_NODES,
   studioAgentMessageContext,
   type StudioAgentAttachment,
   type StudioAgentUIMessage,
@@ -68,7 +71,10 @@ import { modelOptionsForKind } from '@/lib/studio/model-catalog';
 import type { StudioNode, StudioNodeKind } from '@/lib/studio/types';
 import AgentMarkdown from './AgentMarkdown';
 import {
+  composerTriggerAtEnd,
+  filterCanvasMentionNodes,
   isStudioWorkflowSettled,
+  removeComposerTrigger,
   workflowProgress,
   workflowReceiptFromPart,
   workflowReceiptsFromMessages,
@@ -97,6 +103,7 @@ interface AgentPanelProps {
 }
 
 const SKILL_LIST_ID = 'studio-agent-skill-list';
+const CANVAS_MENTION_LIST_ID = 'studio-agent-canvas-mention-list';
 
 function hasVisibleAssistantPart(message: StudioAgentUIMessage) {
   return message.parts.some(
@@ -309,6 +316,9 @@ function AgentPanel({
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [skillQuery, setSkillQuery] = useState('');
   const [activeSkillIndex, setActiveSkillIndex] = useState(0);
+  const [canvasPickerOpen, setCanvasPickerOpen] = useState(false);
+  const [canvasQuery, setCanvasQuery] = useState('');
+  const [activeCanvasIndex, setActiveCanvasIndex] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
   const shouldAutoScroll = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -324,7 +334,11 @@ function AgentPanel({
     draftRequest && inputState.draftId !== activeDraftId
       ? draftRequest.attachments
       : inputState.attachments;
-  const activeMention = input.match(/(^|\s)[@/]([\w-]*)$/u);
+  const composerTrigger = composerTriggerAtEnd(input);
+  const canvasTrigger =
+    composerTrigger?.kind === 'canvas' ? composerTrigger : undefined;
+  const skillTrigger =
+    composerTrigger?.kind === 'skill' ? composerTrigger : undefined;
   const selectedSkills = selectedSkillIds.map(studioSkillById);
   const normalizedSkillQuery = skillQuery.trim().toLowerCase();
   const visibleSkills = BUILT_IN_STUDIO_SKILLS.filter((skill) =>
@@ -332,6 +346,11 @@ function AgentPanel({
       .toLowerCase()
       .includes(normalizedSkillQuery),
   );
+  const visibleCanvasNodes = filterCanvasMentionNodes(
+    nodes,
+    canvasQuery,
+    activeAttachments.map((attachment) => attachment.id),
+  ).slice(0, 12);
   const canSend = input.trim().length > 0 && !busy;
   const lastMessageId = messages[messages.length - 1]?.id;
   const activeWorkflowCount = workflowReceiptsFromMessages(messages).filter(
@@ -344,14 +363,28 @@ function AgentPanel({
       value,
       attachments: activeAttachments,
     });
-    const mention = value.match(/(^|\s)[@/]([\w-]*)$/u);
-    if (mention) {
-      setSkillQuery(mention[2]);
-      setActiveSkillIndex(0);
-      setSkillPickerOpen(true);
-    } else if (skillPickerOpen) {
+    const trigger = composerTriggerAtEnd(value);
+    if (trigger?.kind === 'canvas') {
+      setCanvasQuery(trigger.query);
+      setActiveCanvasIndex(0);
+      setCanvasPickerOpen(true);
       setSkillPickerOpen(false);
       setSkillQuery('');
+    } else if (trigger?.kind === 'skill') {
+      setSkillQuery(trigger.query);
+      setActiveSkillIndex(0);
+      setSkillPickerOpen(true);
+      setCanvasPickerOpen(false);
+      setCanvasQuery('');
+    } else {
+      if (skillPickerOpen) {
+        setSkillPickerOpen(false);
+        setSkillQuery('');
+      }
+      if (canvasPickerOpen) {
+        setCanvasPickerOpen(false);
+        setCanvasQuery('');
+      }
     }
   };
 
@@ -373,6 +406,15 @@ function AgentPanel({
       )
       ?.scrollIntoView({ block: 'nearest' });
   }, [activeSkillIndex, skillPickerOpen, visibleSkills]);
+
+  useEffect(() => {
+    if (!canvasPickerOpen || !visibleCanvasNodes.length) return;
+    document
+      .getElementById(
+        `${CANVAS_MENTION_LIST_ID}-${activeCanvasIndex}`,
+      )
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [activeCanvasIndex, canvasPickerOpen, visibleCanvasNodes]);
 
   useEffect(() => {
     if (!open || !draftRequest) return;
@@ -403,6 +445,8 @@ function AgentPanel({
     setSelectedSkillIds([]);
     setSkillPickerOpen(false);
     setSkillQuery('');
+    setCanvasPickerOpen(false);
+    setCanvasQuery('');
   }
 
   function removeAttachment(id: string) {
@@ -423,15 +467,33 @@ function AgentPanel({
       if (current.length >= MAX_ACTIVE_STUDIO_SKILLS) return current;
       return [...current, skillId];
     });
-    if (activeMention) {
-      const next = input
-        .slice(0, input.length - activeMention[0].length)
-        .concat(activeMention[1]);
+    if (skillTrigger) {
+      const next = removeComposerTrigger(input, skillTrigger);
       setInput(next);
       setSkillPickerOpen(false);
       setSkillQuery('');
       window.requestAnimationFrame(() => inputRef.current?.focus());
     }
+  }
+
+  function selectCanvasNode(node: StudioNode) {
+    const [attachment] = attachmentsForStudioNodes(nodes, [node.id]);
+    if (!attachment) return;
+    const nextAttachments = activeAttachments.some(
+      (current) => current.id === attachment.id,
+    )
+      ? activeAttachments
+      : [...activeAttachments, attachment].slice(0, MAX_SELECTED_CANVAS_NODES);
+    setInputState({
+      draftId: activeDraftId,
+      value: canvasTrigger
+        ? removeComposerTrigger(input, canvasTrigger)
+        : input,
+      attachments: nextAttachments,
+    });
+    setCanvasPickerOpen(false);
+    setCanvasQuery('');
+    window.requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   function handleSkillPickerKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
@@ -460,6 +522,37 @@ function AgentPanel({
       ) {
         selectSkill(skill.id);
       }
+      return true;
+    }
+    return false;
+  }
+
+  function handleCanvasPickerKeyDown(
+    event: ReactKeyboardEvent<HTMLElement>,
+  ) {
+    if (!canvasPickerOpen) return false;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setCanvasPickerOpen(false);
+      setCanvasQuery('');
+      return true;
+    }
+    if (!visibleCanvasNodes.length) return false;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const direction = event.key === 'ArrowDown' ? 1 : -1;
+      setActiveCanvasIndex(
+        (current) =>
+          (current + direction + visibleCanvasNodes.length) %
+          visibleCanvasNodes.length,
+      );
+      return true;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      selectCanvasNode(
+        visibleCanvasNodes[activeCanvasIndex] ?? visibleCanvasNodes[0],
+      );
       return true;
     }
     return false;
@@ -704,6 +797,79 @@ function AgentPanel({
           submit();
         }}
       >
+        {canvasPickerOpen ? (
+          <div className="overflow-hidden rounded-[10px] bg-[var(--studio-raised)] shadow-[inset_0_0_0_1px_var(--line)]">
+            <div className="flex items-center justify-between border-b border-border/70 px-2.5 py-2">
+              <span className="flex min-w-0 items-center gap-1.5 text-[10.5px] font-semibold">
+                <AtSign className="size-3.5 text-primary" />
+                Reference canvas
+              </span>
+              <span className="truncate text-[9.5px] text-muted-foreground">
+                {canvasQuery ? `Matching “${canvasQuery}”` : 'Choose an item'}
+              </span>
+            </div>
+            <div
+              id={CANVAS_MENTION_LIST_ID}
+              role="listbox"
+              aria-label="Canvas items"
+              className="max-h-[238px] overflow-y-auto p-1.5"
+            >
+              {visibleCanvasNodes.length ? (
+                visibleCanvasNodes.map((node, index) => {
+                  const previewUrl =
+                    node.type === 'video'
+                      ? node.data.posterSrc
+                      : node.type === 'image'
+                        ? node.data.src
+                        : undefined;
+                  return (
+                    <button
+                      key={node.id}
+                      id={`${CANVAS_MENTION_LIST_ID}-${index}`}
+                      type="button"
+                      role="option"
+                      aria-selected={index === activeCanvasIndex}
+                      className={cn(
+                        'flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent',
+                        index === activeCanvasIndex && 'bg-accent',
+                      )}
+                      onClick={() => selectCanvasNode(node)}
+                      onMouseEnter={() => setActiveCanvasIndex(index)}
+                    >
+                      <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-md bg-muted text-muted-foreground">
+                        {previewUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={previewUrl}
+                            alt=""
+                            className="size-full object-cover"
+                          />
+                        ) : (
+                          attachmentIcon(node.type)
+                        )}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[11px] font-semibold">
+                          {node.data.title || node.type}
+                        </span>
+                        <span className="block truncate text-[9.5px] text-muted-foreground">
+                          {node.type} · {node.data.status}
+                          {node.data.modelId ? ` · ${node.data.modelId}` : ''}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="px-2 py-5 text-center text-[11px] text-muted-foreground">
+                  {nodes.length
+                    ? 'No matching unattached canvas items'
+                    : 'The canvas is empty'}
+                </p>
+              )}
+            </div>
+          </div>
+        ) : null}
         {activeAttachments.length ? (
           <div
             className="flex gap-1.5 overflow-x-auto px-0.5 pt-0.5"
@@ -770,21 +936,30 @@ function AgentPanel({
           ref={inputRef}
           value={input}
           rows={3}
-          placeholder="Describe an idea… Type @ or / to attach a Skill"
+          placeholder="Describe an idea… @ canvas items · / Skills"
           className="min-h-[72px] resize-none border-0 bg-transparent px-1 py-1 text-[13px] leading-5 shadow-none placeholder:text-muted-foreground/70 focus-visible:ring-0"
           aria-autocomplete="list"
           aria-controls={
-            activeMention && skillPickerOpen ? SKILL_LIST_ID : undefined
+            canvasPickerOpen
+              ? CANVAS_MENTION_LIST_ID
+              : skillPickerOpen
+                ? SKILL_LIST_ID
+                : undefined
           }
-          aria-expanded={Boolean(activeMention && skillPickerOpen)}
+          aria-expanded={Boolean(
+            canvasPickerOpen || skillPickerOpen,
+          )}
           aria-activedescendant={
-            activeMention && skillPickerOpen && visibleSkills.length
+            canvasPickerOpen && visibleCanvasNodes.length
+              ? `${CANVAS_MENTION_LIST_ID}-${activeCanvasIndex}`
+              : skillPickerOpen && visibleSkills.length
               ? `${SKILL_LIST_ID}-${visibleSkills[activeSkillIndex]?.id ?? visibleSkills[0].id}`
               : undefined
           }
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
-            if (activeMention && handleSkillPickerKeyDown(event)) return;
+            if (canvasPickerOpen && handleCanvasPickerKeyDown(event)) return;
+            if (skillPickerOpen && handleSkillPickerKeyDown(event)) return;
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
               submit();
@@ -817,6 +992,26 @@ function AgentPanel({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className={cn(
+                'rounded-lg bg-[var(--studio-raised)] shadow-[inset_0_0_0_1px_var(--line)] hover:bg-[var(--studio-raised)]',
+                canvasPickerOpen && 'text-primary',
+              )}
+              aria-label="Reference a canvas item"
+              aria-expanded={canvasPickerOpen}
+              onClick={() => {
+                setCanvasPickerOpen((current) => !current);
+                setCanvasQuery('');
+                setActiveCanvasIndex(0);
+                setSkillPickerOpen(false);
+                setSkillQuery('');
+              }}
+            >
+              <AtSign />
+            </Button>
             <Popover
               open={skillPickerOpen}
               onOpenChange={(next) => {
@@ -846,7 +1041,7 @@ function AgentPanel({
                 side="top"
                 className="w-[326px] overflow-hidden p-0"
                 onOpenAutoFocus={(event) => {
-                  if (activeMention) event.preventDefault();
+                  if (skillTrigger) event.preventDefault();
                 }}
               >
                 <div className="flex items-center gap-2 border-b px-2.5 py-2">
@@ -964,15 +1159,18 @@ function AgentPanel({
   );
 }
 
-function sameWorkflowNodeStatuses(left: StudioNode[], right: StudioNode[]) {
+function sameAgentPanelNodes(left: StudioNode[], right: StudioNode[]) {
   if (left === right) return true;
   if (left.length !== right.length) return false;
-  const rightStatuses = new Map(
-    right.map((node) => [node.id, node.data.status]),
-  );
-  return left.every(
-    (node) => rightStatuses.get(node.id) === node.data.status,
-  );
+  return left.every((node, index) => {
+    const other = right[index];
+    return Boolean(
+      other &&
+        node.id === other.id &&
+        node.type === other.type &&
+        node.data === other.data,
+    );
+  });
 }
 
 export default memo(
@@ -988,5 +1186,5 @@ export default memo(
     previous.onStop === next.onStop &&
     previous.onAddNode === next.onAddNode &&
     previous.draftRequest === next.draftRequest &&
-    sameWorkflowNodeStatuses(previous.nodes, next.nodes),
+    sameAgentPanelNodes(previous.nodes, next.nodes),
 );

@@ -3,7 +3,14 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { ArrowLeft, Moon, PanelRight, Sun } from 'lucide-react';
+import {
+  ArrowLeft,
+  CloudOff,
+  LoaderCircle,
+  Moon,
+  PanelRight,
+  Sun,
+} from 'lucide-react';
 import { getThemeSnapshot, setTheme } from '@/lib/theme';
 import { studioSnap } from '@/lib/studio/motion';
 import { Button } from '@/app/components/ui/button';
@@ -15,11 +22,18 @@ import StudioCreditPill from './StudioCreditPill';
 interface StudioHeaderProps {
   title: string;
   onTitleChange: (title: string) => void;
+  syncStatus: 'saved' | 'saving' | 'offline';
   agentOpen: boolean;
   onToggleAgent: () => void;
 }
 
-export default function StudioHeader({ title, onTitleChange, agentOpen, onToggleAgent }: StudioHeaderProps) {
+export default function StudioHeader({
+  title,
+  onTitleChange,
+  syncStatus,
+  agentOpen,
+  onToggleAgent,
+}: StudioHeaderProps) {
   const [dark, setDark] = useState(() => (typeof document === 'undefined' ? false : getThemeSnapshot()));
   const reduceMotion = Boolean(useReducedMotion());
 
@@ -42,6 +56,22 @@ export default function StudioHeader({ title, onTitleChange, agentOpen, onToggle
           onChange={(event) => onTitleChange(event.target.value)}
           aria-label="Project name"
         />
+        {syncStatus !== 'saved' ? (
+          <span
+            className={cn(
+              'ml-1 flex shrink-0 items-center gap-1 text-[10px] font-medium text-muted-foreground',
+              syncStatus === 'offline' && 'text-destructive',
+            )}
+            role="status"
+          >
+            {syncStatus === 'saving' ? (
+              <LoaderCircle className="size-3 animate-spin" />
+            ) : (
+              <CloudOff className="size-3" />
+            )}
+            {syncStatus === 'saving' ? 'Saving…' : 'Saved locally · retrying'}
+          </span>
+        ) : null}
       </div>
       <div className="flex items-center gap-1">
         <StudioCreditPill />

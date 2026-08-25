@@ -15,6 +15,10 @@ import {
   priceStudioUsage,
   STUDIO_AGENT_GATEWAY_PROVIDER_BY_MODEL,
 } from '@/lib/studio/pricing';
+import {
+  normalizeStudioTextRequest,
+  StudioTextValidationError,
+} from '@/lib/studio/text-generation';
 import { getAuthUser } from '@/lib/supabase/server';
 
 export const maxDuration = 45;
@@ -27,37 +31,24 @@ export async function POST(request: Request) {
       { status: 401 },
     );
   }
-  const body = (await request.json().catch(() => null)) as {
-    prompt?: string;
-    modelId?: string;
-    current?: string;
-    reasoningEffort?: 'low' | 'medium' | 'high';
-    requestId?: string;
-    projectId?: string;
-    nodeId?: string;
-    expectedCredits?: unknown;
-  } | null;
-  const prompt = body?.prompt?.trim();
-  const requestId = body?.requestId?.trim();
-  if (!prompt) {
-    return Response.json({ error: 'Add a prompt first.' }, { status: 400 });
-  }
-  if (prompt.length > 20_000 || (body?.current?.length ?? 0) > 20_000) {
+  let body: ReturnType<typeof normalizeStudioTextRequest>;
+  try {
+    body = normalizeStudioTextRequest(await request.json().catch(() => null));
+  } catch (error) {
+    if (error instanceof StudioTextValidationError) {
+      return Response.json({ error: error.message }, { status: 400 });
+    }
     return Response.json(
-      { error: 'Text generation input is too long.' },
+      { error: 'Invalid text generation request.' },
       { status: 400 },
     );
   }
-  if (!requestId || requestId.length > 160) {
-    return Response.json({ error: 'Invalid request identifier.' }, { status: 400 });
-  }
-  const effort =
-    body?.reasoningEffort === 'low' || body?.reasoningEffort === 'medium'
-      ? body.reasoningEffort
-      : 'high';
+
+  const { prompt, requestId } = body;
+  const effort = body.reasoningEffort;
   const maxOutputTokens =
     effort === 'low' ? 1_024 : effort === 'medium' ? 2_048 : 4_096;
-  const requestedModelId = body?.modelId;
+  const requestedModelId = body.modelId;
   if (requestedModelId !== undefined && !isStudioAgentModelId(requestedModelId)) {
     return Response.json(
       { error: 'Unsupported text model.' },
@@ -75,7 +66,7 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     }
-    const current = body?.current?.trim() || '';
+    const current = body.current;
     const generationPrompt = current
       ? `Rewrite or expand the following copy. Return only the finished copy.\nRequirements: ${prompt}\nOriginal: ${current}`
       : `Write copy for a creative canvas. Return only the finished copy.\nRequirements: ${prompt}`;
@@ -93,7 +84,7 @@ export async function POST(request: Request) {
       runtime,
     });
     const expectedCreditsStatus = expectedStudioCreditsStatus(
-      body?.expectedCredits,
+      body.expectedCredits,
       quote,
     );
     if (
@@ -123,8 +114,8 @@ export async function POST(request: Request) {
       requestId,
       kind: 'text',
       cost: quote.credits,
-      projectId: body?.projectId,
-      nodeId: body?.nodeId,
+      projectId: body.projectId,
+      nodeId: body.nodeId,
     });
     if (!metered.accepted) {
       if (metered.status === 'completed' && metered.result) {

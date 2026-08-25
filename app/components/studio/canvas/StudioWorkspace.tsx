@@ -104,7 +104,7 @@ import type { StudioSkillId } from '@/lib/studio/skills/catalog';
 interface StudioWorkspaceProps {
   projectId: string;
   runtimeConfig: StudioRuntimeConfig;
-  user: AppUser | null;
+  user: AppUser;
 }
 
 interface AddNodeExtras {
@@ -123,6 +123,8 @@ interface AgentDraftRequest {
   text: string;
   attachments: StudioAgentAttachment[];
 }
+
+type StudioSyncStatus = 'saved' | 'saving' | 'offline';
 
 const STUDIO_DROP_FILE_LIMIT = 8;
 const GENERATION_STATUS_POLL_LIMIT = 144;
@@ -255,11 +257,18 @@ function CanvasWorkspace({
 }: {
   project: StudioProject;
   runtimeConfig: StudioRuntimeConfig;
-  user: AppUser | null;
+  user: AppUser;
 }) {
   const router = useRouter();
   const persistTimer = useRef<number | null>(null);
   const localPersistTimer = useRef<number | null>(null);
+  const syncRetryTimer = useRef<number | null>(null);
+  const latestSyncSnapshot = useRef(project);
+  const syncAttempt = useRef(0);
+  const persistProjectRef = useRef<(
+    snapshot: StudioProject,
+    options?: { keepalive?: boolean; retry?: boolean },
+  ) => void>(() => undefined);
   const generating = useRef(new Set<string>());
   const generationResumeQueued = useRef(new Set<string>());
   const automationQueued = useRef(new Set<string>());
@@ -286,8 +295,68 @@ function CanvasWorkspace({
     useState<AgentDraftRequest | null>(null);
   const [agentContextError, setAgentContextError] = useState<Error>();
   const [toolReceiptRevision, setToolReceiptRevision] = useState(0);
+  const [syncStatus, setSyncStatus] =
+    useState<StudioSyncStatus>('saved');
   const [referencePicker, setReferencePicker] =
     useState<StudioReferencePickerState | null>(null);
+
+  const persistProject = useCallback(
+    async (
+      snapshot: StudioProject,
+      options: { keepalive?: boolean; retry?: boolean } = {},
+    ) => {
+      latestSyncSnapshot.current = snapshot;
+      if (syncRetryTimer.current) {
+        window.clearTimeout(syncRetryTimer.current);
+        syncRetryTimer.current = null;
+      }
+      const attempt = ++syncAttempt.current;
+      if (!options.keepalive) setSyncStatus('saving');
+      try {
+        await saveStudioProjectSynced(snapshot, {
+          keepalive: options.keepalive,
+          storageScope: user.id,
+          throwOnRemoteFailure: true,
+        });
+        if (attempt === syncAttempt.current) setSyncStatus('saved');
+      } catch {
+        if (attempt !== syncAttempt.current) return;
+        setSyncStatus('offline');
+        if (options.retry === false) return;
+        syncRetryTimer.current = window.setTimeout(() => {
+          syncRetryTimer.current = null;
+          persistProjectRef.current(latestSyncSnapshot.current);
+        }, 3_000);
+      }
+    },
+    [user.id],
+  );
+  useEffect(() => {
+    persistProjectRef.current = (snapshot, options) => {
+      void persistProject(snapshot, options);
+    };
+  }, [persistProject]);
+
+  useEffect(() => {
+    const retryNow = () => {
+      if (syncStatus === 'offline') {
+        persistProjectRef.current(latestSyncSnapshot.current);
+      }
+    };
+    window.addEventListener('online', retryNow);
+    return () => {
+      window.removeEventListener('online', retryNow);
+    };
+  }, [syncStatus]);
+
+  useEffect(
+    () => () => {
+      if (syncRetryTimer.current) {
+        window.clearTimeout(syncRetryTimer.current);
+      }
+    },
+    [],
+  );
   const nodesRef = useRef(nodes);
   const viewportRef = useRef(viewport);
   const titleRef = useRef(title);
@@ -1357,6 +1426,7 @@ function CanvasWorkspace({
       appliedToolCallIds: appliedToolCallIdsRef.current,
       pendingPrompt: undefined,
       pendingGeneration: undefined,
+      pendingAgentAttachmentIds: undefined,
       agentOpen: agentOpenRef.current,
     }),
     [project],
@@ -1377,7 +1447,7 @@ function CanvasWorkspace({
       window.dispatchEvent(new Event('credits:changed'));
       messagesRef.current = next;
       applyPendingToolOutputs(next);
-      void saveStudioProjectSynced(buildProjectSnapshot(next));
+      void persistProject(buildProjectSnapshot(next));
     },
   });
 
@@ -1409,8 +1479,8 @@ function CanvasWorkspace({
     const next = [...messages, ...summaries];
     messagesRef.current = next;
     setMessages(next);
-    void saveStudioProjectSynced(buildProjectSnapshot(next));
-  }, [buildProjectSnapshot, messages, nodes, setMessages, status]);
+    void persistProject(buildProjectSnapshot(next));
+  }, [buildProjectSnapshot, messages, nodes, persistProject, setMessages, status]);
 
   const sendAgentMessage = useCallback(
     (
@@ -1464,11 +1534,11 @@ function CanvasWorkspace({
       window.clearTimeout(localPersistTimer.current);
     }
     localPersistTimer.current = window.setTimeout(() => {
-      saveStudioProject(buildProjectSnapshot());
+      saveStudioProject(buildProjectSnapshot(), user.id);
     }, 60);
     if (persistTimer.current) window.clearTimeout(persistTimer.current);
     persistTimer.current = window.setTimeout(() => {
-      void saveStudioProjectSynced(buildProjectSnapshot());
+      void persistProject(buildProjectSnapshot());
     }, 420);
     return () => {
       if (localPersistTimer.current) {
@@ -1481,8 +1551,10 @@ function CanvasWorkspace({
     buildProjectSnapshot,
     messages,
     nodes,
+    persistProject,
     title,
     toolReceiptRevision,
+    user.id,
     viewport,
   ]);
 
@@ -1491,8 +1563,9 @@ function CanvasWorkspace({
     const flushRemote = () => {
       if (finalSaveStarted) return;
       finalSaveStarted = true;
-      void saveStudioProjectSynced(buildProjectSnapshot(), {
+      void persistProject(buildProjectSnapshot(), {
         keepalive: true,
+        retry: false,
       });
     };
     const onVisibilityChange = () => {
@@ -1509,7 +1582,7 @@ function CanvasWorkspace({
       document.removeEventListener('visibilitychange', onVisibilityChange);
       flushRemote();
     };
-  }, [buildProjectSnapshot]);
+  }, [buildProjectSnapshot, persistProject]);
 
   const consumedPrompt = useRef(false);
   useEffect(() => {
@@ -1529,6 +1602,18 @@ function CanvasWorkspace({
       return;
     }
     if (!project.pendingPrompt) return;
+    const pendingAttachmentIds = (
+      project.pendingAgentAttachmentIds ?? []
+    ).filter((id) => nodesRef.current.some((node) => node.id === id));
+    if (pendingAttachmentIds.length) {
+      setSelectedIds(pendingAttachmentIds);
+      void sendAgentMessage(
+        `Develop this creative direction using the attached canvas reference: ${project.pendingPrompt}`,
+        [],
+        pendingAttachmentIds,
+      );
+      return;
+    }
     const kind: StudioNodeKind = /video|clip|shot|storyboard/i.test(
       project.pendingPrompt,
     )
@@ -1546,6 +1631,7 @@ function CanvasWorkspace({
   }, [
     addNode,
     project.pendingGeneration,
+    project.pendingAgentAttachmentIds,
     project.pendingPrompt,
     project.title,
     sendAgentMessage,
@@ -1724,6 +1810,7 @@ function CanvasWorkspace({
         <div className="flex min-w-0 flex-1 flex-col">
           <StudioHeader
             title={title}
+            syncStatus={syncStatus}
             onTitleChange={(next) => {
               titleRef.current = next;
               setTitle(next);
@@ -2025,18 +2112,60 @@ export default function StudioWorkspace({
 }: StudioWorkspaceProps) {
   const router = useRouter();
   const [project, setProject] = useState<StudioProject | null | undefined>();
+  const [loadError, setLoadError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [loadedRequestKey, setLoadedRequestKey] = useState('');
+  const requestKey = `${user.id}:${projectId}:${loadAttempt}`;
 
   useEffect(() => {
     let active = true;
-    void getStudioProjectSynced(projectId).then((value) => {
-      if (active) setProject(value);
-    });
+    void getStudioProjectSynced(projectId, user.id, {
+      throwOnRemoteFailure: true,
+    })
+      .then((value) => {
+        if (!active) return;
+        setLoadError('');
+        setProject(value);
+        setLoadedRequestKey(requestKey);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setProject(undefined);
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : 'This canvas could not be loaded from the cloud.',
+        );
+        setLoadedRequestKey(requestKey);
+      });
     return () => {
       active = false;
     };
-  }, [projectId]);
+  }, [projectId, requestKey, user.id]);
 
-  if (project === undefined) {
+  if (loadedRequestKey === requestKey && loadError) {
+    return (
+      <div className="grid min-h-dvh place-items-center px-6 text-center">
+        <div className="max-w-md">
+          <p className="font-semibold text-foreground">
+            Couldn’t load this canvas
+          </p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {loadError} Your cloud data has not been deleted.
+          </p>
+          <button
+            type="button"
+            className="mt-4 bg-primary px-3.5 py-2 font-bold text-primary-foreground"
+            onClick={() => setLoadAttempt((attempt) => attempt + 1)}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadedRequestKey !== requestKey || project === undefined) {
     return (
       <div className="grid min-h-dvh place-items-center text-muted-foreground">
         Opening canvas…
