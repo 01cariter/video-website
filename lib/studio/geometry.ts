@@ -29,6 +29,7 @@ export type StudioArrangeAction =
 
 export interface StudioPlacementOptions {
   gap?: number;
+  grid?: number;
   ignoreIds?: string[];
 }
 
@@ -147,6 +148,19 @@ export function findOpenStudioPosition(
   options: StudioPlacementOptions = {},
 ) {
   const gap = Math.max(0, options.gap ?? 28);
+  const grid = Math.max(0, Number(options.grid ?? 0));
+  const snapCoordinate = (value: number) => {
+    const snapped = Math.round(value / grid) * grid;
+    return Object.is(snapped, -0) ? 0 : snapped;
+  };
+  const snap = (position: { x: number; y: number }) =>
+    grid > 1
+      ? {
+          x: snapCoordinate(position.x),
+          y: snapCoordinate(position.y),
+        }
+      : position;
+  const origin = snap(preferred);
   const ignored = new Set(options.ignoreIds ?? []);
   const blockers = nodes.filter(
     (node) =>
@@ -155,28 +169,42 @@ export function findOpenStudioPosition(
       node.data.hidden !== true,
   );
   const placementIndex = createPlacementIndex(blockers);
-  if (placementIsOpen(placementIndex, preferred, size, gap)) return preferred;
+  if (placementIsOpen(placementIndex, origin, size, gap)) return origin;
 
   const nearby = [...blockers].sort((a, b) => {
-    const distanceA = Math.hypot(a.x - preferred.x, a.y - preferred.y);
-    const distanceB = Math.hypot(b.x - preferred.x, b.y - preferred.y);
+    const distanceA = Math.hypot(a.x - origin.x, a.y - origin.y);
+    const distanceB = Math.hypot(b.x - origin.x, b.y - origin.y);
     return distanceA - distanceB;
   });
+  const candidateKeys = new Set<string>();
+  const candidates: { x: number; y: number }[] = [];
   for (const blocker of nearby) {
-    const candidates = [
-      { x: blocker.x + blocker.width + gap, y: preferred.y },
-      { x: preferred.x, y: blocker.y + blocker.height + gap },
-      { x: blocker.x - size.width - gap, y: preferred.y },
-      { x: preferred.x, y: blocker.y - size.height - gap },
-    ];
-    const open = candidates.find((candidate) =>
-      placementIsOpen(placementIndex, candidate, size, gap),
-    );
-    if (open) return open;
+    for (const candidate of [
+      { x: blocker.x + blocker.width + gap, y: origin.y },
+      { x: origin.x, y: blocker.y + blocker.height + gap },
+      { x: blocker.x - size.width - gap, y: origin.y },
+      { x: origin.x, y: blocker.y - size.height - gap },
+    ].map(snap)) {
+      const key = `${candidate.x}:${candidate.y}`;
+      if (candidateKeys.has(key)) continue;
+      candidateKeys.add(key);
+      candidates.push(candidate);
+    }
   }
+  candidates.sort(
+    (a, b) =>
+      Math.hypot(a.x - origin.x, a.y - origin.y) -
+      Math.hypot(b.x - origin.x, b.y - origin.y),
+  );
+  const openCandidate = candidates.find((candidate) =>
+    placementIsOpen(placementIndex, candidate, size, gap),
+  );
+  if (openCandidate) return openCandidate;
 
-  const stepX = Math.max(48, size.width + gap);
-  const stepY = Math.max(48, size.height + gap);
+  const rawStepX = Math.max(48, size.width + gap);
+  const rawStepY = Math.max(48, size.height + gap);
+  const stepX = grid > 1 ? Math.ceil(rawStepX / grid) * grid : rawStepX;
+  const stepY = grid > 1 ? Math.ceil(rawStepY / grid) * grid : rawStepY;
   for (let ring = 1; ring <= 64; ring += 1) {
     const offsets = [0];
     for (let offset = 1; offset <= ring; offset += 1) {
@@ -184,39 +212,75 @@ export function findOpenStudioPosition(
     }
     for (const row of offsets) {
       const right = {
-        x: preferred.x + ring * stepX,
-        y: preferred.y + row * stepY,
+        x: origin.x + ring * stepX,
+        y: origin.y + row * stepY,
       };
       if (placementIsOpen(placementIndex, right, size, gap)) return right;
     }
     for (const column of offsets) {
       const bottom = {
-        x: preferred.x + column * stepX,
-        y: preferred.y + ring * stepY,
+        x: origin.x + column * stepX,
+        y: origin.y + ring * stepY,
       };
       if (placementIsOpen(placementIndex, bottom, size, gap)) return bottom;
     }
     for (const row of offsets) {
       const left = {
-        x: preferred.x - ring * stepX,
-        y: preferred.y + row * stepY,
+        x: origin.x - ring * stepX,
+        y: origin.y + row * stepY,
       };
       if (placementIsOpen(placementIndex, left, size, gap)) return left;
     }
     for (const column of offsets) {
       const top = {
-        x: preferred.x + column * stepX,
-        y: preferred.y - ring * stepY,
+        x: origin.x + column * stepX,
+        y: origin.y - ring * stepY,
       };
       if (placementIsOpen(placementIndex, top, size, gap)) return top;
     }
   }
 
   const rightmost = Math.max(
-    preferred.x,
+    origin.x,
     ...blockers.map((node) => node.x + node.width + gap),
   );
-  return { x: rightmost, y: preferred.y };
+  return {
+    x:
+      grid > 1
+        ? (() => {
+            const value = Math.ceil(rightmost / grid) * grid;
+            return Object.is(value, -0) ? 0 : value;
+          })()
+        : rightmost,
+    y: origin.y,
+  };
+}
+
+export function topStudioContentNodeAtPoint(
+  nodes: readonly StudioNode[],
+  point: { x: number; y: number },
+) {
+  let match: { node: StudioNode; index: number } | undefined;
+  nodes.forEach((node, index) => {
+    if (
+      node.type === 'section' ||
+      node.data.hidden === true ||
+      point.x < node.x ||
+      point.x > node.x + node.width ||
+      point.y < node.y ||
+      point.y > node.y + node.height
+    ) {
+      return;
+    }
+    if (
+      !match ||
+      node.zIndex > match.node.zIndex ||
+      (node.zIndex === match.node.zIndex && index > match.index)
+    ) {
+      match = { node, index };
+    }
+  });
+  return match?.node;
 }
 
 interface StudioAxisSnap {

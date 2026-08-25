@@ -1,6 +1,6 @@
 # Studio model pricing
 
-Snapshot date: 2026-08-20. Upstream prices and capabilities come from the
+Snapshot date: 2026-08-25. Upstream prices and capabilities come from the
 [Vercel AI Gateway model API](https://ai-gateway.vercel.sh/v1/models). The
 catalog is intentionally versioned in code; Vercel Flags only changes model
 availability, markup, minimum credits, and the active Agent model.
@@ -59,14 +59,16 @@ an in-flight provider step before usage is reported.
 
 | Model | Billable parameters | Gateway cost |
 | --- | --- | ---: |
-| `xai/grok-imagine-image-2.0` | standard / low; 1K / 2K | $0.06 standard, $0.04 low, $0.08 2K, $0.06 low 2K per image |
+| `spacexai/grok-imagine-image-2.0` | standard / low; 1K / 2K; references | $0.06 standard, $0.04 low, $0.08 2K, $0.06 low 2K per image; $0.01 per input image |
 | `bytedance/seedream-5.0-pro` | output count | $0.035 per image, plus text input tokens |
 | `openai/gpt-image-2` | output dimensions and low / medium / high quality | $5/M text input and $30/M image output tokens; references add image-input tokens |
 | `recraft/recraft-v4.1` | raster / vector illustration | $0.035 raster or $0.08 vector per image |
 | `google/gemini-3.1-flash-image` | 512 / 1K / 2K / 4K | $0.045 / $0.067 / $0.101 / $0.151 per image, plus language tokens |
 
 Gemini image generation uses the language-model response-modalities contract,
-not `generateImage`. Seedream 5 Pro is treated as a single-output model.
+not `generateImage`. Seedream 5 Pro is treated as a single-output model. The
+former `xai/grok-imagine-image-2.0` id is migrated to the current `spacexai`
+Gateway namespace when an older canvas or Flag value is loaded.
 
 Default-policy one-image examples (before any reference-input reserve):
 
@@ -92,14 +94,17 @@ request cannot exceed its reserve.
 | --- | --- | ---: |
 | `bytedance/seedance-2.5` | output pixels, 24 fps, duration, resolution | 480p/720p $10.70/M video tokens; 1080p $11.70/M (no video input) |
 | `minimax/minimax-h3` | seconds | $0.13/sec |
-| `xai/grok-imagine-video-1.5` | resolution and seconds | $0.08 / $0.14 / $0.25 per sec for 480p / 720p / 1080p |
-| `google/veo-3.1-lite-generate-001` | resolution, audio, seconds | 720p $0.03/$0.05; 1080p $0.05/$0.08 per sec, silent/audio |
+| `spacexai/grok-imagine-video-1.5` | resolution, seconds, references | $0.08 / $0.14 / $0.25 per sec for 480p / 720p / 1080p; $0.01 per input image |
+| `google/veo-3.1-lite-generate-001` | resolution and seconds | 720p $0.05; 1080p $0.08 per sec with native audio |
 | `google/veo-3.1-fast-generate-001` | resolution, audio, seconds | 720p/1080p $0.10/$0.15; 4K $0.30/$0.35 per sec, silent/audio |
 | `google/veo-3.1-generate-001` | resolution, audio, seconds | 720p/1080p $0.20/$0.40; 4K $0.40/$0.60 per sec, silent/audio |
 
 Seedance 2.5 video tokens are estimated as
 `duration * width * height * 24 / 1024`. Its `generateAudio` option is a
-top-level video-generation parameter.
+top-level video-generation parameter. MiniMax H3, Grok Video 1.5, and Veo Lite
+generate native audio without accepting that toggle, so the request omits it.
+Veo Fast and Veo require an eight-second duration at 1080p and 4K. The former
+`xai/grok-imagine-video-1.5` id is migrated to the current `spacexai` id.
 
 Default-policy video formulas shown in credits (the whole clip is aggregated
 before rounding):
@@ -109,8 +114,8 @@ before rounding):
 | Seedance | `ceil(duration × width × height × 24 / 1024 × rate × 1.5 / 10,000)` |
 | MiniMax H3 2K | `ceil(seconds × 19.5)` |
 | Grok 480p / 720p / 1080p | `seconds × 12` / `seconds × 21` / `ceil(seconds × 37.5)` |
-| Veo Lite 720p silent/audio | `ceil(seconds × 4.5)` / `ceil(seconds × 7.5)` |
-| Veo Lite 1080p silent/audio | `ceil(seconds × 7.5)` / `seconds × 12` |
+| Veo Lite 720p native audio | `ceil(seconds × 7.5)` |
+| Veo Lite 1080p native audio | `seconds × 12` |
 | Veo Fast 720p or 1080p silent/audio | `seconds × 15` / `ceil(seconds × 22.5)` |
 | Veo Fast 4K silent/audio | `seconds × 45` / `ceil(seconds × 52.5)` |
 | Veo 720p or 1080p silent/audio | `seconds × 30` / `seconds × 60` |
@@ -124,7 +129,7 @@ contains only safe commercial controls, pre-populated for every model:
 
 ```json
 {
-  "xai/grok-imagine-image-2.0": {
+  "spacexai/grok-imagine-image-2.0": {
     "enabled": true,
     "markupBps": 15000,
     "minimumCredits": 1

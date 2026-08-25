@@ -36,7 +36,7 @@ export const STUDIO_VISION_AGENT_MODEL_IDS = [
   'anthropic/claude-sonnet-5',
   'google/gemini-3.1-pro-preview',
 ] as const satisfies readonly StudioAgentModelId[];
-export const STUDIO_PRICING_VERSION = '2026-08-25.v2';
+export const STUDIO_PRICING_VERSION = '2026-08-25.v3';
 export const DEFAULT_STUDIO_MARKUP_BPS = 15_000;
 export const MIN_STUDIO_MARKUP_BPS = 12_500;
 export const USD_MICROS_PER_CREDIT = 10_000;
@@ -273,10 +273,19 @@ function resolvedPolicy(value: unknown): StudioResolvedModelPolicy {
 
 function normalizePolicy(raw: unknown): StudioModelPolicy {
   const record = parseJsonRecord(raw) ?? {};
+  const legacyPolicyIds: Partial<Record<StudioBillableModelId, string>> = {
+    'spacexai/grok-imagine-image-2.0': 'xai/grok-imagine-image-2.0',
+    'spacexai/grok-imagine-video-1.5': 'xai/grok-imagine-video-1.5',
+  };
   return Object.fromEntries(
     STUDIO_BILLABLE_MODEL_IDS.map((modelId) => [
       modelId,
-      resolvedPolicy(record[modelId]),
+      resolvedPolicy(
+        record[modelId] ??
+          (legacyPolicyIds[modelId]
+            ? record[legacyPolicyIds[modelId]]
+            : undefined),
+      ),
     ]),
   ) as StudioModelPolicy;
 }

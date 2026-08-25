@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveStudioAutomationAction } from './agent-automation';
+import {
+  resolveStudioAutomationAction,
+  workflowGroupPosition,
+  workflowGroupSize,
+} from './agent-automation';
 import type { StudioNode } from './types';
 
 function node(
@@ -57,4 +61,13 @@ test('blocks dependent generation when a prerequisite fails', () => {
   });
   const action = resolveStudioAutomationAction(video, [source, video]);
   assert.equal(action.type, 'fail');
+});
+
+test('lays out workflow nodes on a compact 24px-aligned grid', () => {
+  const group = { x: 240, y: -48 };
+
+  assert.deepEqual(workflowGroupPosition(group, 0), { x: 264, y: 24 });
+  assert.deepEqual(workflowGroupPosition(group, 1), { x: 600, y: 24 });
+  assert.deepEqual(workflowGroupPosition(group, 3), { x: 264, y: 360 });
+  assert.deepEqual(workflowGroupSize(4), { width: 1032, height: 744 });
 });

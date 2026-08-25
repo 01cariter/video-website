@@ -24,7 +24,12 @@ import {
 } from '@/lib/studio/video-generation';
 import { getAuthUser } from '@/lib/supabase/server';
 
-export const maxDuration = 300;
+// Video providers are asynchronous and may legitimately poll for 10 minutes.
+// Keep enough room for polling plus asset persistence, while aborting before
+// Vercel's Pro function ceiling so metering can be refunded in our catch path.
+export const maxDuration = 800;
+const VIDEO_GENERATION_TIMEOUT_MS = 720_000;
+const MINIMAX_POLL_TIMEOUT_MS = 600_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -33,6 +38,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function stringField(body: Record<string, unknown>, key: string) {
   const value = body[key];
   return typeof value === 'string' ? value.trim() : undefined;
+}
+
+function videoErrorMessage(error: unknown) {
+  const message =
+    error instanceof Error ? error.message : 'Video generation failed.';
+  return /timed? ?out|timeout|aborted due to timeout/i.test(message)
+    ? 'Video generation did not finish within 12 minutes. Your reserved credits were refunded.'
+    : message;
 }
 
 export async function POST(request: Request) {
@@ -141,9 +154,19 @@ export async function POST(request: Request) {
       if (metered.status === 'completed' && metered.result) {
         return Response.json(metered.result);
       }
+      if (metered.status === 'pending') {
+        return Response.json(
+          {
+            status: 'processing',
+            retryAfterMs: 5_000,
+            balance: metered.balance,
+          },
+          { status: 202, headers: { 'Retry-After': '5' } },
+        );
+      }
       return Response.json(
         {
-          error: 'This generation is processing or failed. Generate it again.',
+          error: 'This generation failed. Generate it again.',
           balance: metered.balance,
         },
         { status: 409 },
@@ -151,9 +174,28 @@ export async function POST(request: Request) {
     }
     meteredAccepted = true;
 
-    const { video } = await generateVideo(
-      buildStudioVideoGeneratePayload({ prompt, request: videoRequest }),
-    );
+    const payload = buildStudioVideoGeneratePayload({
+      prompt,
+      request: videoRequest,
+    });
+    const { video } = await generateVideo({
+      ...payload,
+      abortSignal: AbortSignal.timeout(VIDEO_GENERATION_TIMEOUT_MS),
+      providerOptions: {
+        gateway: {
+          user: user.id,
+          tags: ['feature:studio-video'],
+        },
+        ...(videoRequest.modelId === 'minimax/minimax-h3'
+          ? {
+              minimax: {
+                pollTimeoutMs: MINIMAX_POLL_TIMEOUT_MS,
+                resolution: '2K',
+              },
+            }
+          : {}),
+      },
+    });
     const url = await storeGeneratedAsset({
       userId: user.id,
       projectId,
@@ -188,8 +230,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const message =
-      error instanceof Error ? error.message : 'Video generation failed.';
+    const message = videoErrorMessage(error);
     const balance = meteredAccepted
       ? await failMeteredRequest({
           userId: user.id,

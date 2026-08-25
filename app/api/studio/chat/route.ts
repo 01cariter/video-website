@@ -17,6 +17,7 @@ import {
   normalizeCanvasNodeSnapshots,
   normalizeSelectedCanvasIds,
 } from '@/lib/studio/agent-context';
+import { stripStudioAgentEmoji } from '@/lib/studio/agent-output';
 import { friendlyAiError } from '@/lib/studio/errors';
 import {
   estimateStudioAgentInputTokenReserve,
@@ -283,16 +284,26 @@ export async function POST(request: Request) {
       experimental_transform: () =>
         new TransformStream({
           transform(chunk, controller) {
-            const delta =
+            const rawDelta =
               chunk.type === 'text-delta' || chunk.type === 'reasoning-delta'
                 ? chunk.text
                 : chunk.type === 'tool-input-delta'
                   ? chunk.delta
                   : '';
+            const delta = stripStudioAgentEmoji(rawDelta);
             if (delta) {
               streamedOutputBytes += outputEncoder.encode(delta).length;
             }
-            controller.enqueue(chunk);
+            const sanitizedChunk =
+              rawDelta === delta
+                ? chunk
+                : chunk.type === 'text-delta' ||
+                    chunk.type === 'reasoning-delta'
+                  ? { ...chunk, text: delta }
+                  : chunk.type === 'tool-input-delta'
+                    ? { ...chunk, delta }
+                    : chunk;
+            controller.enqueue(sanitizedChunk);
           },
         }),
       consumeSseStream: ({ stream }) => consumeStream({ stream }),

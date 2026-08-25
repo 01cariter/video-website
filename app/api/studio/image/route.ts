@@ -163,9 +163,19 @@ export async function POST(request: Request) {
     if (metered.status === 'completed' && metered.result) {
       return Response.json(metered.result);
     }
+    if (metered.status === 'pending') {
+      return Response.json(
+        {
+          status: 'processing',
+          retryAfterMs: 2_000,
+          balance: metered.balance,
+        },
+        { status: 202, headers: { 'Retry-After': '2' } },
+      );
+    }
     return Response.json(
       {
-        error: 'This generation is processing or failed. Generate it again.',
+        error: 'This generation failed. Generate it again.',
         balance: metered.balance,
       },
       { status: 409 },

@@ -148,7 +148,7 @@ export const STUDIO_MODEL_OPTIONS: Record<
 > = {
   image: [
     {
-      id: 'xai/grok-imagine-image-2.0',
+      id: 'spacexai/grok-imagine-image-2.0',
       label: 'Grok Imagine Image 2.0',
       provider: 'xAI',
       description: 'Fast photoreal and cinematic imagery',
@@ -199,17 +199,17 @@ export const STUDIO_MODEL_OPTIONS: Record<
       tag: '2K',
     },
     {
-      id: 'xai/grok-imagine-video-1.5',
+      id: 'spacexai/grok-imagine-video-1.5',
       label: 'Grok Imagine Video 1.5',
       provider: 'xAI',
-      description: 'Fast generation across three resolutions',
+      description: 'Reference-aware generation with native audio',
       tag: 'Fast',
     },
     {
       id: 'google/veo-3.1-lite-generate-001',
       label: 'Veo 3.1 Lite',
       provider: 'Google',
-      description: 'Cost-efficient text-to-video',
+      description: 'Cost-efficient text-to-video with native audio',
       tag: 'Value',
     },
     {
@@ -273,19 +273,22 @@ export const STUDIO_MODEL_OPTIONS: Record<
   ],
 };
 
-const veoFields = (resolutions: string[]): CatalogField[] => [
+const veoFields = (
+  resolutions: string[],
+  includeAudioToggle = true,
+): CatalogField[] => [
   aspect('16:9', '9:16'),
   choice('videoResolution', 'Resolution', resolutions),
   veoDuration,
-  audioToggle,
+  ...(includeAudioToggle ? [audioToggle] : []),
 ];
 
 export const STUDIO_MODEL_SPECS: Record<string, StudioModelSpec> = {
-  'xai/grok-imagine-image-2.0': {
-    id: 'xai/grok-imagine-image-2.0',
+  'spacexai/grok-imagine-image-2.0': {
+    id: 'spacexai/grok-imagine-image-2.0',
     label: 'Grok Imagine Image 2.0',
     kind: 'image',
-    maxRefs: 0,
+    maxRefs: 5,
     defaults: { aspect: '1:1', n: 1, quality: 'medium', resolution: '1k' },
     fields: [
       aspect(
@@ -313,7 +316,7 @@ export const STUDIO_MODEL_SPECS: Record<string, StudioModelSpec> = {
     id: 'bytedance/seedream-5.0-pro',
     label: 'Seedream 5.0 Pro',
     kind: 'image',
-    maxRefs: 3,
+    maxRefs: 10,
     defaults: { size: '1024x1024', n: 1 },
     fields: [
       choice('size', 'Size', [
@@ -329,7 +332,7 @@ export const STUDIO_MODEL_SPECS: Record<string, StudioModelSpec> = {
     id: 'openai/gpt-image-2',
     label: 'GPT Image 2',
     kind: 'image',
-    maxRefs: 3,
+    maxRefs: 4,
     defaults: { size: '1024x1024', quality: 'low', n: 1 },
     fields: [
       choice('size', 'Size', [['1024x1024', 'Square'], ['1536x1024', 'Landscape'], ['1024x1536', 'Portrait']]),
@@ -386,25 +389,23 @@ export const STUDIO_MODEL_SPECS: Record<string, StudioModelSpec> = {
     label: 'MiniMax Hailuo 3',
     kind: 'video',
     maxRefs: 1,
-    defaults: { aspect: '16:9', duration: 8, videoResolution: '2k', generateAudio: false },
+    defaults: { aspect: '16:9', duration: 8, videoResolution: '2k', generateAudio: true },
     fields: [
       aspect('16:9', '4:3', '1:1', '3:4', '9:16', '21:9'),
       choice('videoResolution', 'Resolution', [['2k', '2K']]),
       durationRange(5, 15),
-      audioToggle,
     ],
   },
-  'xai/grok-imagine-video-1.5': {
-    id: 'xai/grok-imagine-video-1.5',
+  'spacexai/grok-imagine-video-1.5': {
+    id: 'spacexai/grok-imagine-video-1.5',
     label: 'Grok Imagine Video 1.5',
     kind: 'video',
     maxRefs: 1,
-    defaults: { aspect: '16:9', duration: 8, videoResolution: '480p', generateAudio: false },
+    defaults: { aspect: '16:9', duration: 8, videoResolution: '480p', generateAudio: true },
     fields: [
       aspect('1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'),
       choice('videoResolution', 'Resolution', ['480p', '720p', '1080p']),
       durationRange(1, 15),
-      audioToggle,
     ],
   },
   'google/veo-3.1-lite-generate-001': {
@@ -412,8 +413,8 @@ export const STUDIO_MODEL_SPECS: Record<string, StudioModelSpec> = {
     label: 'Veo 3.1 Lite',
     kind: 'video',
     maxRefs: 0,
-    defaults: { aspect: '16:9', duration: 8, videoResolution: '720p', generateAudio: false },
-    fields: veoFields(['720p', '1080p']),
+    defaults: { aspect: '16:9', duration: 8, videoResolution: '720p', generateAudio: true },
+    fields: veoFields(['720p', '1080p'], false),
   },
   'google/veo-3.1-fast-generate-001': {
     id: 'google/veo-3.1-fast-generate-001',
@@ -514,8 +515,14 @@ export function resolveStudioModel(
   const candidates = available.length ? available : options;
   const preferred =
     kind === 'text' ? runtimeFrom(runtime).agentModelId : modelForKind(kind).id;
+  const normalizedModelId =
+    modelId === 'xai/grok-imagine-image-2.0'
+      ? 'spacexai/grok-imagine-image-2.0'
+      : modelId === 'xai/grok-imagine-video-1.5'
+        ? 'spacexai/grok-imagine-video-1.5'
+        : modelId;
   return (
-    candidates.find((option) => option.id === modelId) ??
+    candidates.find((option) => option.id === normalizedModelId) ??
     candidates.find((option) => option.id === preferred) ??
     candidates[0]
   );

@@ -40,6 +40,8 @@ export const StudioCanvasNode = memo(function StudioCanvasNode({
       visible={visible}
       fill="transparent"
       strokeWidth={0}
+      hitSelf={node.type !== 'section'}
+      hitChildren
       cornerRadius={node.type === 'section' ? 0 : NODE_RADIUS}
       overflow={node.type === 'section' ? 'show' : 'hide'}
       draggable={!locked}
@@ -89,13 +91,27 @@ function NodeBody({
           strokeWidth={1}
           dashPattern={[8, 6]}
           cornerRadius={0}
+          hittable={false}
+        />
+        <Rect
+          x={0}
+          y={-32}
+          width={Math.min(
+            node.width,
+            Math.max(112, (node.data.title || 'Group').length * 7 + 32),
+          )}
+          height={28}
+          fill="rgba(255,253,249,0.94)"
+          stroke="#9fb8bf"
+          strokeWidth={1}
+          cornerRadius={0}
           hittable
           data={data}
         />
         <Txt
           text={node.data.title || 'Group'}
           x={12}
-          y={-24}
+          y={-25}
           width={Math.max(80, node.width - 24)}
           fontSize={12}
           fontWeight={600}

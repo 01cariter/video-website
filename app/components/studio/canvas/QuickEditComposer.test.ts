@@ -48,10 +48,10 @@ test('inherits parameters when the source model supports image editing', () => {
   assert.equal(draft.prompt, '');
 });
 
-test('maps a 16:9 Grok edit to Seedream landscape parameters and geometry', () => {
+test('keeps a Grok edit on Grok and preserves supported parameters', () => {
   const runtime = normalizeStudioRuntimeConfig();
   const node = imageNode({
-    modelId: 'xai/grok-imagine-image-2.0',
+    modelId: 'spacexai/grok-imagine-image-2.0',
     aspect: '16:9',
     n: 3,
     quality: 'low',
@@ -70,13 +70,12 @@ test('maps a 16:9 Grok edit to Seedream landscape parameters and geometry', () =
     node.data.src as string,
   );
 
-  assert.notEqual(draft.modelId, 'xai/grok-imagine-image-2.0');
+  assert.equal(draft.modelId, 'spacexai/grok-imagine-image-2.0');
   assert.ok(modelSpecFor('image', draft.modelId, runtime).maxRefs > 0);
-  assert.equal(draft.modelId, 'bytedance/seedream-5.0-pro');
-  assert.equal((draft as StudioNodeData).size, '1280x720');
   assert.equal(draft.n, 3);
   assert.equal(draft.aspect, '16:9');
-  assert.equal(parameters.size, '1280x720');
+  assert.equal((draft as StudioNodeData).quality, 'low');
+  assert.equal((draft as StudioNodeData).resolution, '2k');
   assert.equal(parameters.aspect, '16:9');
   assert.ok(node.width > node.height);
 });
@@ -84,7 +83,7 @@ test('maps a 16:9 Grok edit to Seedream landscape parameters and geometry', () =
 test('uses uploaded media dimensions before a stale default aspect', () => {
   const runtime = normalizeStudioRuntimeConfig();
   const node = imageNode({
-    modelId: 'xai/grok-imagine-image-2.0',
+    modelId: 'spacexai/grok-imagine-image-2.0',
     aspect: '1:1',
     sourceWidth: 1920,
     sourceHeight: 1080,
@@ -93,14 +92,14 @@ test('uses uploaded media dimensions before a stale default aspect', () => {
 
   const draft = initialEditData(node, runtime);
 
-  assert.equal(draft.modelId, 'bytedance/seedream-5.0-pro');
-  assert.equal((draft as StudioNodeData).size, '1280x720');
+  assert.equal(draft.modelId, 'spacexai/grok-imagine-image-2.0');
   assert.equal(draft.aspect, '16:9');
 });
 
 test('maps a portrait Recraft size to GPT when Seedream is disabled', () => {
   const runtime = normalizeStudioRuntimeConfig({
     modelPolicy: {
+      'spacexai/grok-imagine-image-2.0': { enabled: false },
       'bytedance/seedream-5.0-pro': { enabled: false },
     },
   });

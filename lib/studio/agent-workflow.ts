@@ -5,7 +5,9 @@ import {
   resolveStudioModel,
   type CatalogField,
 } from './model-catalog';
+import { workflowGroupSize } from './agent-automation';
 import { studioAgentOperationId } from './agent-context';
+import { cleanStudioAgentText } from './agent-output';
 import type { StudioRuntimeConfig } from './pricing';
 import type {
   StudioCanvasOperation,
@@ -217,7 +219,9 @@ export function buildStudioAgentWorkflow(input: {
   const normalizedNodes = workflow.nodes.map((node, index) => ({
     ...node,
     key: keys[index],
-    prompt: node.prompt.trim(),
+    title: cleanStudioAgentText(node.title),
+    prompt: cleanStudioAgentText(node.prompt) || '',
+    text: cleanStudioAgentText(node.text),
   }));
   if (normalizedNodes.some((node) => !node.prompt)) {
     throw new Error('Every generated workflow node needs a prompt.');
@@ -257,19 +261,17 @@ export function buildStudioAgentWorkflow(input: {
   const receipts: StudioAgentWorkflowNodeReceipt[] = [];
   const operations: StudioCanvasOperation[] = [];
   if (groupId) {
-    const columns = Math.min(3, normalizedNodes.length);
-    const rows = Math.ceil(normalizedNodes.length / columns);
+    const groupSize = workflowGroupSize(normalizedNodes.length);
     operations.push({
       type: 'add_node',
       node: {
         id: groupId,
         kind: 'section',
-        title: (workflow.groupTitle || workflow.title || 'Agent workflow').slice(
-          0,
-          80,
-        ),
-        width: 48 + columns * 300 + Math.max(0, columns - 1) * 24,
-        height: 72 + rows * 460,
+        title: (
+          cleanStudioAgentText(workflow.groupTitle || workflow.title) ||
+          'Agent workflow'
+        ).slice(0, 80),
+        ...groupSize,
       },
     });
   }
@@ -331,10 +333,10 @@ export function buildStudioAgentWorkflow(input: {
   return {
     workflow: {
       id: toolCallId,
-      title: (workflow.title || workflow.groupTitle || 'Creative workflow').slice(
-        0,
-        120,
-      ),
+      title: (
+        cleanStudioAgentText(workflow.title || workflow.groupTitle) ||
+        'Creative workflow'
+      ).slice(0, 120),
       groupId,
       nodes: receipts,
     } satisfies StudioAgentWorkflowReceipt,

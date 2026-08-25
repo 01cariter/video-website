@@ -45,7 +45,7 @@ describe('Studio image parameter contracts', () => {
     assert.throws(
       () =>
         prepareStudioImageRequest({
-          modelId: 'xai/grok-imagine-image-2.0',
+          modelId: 'spacexai/grok-imagine-image-2.0',
           prompt: 'A poster.',
           parameters: { n: 1.5 },
         }),
@@ -65,7 +65,7 @@ describe('Studio image Gateway payload and upstream cost', () => {
 
     for (const [quality, resolution, expected] of cases) {
       const request = prepareStudioImageRequest({
-        modelId: 'xai/grok-imagine-image-2.0',
+        modelId: 'spacexai/grok-imagine-image-2.0',
         prompt: 'A cinematic harbor.',
         parameters: { aspect: '16:9', quality, resolution },
       });
@@ -102,6 +102,27 @@ describe('Studio image Gateway payload and upstream cost', () => {
       n: 2,
       size: '1280x720',
       maxImagesPerCall: 1,
+    });
+  });
+
+  it('sends Grok edit references and includes their input charge', () => {
+    const request = prepareStudioImageRequest({
+      modelId: 'spacexai/grok-imagine-image-2.0',
+      prompt: 'Keep the subject and change the lighting.',
+      referenceImages: [
+        'https://cdn.example.com/one.png',
+        'https://cdn.example.com/two.png',
+      ],
+    });
+
+    assert.equal(request.upstreamUsdMicros, 80_000);
+    assert.equal(request.providerCall.mode, 'image-model');
+    assert.deepEqual(request.providerCall.prompt, {
+      text: 'Keep the subject and change the lighting.',
+      images: [
+        'https://cdn.example.com/one.png',
+        'https://cdn.example.com/two.png',
+      ],
     });
   });
 
@@ -215,7 +236,7 @@ describe('Studio image Gateway payload and upstream cost', () => {
 });
 
 describe('Studio image reference-image contracts', () => {
-  it('caps product references at three and rejects insecure sources', () => {
+  it('enforces each model reference limit and rejects insecure sources', () => {
     assert.throws(
       () =>
         prepareStudioImageRequest({
@@ -226,9 +247,10 @@ describe('Studio image reference-image contracts', () => {
             'https://example.com/2.png',
             'https://example.com/3.png',
             'https://example.com/4.png',
+            'https://example.com/5.png',
           ],
         }),
-      /at most 3/,
+      /at most 4/,
     );
     assert.throws(
       () =>
@@ -241,20 +263,23 @@ describe('Studio image reference-image contracts', () => {
     );
   });
 
-  it('rejects references for current Grok and Recraft Gateway ids', () => {
-    for (const modelId of [
-      'xai/grok-imagine-image-2.0',
-      'recraft/recraft-v4.1',
-    ] as const) {
-      assert.throws(
-        () =>
-          prepareStudioImageRequest({
-            modelId,
-            prompt: 'Edit this.',
-            referenceImages: ['https://example.com/reference.png'],
-          }),
-        /does not support reference images/,
-      );
-    }
+  it('rejects references for Recraft', () => {
+    assert.throws(
+      () =>
+        prepareStudioImageRequest({
+          modelId: 'recraft/recraft-v4.1',
+          prompt: 'Edit this.',
+          referenceImages: ['https://example.com/reference.png'],
+        }),
+      /does not support reference images/,
+    );
+  });
+
+  it('migrates the former xAI Gateway namespace', () => {
+    const request = prepareStudioImageRequest({
+      modelId: 'xai/grok-imagine-image-2.0',
+      prompt: 'A cinematic harbor.',
+    });
+    assert.equal(request.modelId, 'spacexai/grok-imagine-image-2.0');
   });
 });

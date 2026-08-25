@@ -1,7 +1,7 @@
 import type { JSONValue } from 'ai';
 
 export const STUDIO_IMAGE_MODEL_IDS = [
-  'xai/grok-imagine-image-2.0',
+  'spacexai/grok-imagine-image-2.0',
   'bytedance/seedream-5.0-pro',
   'openai/gpt-image-2',
   'recraft/recraft-v4.1',
@@ -86,7 +86,7 @@ export class StudioImageValidationError extends Error {
 
 const MAX_PROMPT_LENGTH = 20_000;
 const MAX_OUTPUTS = 4;
-const MAX_REFERENCES = 3;
+const MAX_REFERENCES = 10;
 
 const XAI_ASPECTS = new Set([
   '1:1',
@@ -264,7 +264,8 @@ export function imageParametersFromBody(
 export function prepareStudioImageRequest(
   input: PrepareStudioImageRequestInput,
 ): PreparedStudioImageRequest {
-  if (!isStudioImageModelId(input.modelId)) {
+  const modelId = normalizeStudioImageModelId(input.modelId);
+  if (!modelId) {
     throw new StudioImageValidationError('Unsupported image model.');
   }
   if (typeof input.prompt !== 'string' || !input.prompt.trim()) {
@@ -279,8 +280,8 @@ export function prepareStudioImageRequest(
   const count = integerParameter(parameters.n, 'n', 1, MAX_OUTPUTS, 1);
   const referenceImages = normalizeReferenceImages(input.referenceImages);
 
-  switch (input.modelId) {
-    case 'xai/grok-imagine-image-2.0':
+  switch (modelId) {
+    case 'spacexai/grok-imagine-image-2.0':
       return prepareXai(prompt, count, parameters, referenceImages);
     case 'bytedance/seedream-5.0-pro':
       return prepareSeedream(prompt, count, parameters, referenceImages);
@@ -300,9 +301,7 @@ function prepareXai(
   referenceImages: string[],
 ): PreparedStudioImageRequest {
   validateParameterKeys(parameters, ['aspect', 'n', 'quality', 'resolution']);
-  // The current Gateway model advertises text-only input. Do not confuse it
-  // with Grok Imagine edit/preview model ids that have separate capabilities.
-  rejectReferences(referenceImages, 'Grok Imagine Image 2.0');
+  assertReferenceLimit(referenceImages, 5, 'Grok Imagine Image 2.0');
   const aspect = enumParameter(parameters.aspect, 'aspect', XAI_ASPECTS, '1:1');
   const quality = enumParameter(
     parameters.quality,
@@ -329,16 +328,19 @@ function prepareXai(
   if (resolution !== '1k') xaiOptions.resolution = resolution;
 
   return {
-    modelId: 'xai/grok-imagine-image-2.0',
+    modelId: 'spacexai/grok-imagine-image-2.0',
     prompt,
     count,
     parameters: { aspect, n: count, quality, resolution },
     referenceImages,
-    upstreamUsdMicros: perImageMicros * count,
+    upstreamUsdMicros:
+      perImageMicros * count + referenceImages.length * 10_000,
     providerCall: {
       mode: 'image-model',
-      model: 'xai/grok-imagine-image-2.0',
-      prompt,
+      model: 'spacexai/grok-imagine-image-2.0',
+      prompt: referenceImages.length
+        ? { text: prompt, images: referenceImages }
+        : prompt,
       n: count,
       aspectRatio:
         aspect === 'auto' ? undefined : (aspect as `${number}:${number}`),
@@ -356,6 +358,7 @@ function prepareSeedream(
   referenceImages: string[],
 ): PreparedStudioImageRequest {
   validateParameterKeys(parameters, ['aspect', 'n', 'size']);
+  assertReferenceLimit(referenceImages, 10, 'Seedream 5.0 Pro');
   const requestedSize = parameters.size;
   const fallbackSize = SEEDREAM_SIZE_BY_ASPECT[stringParameter(parameters.aspect)] ??
     '1024x1024';
@@ -398,6 +401,7 @@ function prepareGptImage(
   referenceImages: string[],
 ): PreparedStudioImageRequest {
   validateParameterKeys(parameters, ['aspect', 'n', 'quality', 'size']);
+  assertReferenceLimit(referenceImages, 4, 'GPT Image 2');
   const fallbackSize = GPT_IMAGE_SIZE_BY_ASPECT[stringParameter(parameters.aspect)] ??
     '1024x1024';
   const size = enumParameter(
@@ -502,6 +506,7 @@ function prepareGemini(
     'size',
     'thinkingLevel',
   ]);
+  assertReferenceLimit(referenceImages, 3, 'Gemini 3.1 Flash Image');
   const aspect = enumParameter(
     parameters.aspect,
     'aspect',
@@ -605,6 +610,27 @@ function rejectReferences(referenceImages: string[], label: string) {
       `${label} does not support reference images in this product.`,
     );
   }
+}
+
+function assertReferenceLimit(
+  referenceImages: string[],
+  maximum: number,
+  label: string,
+) {
+  if (referenceImages.length > maximum) {
+    throw new StudioImageValidationError(
+      `${label} accepts at most ${maximum} reference images.`,
+    );
+  }
+}
+
+function normalizeStudioImageModelId(
+  value: unknown,
+): StudioImageModelId | undefined {
+  if (value === 'xai/grok-imagine-image-2.0') {
+    return 'spacexai/grok-imagine-image-2.0';
+  }
+  return isStudioImageModelId(value) ? value : undefined;
 }
 
 function integerParameter(

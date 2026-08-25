@@ -21,7 +21,7 @@ test('builds a grouped Grok-to-Hailuo workflow with real dependencies and parame
           key: 'shot-1',
           kind: 'image',
           prompt: 'Cinematic opening frame inspired by the selected product.',
-          modelId: 'xai/grok-imagine-image-2.0',
+          modelId: 'spacexai/grok-imagine-image-2.0',
           parameters: {
             aspect: '16:9',
             quality: 'medium',
@@ -49,12 +49,18 @@ test('builds a grouped Grok-to-Hailuo workflow with real dependencies and parame
 
   assert.ok(result.workflow.groupId);
   assert.equal(result.operations.length, 4);
+  const group = result.operations[0];
   const image = result.operations[2];
   const video = result.operations[3];
+  assert.equal(group.type, 'add_node');
+  if (group.type === 'add_node') {
+    assert.equal(group.node.width, 1032);
+    assert.equal(group.node.height, 408);
+  }
   assert.equal(image.type, 'add_node');
   assert.equal(video.type, 'add_node');
   if (image.type !== 'add_node' || video.type !== 'add_node') return;
-  assert.equal(image.node.modelId, 'xai/grok-imagine-image-2.0');
+  assert.equal(image.node.modelId, 'spacexai/grok-imagine-image-2.0');
   assert.equal(image.node.parameters?.resolution, '2k');
   assert.deepEqual(image.node.dependsOn, [
     result.workflow.nodes[0].id,
@@ -68,6 +74,45 @@ test('builds a grouped Grok-to-Hailuo workflow with real dependencies and parame
   assert.deepEqual(video.node.dependsOn, [result.workflow.nodes[1].id]);
   assert.equal(video.node.autoGenerate, true);
   assert.equal(video.node.groupId, result.workflow.groupId);
+});
+
+test('removes emoji from Agent workflow copy before it reaches the canvas', () => {
+  const result = buildStudioAgentWorkflow({
+    toolCallId: 'workflow-clean-copy',
+    canvasNodeIds: [],
+    runtime: DEFAULT_STUDIO_RUNTIME_CONFIG,
+    workflow: {
+      title: 'Launch plan 🎬',
+      groupTitle: 'Campaign ✨',
+      nodes: [
+        {
+          key: 'script',
+          kind: 'text',
+          title: 'Script 📝',
+          prompt: 'Write the launch story 🚀',
+          text: 'Opening shot 🎥',
+        },
+        {
+          key: 'frame',
+          kind: 'image',
+          title: 'Hero frame 🌄',
+          prompt: 'Cinematic product frame ✨',
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.workflow.title, 'Launch plan');
+  const group = result.operations[0];
+  const script = result.operations[1];
+  assert.equal(group.type, 'add_node');
+  assert.equal(script.type, 'add_node');
+  if (group.type === 'add_node') assert.equal(group.node.title, 'Campaign');
+  if (script.type === 'add_node') {
+    assert.equal(script.node.title, 'Script');
+    assert.equal(script.node.prompt, 'Write the launch story');
+    assert.equal(script.node.text, 'Opening shot');
+  }
 });
 
 test('normalizes invalid field values and rejects missing dependencies', () => {
@@ -104,7 +149,7 @@ test('normalizes invalid field values and rejects missing dependencies', () => {
           key: 'frame',
           kind: 'image',
           prompt: 'A cinematic storyboard shot for a widescreen video.',
-          modelId: 'xai/grok-imagine-image-2.0',
+          modelId: 'spacexai/grok-imagine-image-2.0',
         },
       ],
     },

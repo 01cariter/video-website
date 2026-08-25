@@ -5,6 +5,15 @@ export type StudioAutomationAction =
   | { type: 'fail'; error: string }
   | { type: 'start'; references: string[] };
 
+const WORKFLOW_GRID_COLUMNS = 3;
+const WORKFLOW_GRID_LEFT = 24;
+const WORKFLOW_GRID_TOP = 72;
+const WORKFLOW_GRID_RIGHT = 36;
+const WORKFLOW_GRID_BOTTOM = 36;
+const WORKFLOW_GRID_NODE_WIDTH = 300;
+const WORKFLOW_GRID_NODE_HEIGHT = 300;
+const WORKFLOW_GRID_STRIDE = 336;
+
 function stringIds(value: unknown) {
   return Array.isArray(value)
     ? value.filter((id): id is string => typeof id === 'string' && Boolean(id))
@@ -59,10 +68,29 @@ export function workflowGroupPosition(
   group: Pick<StudioNode, 'x' | 'y'>,
   index: number,
 ) {
-  const column = Math.max(0, Math.trunc(index)) % 3;
-  const row = Math.floor(Math.max(0, Math.trunc(index)) / 3);
+  const normalizedIndex = Math.max(0, Math.trunc(index));
+  const column = normalizedIndex % WORKFLOW_GRID_COLUMNS;
+  const row = Math.floor(normalizedIndex / WORKFLOW_GRID_COLUMNS);
   return {
-    x: group.x + 24 + column * 324,
-    y: group.y + 52 + row * 460,
+    x: group.x + WORKFLOW_GRID_LEFT + column * WORKFLOW_GRID_STRIDE,
+    y: group.y + WORKFLOW_GRID_TOP + row * WORKFLOW_GRID_STRIDE,
+  };
+}
+
+export function workflowGroupSize(nodeCount: number) {
+  const count = Math.max(1, Math.trunc(nodeCount));
+  const columns = Math.min(WORKFLOW_GRID_COLUMNS, count);
+  const rows = Math.ceil(count / WORKFLOW_GRID_COLUMNS);
+  return {
+    width:
+      WORKFLOW_GRID_LEFT +
+      (columns - 1) * WORKFLOW_GRID_STRIDE +
+      WORKFLOW_GRID_NODE_WIDTH +
+      WORKFLOW_GRID_RIGHT,
+    height:
+      WORKFLOW_GRID_TOP +
+      (rows - 1) * WORKFLOW_GRID_STRIDE +
+      WORKFLOW_GRID_NODE_HEIGHT +
+      WORKFLOW_GRID_BOTTOM,
   };
 }

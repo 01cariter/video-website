@@ -37,6 +37,8 @@ export interface StudioNodeData {
   agentDependsOn?: string[];
   /** Ready image nodes whose assets become this node's references. */
   agentReferenceNodeIds?: string[];
+  /** Stable idempotency key used to resume a generation after navigation. */
+  generationRequestId?: string;
   [key: string]: unknown;
 }
 

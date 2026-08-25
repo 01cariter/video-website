@@ -166,7 +166,17 @@ export function initialEditData(
         )
       : {};
   const mapped = sameModel ? {} : mappedFallbackParameters(node, spec);
-  const values = { ...spec.defaults, ...inherited, ...mapped };
+  const mappedSourceAspect = closestOption(
+    aspectOptions(spec),
+    sourceRatio(node),
+    ':',
+  );
+  const values = {
+    ...spec.defaults,
+    ...inherited,
+    ...mapped,
+    ...(mappedSourceAspect ? { aspect: mappedSourceAspect } : {}),
+  };
   return {
     ...node.data,
     ...values,

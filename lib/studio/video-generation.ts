@@ -1,7 +1,7 @@
 export const STUDIO_VIDEO_MODEL_IDS = [
   'bytedance/seedance-2.5',
   'minimax/minimax-h3',
-  'xai/grok-imagine-video-1.5',
+  'spacexai/grok-imagine-video-1.5',
   'google/veo-3.1-lite-generate-001',
   'google/veo-3.1-fast-generate-001',
   'google/veo-3.1-generate-001',
@@ -35,6 +35,7 @@ interface StudioVideoContract {
   };
   referenceSources: 'url' | 'url-or-data';
   supportsReferenceImage: boolean;
+  audioMode: 'optional' | 'always';
 }
 
 const STANDARD_VIDEO_ASPECTS = [
@@ -80,6 +81,7 @@ const STUDIO_VIDEO_CONTRACTS: Record<
     },
     referenceSources: 'url',
     supportsReferenceImage: true,
+    audioMode: 'optional',
   },
   'minimax/minimax-h3': {
     aspects: STANDARD_VIDEO_ASPECTS,
@@ -89,12 +91,13 @@ const STUDIO_VIDEO_CONTRACTS: Record<
       aspect: '16:9',
       duration: 8,
       videoResolution: '2k',
-      generateAudio: false,
+      generateAudio: true,
     },
     referenceSources: 'url',
     supportsReferenceImage: true,
+    audioMode: 'always',
   },
-  'xai/grok-imagine-video-1.5': {
+  'spacexai/grok-imagine-video-1.5': {
     aspects: GROK_ASPECTS,
     durations: { min: 1, max: 15 },
     resolutions: {
@@ -106,10 +109,11 @@ const STUDIO_VIDEO_CONTRACTS: Record<
       aspect: '16:9',
       duration: 8,
       videoResolution: '480p',
-      generateAudio: false,
+      generateAudio: true,
     },
     referenceSources: 'url-or-data',
     supportsReferenceImage: true,
+    audioMode: 'always',
   },
   'google/veo-3.1-lite-generate-001': {
     aspects: VEO_ASPECTS,
@@ -122,12 +126,11 @@ const STUDIO_VIDEO_CONTRACTS: Record<
       aspect: '16:9',
       duration: 8,
       videoResolution: '720p',
-      generateAudio: false,
+      generateAudio: true,
     },
     referenceSources: 'url-or-data',
-    // The current AI Gateway model schema only advertises text-to-video for
-    // Lite. Do not infer image-to-video from its generic input-limit fields.
     supportsReferenceImage: false,
+    audioMode: 'always',
   },
   'google/veo-3.1-fast-generate-001': {
     aspects: VEO_ASPECTS,
@@ -145,6 +148,7 @@ const STUDIO_VIDEO_CONTRACTS: Record<
     },
     referenceSources: 'url-or-data',
     supportsReferenceImage: true,
+    audioMode: 'optional',
   },
   'google/veo-3.1-generate-001': {
     aspects: VEO_ASPECTS,
@@ -162,6 +166,7 @@ const STUDIO_VIDEO_CONTRACTS: Record<
     },
     referenceSources: 'url-or-data',
     supportsReferenceImage: true,
+    audioMode: 'optional',
   },
 };
 
@@ -186,6 +191,7 @@ export interface NormalizedStudioVideoRequest {
   videoResolution: StudioVideoResolution;
   resolution: `${number}x${number}`;
   generateAudio: boolean;
+  hasReferenceImage: boolean;
   referenceImage?: string;
 }
 
@@ -195,7 +201,7 @@ export interface StudioVideoGeneratePayload {
   aspectRatio: StudioVideoAspect;
   duration: number;
   resolution: `${number}x${number}`;
-  generateAudio: boolean;
+  generateAudio?: boolean;
   maxRetries: 0;
 }
 
@@ -211,7 +217,7 @@ const VIDEO_USD_MICROS_PER_SECOND: Partial<
   >
 > = {
   'minimax/minimax-h3': { '2k': 130_000 },
-  'xai/grok-imagine-video-1.5': {
+  'spacexai/grok-imagine-video-1.5': {
     '480p': 80_000,
     '720p': 140_000,
     '1080p': 250_000,
@@ -391,13 +397,13 @@ export function normalizeStudioVideoRequest(input: {
   referenceImage?: unknown;
   hasReferenceImage?: boolean;
 }): NormalizedStudioVideoRequest {
-  if (!isStudioVideoModelId(input.modelId)) {
+  const modelId = normalizeStudioVideoModelId(input.modelId);
+  if (!modelId) {
     throw new VideoGenerationValidationError(
       'This video model is not supported.',
     );
   }
 
-  const modelId = input.modelId;
   const contract = STUDIO_VIDEO_CONTRACTS[modelId];
   const referenceImage = normalizeReferenceImage(
     input.referenceImage,
@@ -458,15 +464,27 @@ export function normalizeStudioVideoRequest(input: {
     );
   }
 
-  const generateAudio =
-    input.parameters.generateAudio === undefined
-      ? contract.defaults.generateAudio
-      : input.parameters.generateAudio;
-  if (typeof generateAudio !== 'boolean') {
+  if (
+    (modelId === 'google/veo-3.1-fast-generate-001' ||
+      modelId === 'google/veo-3.1-generate-001') &&
+    videoResolution !== '720p' &&
+    duration !== 8
+  ) {
+    throw new VideoGenerationValidationError(
+      'Veo 3.1 requires an 8-second duration at 1080p and 4K.',
+    );
+  }
+
+  const requestedAudio = input.parameters.generateAudio;
+  if (requestedAudio !== undefined && typeof requestedAudio !== 'boolean') {
     throw new VideoGenerationValidationError(
       'Generate audio must be true or false.',
     );
   }
+  const generateAudio =
+    contract.audioMode === 'always'
+      ? true
+      : requestedAudio ?? contract.defaults.generateAudio;
 
   return {
     modelId,
@@ -480,8 +498,18 @@ export function normalizeStudioVideoRequest(input: {
       resolutionTier,
     }),
     generateAudio,
+    hasReferenceImage: Boolean(hasReferenceImage),
     referenceImage,
   };
+}
+
+function normalizeStudioVideoModelId(
+  value: unknown,
+): StudioVideoModelId | undefined {
+  if (value === 'xai/grok-imagine-video-1.5') {
+    return 'spacexai/grok-imagine-video-1.5';
+  }
+  return isStudioVideoModelId(value) ? value : undefined;
 }
 
 function evenPixel(value: number) {
@@ -567,7 +595,12 @@ export function estimateStudioVideoUpstreamUsdMicros(
       : request.generateAudio
         ? rate.audio
         : rate.silent;
-  return request.duration * usdMicrosPerSecond;
+  const referenceInputMicros =
+    request.modelId === 'spacexai/grok-imagine-video-1.5' &&
+    request.hasReferenceImage
+      ? 10_000
+      : 0;
+  return request.duration * usdMicrosPerSecond + referenceInputMicros;
 }
 
 export function buildStudioVideoGeneratePayload(input: {
@@ -583,9 +616,11 @@ export function buildStudioVideoGeneratePayload(input: {
     aspectRatio: request.aspect,
     duration: request.duration,
     resolution: request.resolution,
-    // Audio is a first-class generateVideo option. Keeping it out of
-    // providerOptions avoids the invalid legacy ByteDance payload.
-    generateAudio: request.generateAudio,
+    // Only models that expose an audio switch accept this top-level option.
+    // MiniMax, Grok and Veo Lite generate native audio automatically.
+    ...(STUDIO_VIDEO_CONTRACTS[request.modelId].audioMode === 'optional'
+      ? { generateAudio: request.generateAudio }
+      : {}),
     // A video generation is billable. The route owns request idempotency, so
     // the SDK must not create another generation through an automatic retry.
     maxRetries: 0,

@@ -43,7 +43,6 @@ import {
 } from '@/app/components/ui/popover';
 import {
   AgentActivity,
-  AgentReasoning,
   AgentThinking,
 } from '@/app/components/ui/agent-activity';
 import {
@@ -64,12 +63,15 @@ import {
   type StudioAgentAttachment,
   type StudioAgentUIMessage,
 } from '@/lib/studio/agent-context';
+import { stripStudioAgentEmoji } from '@/lib/studio/agent-output';
 import { modelOptionsForKind } from '@/lib/studio/model-catalog';
 import type { StudioNode, StudioNodeKind } from '@/lib/studio/types';
 import AgentMarkdown from './AgentMarkdown';
 import {
+  isStudioWorkflowSettled,
   workflowProgress,
   workflowReceiptFromPart,
+  workflowReceiptsFromMessages,
 } from './AgentPanel.logic';
 
 interface AgentPanelProps {
@@ -96,13 +98,13 @@ interface AgentPanelProps {
 
 const SKILL_LIST_ID = 'studio-agent-skill-list';
 
-function textOf(message: StudioAgentUIMessage) {
-  return message.parts
-    .filter(
-      (part): part is { type: 'text'; text: string } => part.type === 'text',
-    )
-    .map((part) => part.text)
-    .join('');
+function hasVisibleAssistantPart(message: StudioAgentUIMessage) {
+  return message.parts.some(
+    (part) =>
+      ((part.type === 'text' || part.type === 'reasoning') &&
+        Boolean(part.text)) ||
+      part.type.startsWith('tool-'),
+  );
 }
 
 function attachmentIcon(kind: StudioNodeKind) {
@@ -127,9 +129,9 @@ function UserMessageContext({ message }: { message: StudioAgentUIMessage }) {
           {context.attachments.map((attachment) => (
             <div
               key={attachment.id}
-              className="flex min-w-0 items-center gap-2 border border-border/70 bg-background/55 p-1.5"
+              className="flex min-w-0 items-center gap-2 rounded-lg border border-border/70 bg-background/55 p-1.5"
             >
-              <span className="grid size-9 shrink-0 place-items-center overflow-hidden bg-muted text-muted-foreground">
+              <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-md bg-muted text-muted-foreground">
                 {attachment.previewUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -160,7 +162,7 @@ function UserMessageContext({ message }: { message: StudioAgentUIMessage }) {
           {context.skills.map((skill) => (
             <span
               key={skill.id}
-              className="inline-flex max-w-full items-center gap-1 border border-primary/15 bg-primary/[0.06] px-1.5 py-1 text-[10px] font-semibold text-primary"
+              className="inline-flex max-w-full items-center gap-1 rounded-md border border-primary/15 bg-primary/[0.06] px-1.5 py-1 text-[10px] font-semibold text-primary"
               title={skill.category}
             >
               <BookOpen className="size-2.5" />
@@ -176,8 +178,8 @@ function UserMessageContext({ message }: { message: StudioAgentUIMessage }) {
 function MessageFile({ part }: { part: FileUIPart }) {
   const image = part.mediaType.startsWith('image/');
   return (
-    <div className="flex min-w-0 items-center gap-2 border border-border/70 bg-background/55 p-1.5">
-      <span className="grid size-10 shrink-0 place-items-center overflow-hidden bg-muted text-muted-foreground">
+    <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border/70 bg-background/55 p-1.5">
+      <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-md bg-muted text-muted-foreground">
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={part.url} alt="" className="size-full object-cover" />
@@ -201,13 +203,14 @@ function AgentWorkflowCard({
 }) {
   const progress = workflowProgress(workflow, nodes);
   const byId = new Map(nodes.map((node) => [node.id, node]));
+  const workflowTitle = stripStudioAgentEmoji(workflow.title);
   const percent = progress.total
     ? Math.round(((progress.ready + progress.errors) / progress.total) * 100)
     : 0;
   return (
     <section
-      className="mt-1 overflow-hidden border border-border bg-[var(--studio-raised)]"
-      aria-label={`Workflow: ${workflow.title}`}
+      className="mt-1 overflow-hidden rounded-xl border border-border/80 bg-[var(--studio-raised)] shadow-[0_5px_16px_-14px_rgba(82,43,24,.42)]"
+      aria-label={`Workflow: ${workflowTitle}`}
     >
       <div className="flex items-center gap-2 border-b border-border/75 px-2.5 py-2">
         {progress.complete ? (
@@ -218,7 +221,7 @@ function AgentWorkflowCard({
           <LoaderCircle className="size-3.5 shrink-0 animate-spin text-primary" />
         )}
         <span className="min-w-0 flex-1 truncate text-[11.5px] font-semibold">
-          {workflow.title}
+          {workflowTitle}
         </span>
         <span className="text-[10px] tabular-nums text-muted-foreground">
           {progress.ready}/{progress.total}
@@ -253,7 +256,7 @@ function AgentWorkflowCard({
               )}
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[10.5px] font-semibold">
-                  {receipt.title}
+                  {stripStudioAgentEmoji(receipt.title)}
                 </span>
                 <span className="block truncate text-[9.5px] text-muted-foreground">
                   {model?.label || receipt.modelId}
@@ -330,6 +333,10 @@ function AgentPanel({
       .includes(normalizedSkillQuery),
   );
   const canSend = input.trim().length > 0 && !busy;
+  const lastMessageId = messages[messages.length - 1]?.id;
+  const activeWorkflowCount = workflowReceiptsFromMessages(messages).filter(
+    (workflow) => !isStudioWorkflowSettled(workflow, nodes),
+  ).length;
 
   const setInput = (value: string) => {
     setInputState({
@@ -482,6 +489,14 @@ function AgentPanel({
             <span className="truncate text-[11px] text-muted-foreground">
               {title || 'Untitled project'}
             </span>
+            {activeWorkflowCount ? (
+              <span className="flex shrink-0 items-center gap-1 text-[10px] font-semibold text-primary">
+                <LoaderCircle className="size-3 animate-spin" />
+                {activeWorkflowCount === 1
+                  ? 'Run active'
+                  : `${activeWorkflowCount} runs active`}
+              </span>
+            ) : null}
           </div>
         </div>
         <Button
@@ -580,7 +595,7 @@ function AgentPanel({
                 transition={studioSnap}
                 className={
                   message.role === 'user'
-                    ? 'ml-auto max-w-[94%] border border-border/65 bg-accent/70 px-3 py-2.5'
+                    ? 'ml-auto max-w-[94%] rounded-[14px] bg-[var(--studio-composer)] px-3 py-2.5 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--line)_78%,transparent)]'
                     : 'flex max-w-full flex-col gap-1.5'
                 }
               >
@@ -599,7 +614,9 @@ function AgentPanel({
                         key={`${message.id}-t-${index}`}
                         compact={message.role === 'user'}
                       >
-                        {part.text}
+                        {message.role === 'assistant'
+                          ? stripStudioAgentEmoji(part.text)
+                          : part.text}
                       </AgentMarkdown>
                     );
                   }
@@ -619,9 +636,15 @@ function AgentPanel({
                   }
                   if (part.type === 'reasoning' && part.text) {
                     return (
-                      <AgentReasoning key={`${message.id}-r-${index}`}>
-                        {part.text}
-                      </AgentReasoning>
+                      <AgentThinking
+                        key={`${message.id}-r-${index}`}
+                        label="Thinking"
+                        active={busy && message.id === lastMessageId}
+                      >
+                        <AgentMarkdown compact>
+                          {stripStudioAgentEmoji(part.text)}
+                        </AgentMarkdown>
+                      </AgentThinking>
                     );
                   }
                   if (part.type.startsWith('tool-')) {
@@ -653,7 +676,9 @@ function AgentPanel({
                   }
                   return null;
                 })}
-                {message.role === 'assistant' && !textOf(message) && busy ? (
+                {message.role === 'assistant' &&
+                !hasVisibleAssistantPart(message) &&
+                busy ? (
                   <AgentThinking label="Thinking" />
                 ) : null}
               </motion.article>
@@ -662,8 +687,10 @@ function AgentPanel({
               <AgentThinking label="Planning the next step" />
             ) : null}
             {error ? (
-              <p className="text-[12.5px] font-semibold text-destructive">
-                {error.message || 'Generation stopped. Try again.'}
+              <p className="rounded-xl border border-destructive/20 bg-destructive/[0.06] px-2.5 py-2 text-[12.5px] font-semibold text-destructive">
+                {stripStudioAgentEmoji(
+                  error.message || 'Generation stopped. Try again.',
+                )}
               </p>
             ) : null}
           </div>

@@ -33,14 +33,17 @@ test('normalizes malformed policy values and enforces the markup floor', () => {
   });
 
   assert.equal(runtime.agentModelId, DEFAULT_STUDIO_AGENT_MODEL_ID);
-  assert.deepEqual(runtime.modelPolicy['xai/grok-imagine-image-2.0'], {
+  assert.deepEqual(
+    runtime.modelPolicy['spacexai/grok-imagine-image-2.0'],
+    {
     enabled: false,
     markupBps: MIN_STUDIO_MARKUP_BPS,
     minimumCredits: 1,
     upstreamRateBps: 10_000,
     creditMode: 'cost-plus',
     fixedCredits: 1,
-  });
+    },
+  );
   assert.equal(runtime.pricingVersion, STUDIO_PRICING_VERSION);
   assert.equal('unknown/model' in runtime.modelPolicy, false);
 });
@@ -232,7 +235,7 @@ test('quotes the same parameter-sensitive image and video reserves used by route
   assert.deepEqual(
     estimateStudioCredits({
       kind: 'image',
-      modelId: 'xai/grok-imagine-image-2.0',
+      modelId: 'spacexai/grok-imagine-image-2.0',
       parameters: {
         aspect: '1:1',
         n: 1,
@@ -264,7 +267,7 @@ test('quotes the same parameter-sensitive image and video reserves used by route
 
 test('detects stale client quotes before a route debits credits', () => {
   const quote = priceStudioUsage({
-    modelId: 'xai/grok-imagine-image-2.0',
+    modelId: 'spacexai/grok-imagine-image-2.0',
     upstreamUsdMicros: 60_000,
   });
   assert.equal(expectedStudioCreditsStatus(undefined, quote), 'not-provided');

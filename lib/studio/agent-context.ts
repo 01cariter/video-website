@@ -82,6 +82,10 @@ export interface StudioAgentMessageMetadata {
     attachments: StudioAgentAttachment[];
     skills: StudioAgentSkillAttachment[];
   };
+  studioRun?: {
+    workflowId: string;
+    status: 'completed' | 'failed';
+  };
 }
 
 export type StudioAgentUIMessage = UIMessage<StudioAgentMessageMetadata>;

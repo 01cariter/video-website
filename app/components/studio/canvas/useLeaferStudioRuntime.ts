@@ -26,6 +26,7 @@ import {
   resolveStudioResizeDirection,
   resolveStudioResizeSnap,
   resolveStudioSnap,
+  topStudioContentNodeAtPoint,
   type StudioBounds,
   type StudioSnapGuide,
 } from '@/lib/studio/geometry';
@@ -133,6 +134,21 @@ function eventCanvasPoint(event: {
     x: Math.round(Number(point?.x ?? 0)),
     y: Math.round(Number(point?.y ?? 0)),
   };
+}
+
+function canvasEventNodeId(event: unknown, nodes: readonly StudioNode[]) {
+  const targetId = nodeIdFromTarget(
+    (event as { target?: unknown } | undefined)?.target,
+  );
+  const target = targetId
+    ? nodes.find((node) => node.id === targetId)
+    : undefined;
+  if (target && target.type !== 'section') return targetId;
+  const content = topStudioContentNodeAtPoint(
+    nodes,
+    eventCanvasPoint(event as never),
+  );
+  return content?.id ?? targetId;
 }
 
 function eventClientPoint(
@@ -976,9 +992,7 @@ export function useLeaferStudioRuntime({
       clearSnapGuides();
     };
     const onPointerDown = (event: unknown) => {
-      const targetId = nodeIdFromTarget(
-        (event as { target?: unknown } | undefined)?.target,
-      );
+      const targetId = canvasEventNodeId(event, nodesRef.current);
       const picker = callbacksRef.current.referencePicker;
       if (picker) {
         if (targetId && picker.allowedIds.includes(targetId)) {
@@ -1089,9 +1103,7 @@ export function useLeaferStudioRuntime({
     };
     const onDoubleTap = (event: unknown) => {
       if (callbacksRef.current.referencePicker) return;
-      const nodeId = nodeIdFromTarget(
-        (event as { target?: unknown } | undefined)?.target,
-      );
+      const nodeId = canvasEventNodeId(event, nodesRef.current);
       if (nodeId) {
         selectAppNodes(appRef.current, [nodeId]);
         selectedIdsRef.current = [nodeId];
@@ -1108,9 +1120,7 @@ export function useLeaferStudioRuntime({
         selectionGestureRef.current = null;
         return;
       }
-      const targetId = nodeIdFromTarget(
-        (event as { target?: unknown } | undefined)?.target,
-      );
+      const targetId = canvasEventNodeId(event, nodesRef.current);
       const startedOnNode = Boolean(selectionGestureRef.current?.targetId);
       selectionGestureRef.current = null;
       if (sectionHandledRef.current) {
@@ -1131,7 +1141,7 @@ export function useLeaferStudioRuntime({
       (event as { preventDefault?: () => void }).preventDefault?.();
       if (callbacksRef.current.referencePicker) return;
       const targetId =
-        nodeIdFromTarget((event as { target?: unknown })?.target) ||
+        canvasEventNodeId(event, nodesRef.current) ||
         nodeIdFromTarget(editor.target);
       const client = eventClientPoint(
         event as Record<string, unknown>,

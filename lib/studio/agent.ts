@@ -25,6 +25,7 @@ import {
   buildStudioAgentWorkflow,
   studioAgentModelContractText,
 } from './agent-workflow';
+import { cleanStudioAgentText } from './agent-output';
 
 export type { CanvasNodeSnapshot } from './agent-context';
 
@@ -165,6 +166,7 @@ export function createStudioAgent(
 
 Working rules:
 - Respond concisely in the language used by the user. Understand the creative goal, then use tools to edit the canvas directly.
+- Never use emoji in messages, reasoning, tool inputs, node names, prompts, or generated text. Use plain words and interface icons only.
 - Use image for image requests; video for shots, motion, or clips; text for copy or storyboard cards; and section to organize related content.
 - When the user asks you to make or generate content, create configured generator nodes AND start generation. Do not stop after creating drafts. Draft-only nodes are allowed only when explicitly requested.
 - For a multi-stage request, call createCanvasWorkflow once with the full dependency graph. The client waits for prerequisite generations, attaches their real assets, and then starts dependent generations even after this response ends.
@@ -176,8 +178,9 @@ Working rules:
 - Use createCanvasVariant when revising generated work. Preserve the source node and inherit its model, parameters, and references. Use updateCanvasNode only for names, text, and layout.
 - You cannot delete canvas content. If deletion is requested, tell the user to confirm it with the canvas toolbar.
 - Respect the enabled model policy enforced by the generation endpoints. AI Gateway account credits are not a per-model capability.
-- Node coordinates use canvas world space. Common sizes: image 300×300, video 300×169, text 280×176, section 720×460.
-- After tools finish, summarize what was scheduled in one or two Markdown sentences. Do not say an asset is finished until its live workflow card reports it ready.
+- Let the client place new Agent nodes together in the nearest blank gridded region. Never invent creation coordinates. Use updateCanvasNode only when the user explicitly requests a layout change.
+- A scheduling receipt is not task completion. After tools return, say only that execution has started and the run supervisor will report when every generated node settles. Do not repeat the full task list already shown in the workflow card.
+- The persistent run supervisor observes real node results, waits across dependency chains, and adds the final completion or failure summary. Never claim completion, success, readiness, or final output in this planning turn.
 ${
   activeSkillText
     ? `
@@ -227,8 +230,6 @@ ${studioAgentModelContractText(runtime)}`,
           modelId: z.string().max(160).optional(),
           parameters: workflowParametersSchema.optional(),
           generate: z.boolean().optional(),
-          x: z.number().optional(),
-          y: z.number().optional(),
           width: z.number().min(80).max(2400).optional(),
           height: z.number().min(60).max(2400).optional(),
         }),
@@ -237,7 +238,13 @@ ${studioAgentModelContractText(runtime)}`,
             return {
               operation: {
                 type: 'add_node' as const,
-                node: { ...node, id: studioAgentOperationId(toolCallId) },
+                node: {
+                  ...node,
+                  id: studioAgentOperationId(toolCallId),
+                  title: cleanStudioAgentText(node.title),
+                  prompt: cleanStudioAgentText(node.prompt),
+                  text: cleanStudioAgentText(node.text),
+                },
               },
             };
           }
@@ -262,14 +269,6 @@ ${studioAgentModelContractText(runtime)}`,
             runtime,
           });
           const operation = result.operations[0];
-          if (
-            operation.type === 'add_node' &&
-            typeof node.x === 'number' &&
-            typeof node.y === 'number'
-          ) {
-            operation.node.x = node.x;
-            operation.node.y = node.y;
-          }
           if (
             operation.type === 'add_node' &&
             typeof node.width === 'number' &&
@@ -301,8 +300,8 @@ ${studioAgentModelContractText(runtime)}`,
               type: 'create_variant' as const,
               id: studioAgentOperationId(toolCallId),
               sourceId,
-              prompt,
-              title,
+              prompt: cleanStudioAgentText(prompt),
+              title: cleanStudioAgentText(title),
               autoGenerate: true,
             },
           };
@@ -327,7 +326,19 @@ ${studioAgentModelContractText(runtime)}`,
             return { error: 'The canvas node no longer exists.' };
           }
           return {
-            operation: { type: 'update_node' as const, id, patch },
+            operation: {
+              type: 'update_node' as const,
+              id,
+              patch: {
+                ...patch,
+                ...(patch.title !== undefined
+                  ? { title: cleanStudioAgentText(patch.title) }
+                  : {}),
+                ...(patch.text !== undefined
+                  ? { text: cleanStudioAgentText(patch.text) }
+                  : {}),
+              },
+            },
           };
         },
       }),

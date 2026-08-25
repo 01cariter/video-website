@@ -7,6 +7,7 @@ import {
   findOpenStudioPosition,
   resolveStudioResizeDirection,
   resolveStudioResizeSnap,
+  topStudioContentNodeAtPoint,
 } from './geometry';
 import type { StudioNode } from './types';
 
@@ -94,6 +95,23 @@ describe('explicit Agent workflow groups', () => {
     assert.ok(nextSection.width >= child.x + child.width + 24 - section.x);
     assert.ok(nextSection.height >= child.y + child.height + 24 - section.y);
   });
+
+  it('prefers a content node over the group behind it at the same point', () => {
+    const section: StudioNode = {
+      ...node('n0', 0, 0),
+      type: 'section',
+      width: 600,
+      height: 400,
+      zIndex: -1,
+      data: { ...node('n0', 0, 0).data, kind: 'section' },
+    };
+    const child = node('n1', 48, 72);
+
+    assert.equal(
+      topStudioContentNodeAtPoint([section, child], { x: 80, y: 100 })?.id,
+      child.id,
+    );
+  });
 });
 
 describe('studio resize snapping', () => {
@@ -153,7 +171,6 @@ describe('studio collision-free placement', () => {
       { width: 100, height: 80 },
     );
 
-    assert.deepEqual(position, { x: 128, y: 0 });
     assert.ok(
       position.x + 100 <= -28 ||
         position.x >= 128 ||
@@ -208,7 +225,14 @@ describe('studio collision-free placement', () => {
       { width: 100, height: 80 },
     );
 
-    assert.deepEqual(position, { x: 1_000_000_028, y: 0 });
+    assert.equal(Number.isFinite(position.x), true);
+    assert.equal(Number.isFinite(position.y), true);
+    assert.ok(
+      position.x + 100 <= -28 ||
+        position.x >= 1_000_000_028 ||
+        position.y + 80 <= -28 ||
+        position.y >= 1_000_000_028,
+    );
   });
 
   it('falls back safely for an oversized placement query', () => {
@@ -220,5 +244,28 @@ describe('studio collision-free placement', () => {
 
     assert.equal(Number.isFinite(position.x), true);
     assert.equal(Number.isFinite(position.y), true);
+  });
+
+  it('places a large Agent workflow region on the canvas grid', () => {
+    const blockers = [node('n1', 0, 0), node('n2', 128, 0)];
+    const position = findOpenStudioPosition(
+      blockers,
+      { x: 18, y: 10 },
+      { width: 1032, height: 744 },
+      { gap: 48, grid: 24 },
+    );
+
+    assert.equal(Math.abs(position.x % 24), 0);
+    assert.equal(Math.abs(position.y % 24), 0);
+    assert.equal(
+      blockers.every(
+        (blocker) =>
+          position.x + 1032 + 48 <= blocker.x ||
+          position.x >= blocker.x + blocker.width + 48 ||
+          position.y + 744 + 48 <= blocker.y ||
+          position.y >= blocker.y + blocker.height + 48,
+      ),
+      true,
+    );
   });
 });

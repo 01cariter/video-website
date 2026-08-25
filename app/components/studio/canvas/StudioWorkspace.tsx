@@ -27,6 +27,10 @@ import {
   studioMediaKind,
   uploadStudioMedia,
 } from '@/lib/studio/media-upload';
+import {
+  parseStudioGenerationResponse,
+  type StudioGenerationResponsePayload,
+} from '@/lib/studio/generation-response';
 import { createBlankNode, saveStudioProject } from '@/lib/studio/store';
 import {
   modelSpecFor,
@@ -70,6 +74,12 @@ import type { ComposeDraft } from '@/app/components/compose/types';
 import { PUBLISHED_EVENT } from '@/app/components/shell/compose-events';
 import { Button } from '@/app/components/ui/button';
 import AgentPanel from './AgentPanel';
+import {
+  buildStudioWorkflowSummaryMessage,
+  studioWorkflowLanguage,
+  studioWorkflowSummaryMessageId,
+  workflowReceiptsFromMessages,
+} from './AgentPanel.logic';
 import CanvasContextMenu from './CanvasContextMenu';
 import {
   LayerPanel,
@@ -115,6 +125,8 @@ interface AgentDraftRequest {
 }
 
 const STUDIO_DROP_FILE_LIMIT = 8;
+const GENERATION_STATUS_POLL_LIMIT = 144;
+const GENERATION_STATUS_POLL_MS = 5_000;
 
 const DERIVED_OUTPUT_FIELDS = [
   'src',
@@ -125,6 +137,7 @@ const DERIVED_OUTPUT_FIELDS = [
   'sourceHeight',
   'sourceDuration',
   'uploadMime',
+  'generationRequestId',
 ] as const;
 
 const EDITOR_CONFIG = {
@@ -248,6 +261,7 @@ function CanvasWorkspace({
   const persistTimer = useRef<number | null>(null);
   const localPersistTimer = useRef<number | null>(null);
   const generating = useRef(new Set<string>());
+  const generationResumeQueued = useRef(new Set<string>());
   const automationQueued = useRef(new Set<string>());
   const videoPosterProbes = useRef(new Set<string>());
   const seenTools = useRef(new Set(project.appliedToolCallIds ?? []));
@@ -494,10 +508,16 @@ function CanvasWorkspace({
         return;
       }
 
+      const generationRequestId =
+        typeof node.data.generationRequestId === 'string' &&
+        node.data.generationRequestId.trim()
+          ? node.data.generationRequestId
+          : requestId();
       generating.current.add(id);
       updateNodeData(id, {
         status: 'generating',
         error: undefined,
+        generationRequestId,
       });
 
       try {
@@ -532,7 +552,7 @@ function CanvasWorkspace({
         const body = {
           projectId: project.id,
           nodeId: node.id,
-          requestId: requestId(),
+          requestId: generationRequestId,
           prompt: node.data.prompt,
           current: node.data.text || '',
           modelId: model.id,
@@ -548,20 +568,28 @@ function CanvasWorkspace({
             : node.type === 'video'
               ? '/api/studio/video'
               : '/api/studio/image';
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const payload = (await response.json()) as {
-          text?: string;
-          url?: string;
-          urls?: string[];
-          error?: string;
-          balance?: number;
-        };
-        if (!response.ok) {
-          throw new Error(payload.error || 'Generation failed.');
+        let payload: StudioGenerationResponsePayload;
+        for (let poll = 0; ; poll += 1) {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          payload = await parseStudioGenerationResponse(response, node.type);
+          if (payload.status !== 'processing') break;
+          if (poll >= GENERATION_STATUS_POLL_LIMIT) {
+            throw new Error(
+              'Generation is still processing after the recovery window. Try this node again later.',
+            );
+          }
+          await new Promise<void>((resolve) => {
+            window.setTimeout(
+              resolve,
+              typeof payload.retryAfterMs === 'number'
+                ? Math.min(15_000, Math.max(1_000, payload.retryAfterMs))
+                : GENERATION_STATUS_POLL_MS,
+            );
+          });
         }
         if (typeof payload.balance === 'number') {
           window.dispatchEvent(
@@ -574,6 +602,7 @@ function CanvasWorkspace({
             status: 'ready',
             text: payload.text || '',
             error: undefined,
+            generationRequestId: undefined,
           });
           return;
         }
@@ -586,6 +615,7 @@ function CanvasWorkspace({
           status: 'ready',
           src: urls[0],
           error: undefined,
+          generationRequestId: undefined,
         });
         if (urls.length > 1) {
           commitNodes((current) => {
@@ -624,6 +654,7 @@ function CanvasWorkspace({
         updateNodeData(id, {
           status: 'error',
           error: error instanceof Error ? error.message : 'Generation failed.',
+          generationRequestId: undefined,
         });
       } finally {
         generating.current.delete(id);
@@ -663,8 +694,12 @@ function CanvasWorkspace({
         width: extras.size?.width ?? node.width,
         height: extras.size?.height ?? node.height,
       };
+      const keepsWorkflowGridPosition =
+        kind !== 'section' &&
+        Boolean(extras.position) &&
+        typeof extras.data?.groupId === 'string';
       const position =
-        kind === 'section'
+        kind === 'section' || keepsWorkflowGridPosition
           ? preferred
           : findOpenStudioPosition(nodesRef.current, preferred, size);
       const top = Math.max(0, ...nodesRef.current.map((item) => item.zIndex));
@@ -690,6 +725,35 @@ function CanvasWorkspace({
   useEffect(() => {
     addNodeRef.current = addNode;
   }, [addNode]);
+
+  useEffect(() => {
+    for (const node of nodes) {
+      if (
+        node.type === 'section' ||
+        node.data.status !== 'generating' ||
+        generating.current.has(node.id) ||
+        generationResumeQueued.current.has(node.id)
+      ) {
+        continue;
+      }
+      if (
+        typeof node.data.generationRequestId !== 'string' ||
+        !node.data.generationRequestId.trim()
+      ) {
+        updateNodeData(node.id, {
+          status: 'error',
+          error:
+            'This generation was interrupted before it could be resumed. Generate the node again.',
+        });
+        continue;
+      }
+      generationResumeQueued.current.add(node.id);
+      window.setTimeout(() => {
+        generationResumeQueued.current.delete(node.id);
+        void generateNode(node.id);
+      }, 0);
+    }
+  }, [generateNode, nodes, updateNodeData]);
 
   useEffect(() => {
     for (const node of nodes) {
@@ -762,7 +826,15 @@ function CanvasWorkspace({
           height: source.height,
           rotation: 0,
           zIndex: source.type === 'section' ? source.zIndex : top + index + 1,
-          data: { ...source.data, title: `${source.data.title} copy` },
+          data: {
+            ...source.data,
+            title: `${source.data.title} copy`,
+            status:
+              source.data.status === 'generating'
+                ? 'idle'
+                : source.data.status,
+            generationRequestId: undefined,
+          },
         };
         occupied.push(next);
         return next;
@@ -1163,9 +1235,33 @@ function CanvasWorkspace({
           typeof operation.node.y === 'number'
             ? { x: operation.node.x, y: operation.node.y }
             : undefined;
+        const operationSize =
+          typeof operation.node.width === 'number' &&
+          typeof operation.node.height === 'number'
+            ? {
+                width: operation.node.width,
+                height: operation.node.height,
+              }
+            : undefined;
         const groupPosition =
           group && typeof operation.node.groupIndex === 'number'
             ? workflowGroupPosition(group, operation.node.groupIndex)
+            : undefined;
+        const workflowGroupOpenPosition =
+          operation.node.kind === 'section' && !explicitPosition
+            ? (() => {
+                const center = canvasCenterRef.current();
+                const size = operationSize ?? { width: 480, height: 320 };
+                return findOpenStudioPosition(
+                  nodesRef.current,
+                  {
+                    x: center.x - size.width / 2,
+                    y: center.y - size.height / 2,
+                  },
+                  size,
+                  { gap: 48, grid: 24 },
+                );
+              })()
             : undefined;
         addNode(operation.node.kind, {
           id: operation.node.id,
@@ -1188,15 +1284,9 @@ function CanvasWorkspace({
               ? { agentReferenceNodeIds: operation.node.referenceNodeIds }
               : {}),
           },
-          position: explicitPosition ?? groupPosition,
-          size:
-            typeof operation.node.width === 'number' &&
-            typeof operation.node.height === 'number'
-              ? {
-                  width: operation.node.width,
-                  height: operation.node.height,
-                }
-              : undefined,
+          position:
+            explicitPosition ?? groupPosition ?? workflowGroupOpenPosition,
+          size: operationSize,
           autoGenerate: false,
         });
         return;
@@ -1277,7 +1367,7 @@ function CanvasWorkspace({
     [],
   );
 
-  const { messages, sendMessage, stop, status, error } =
+  const { messages, setMessages, sendMessage, stop, status, error } =
     useChat<StudioAgentUIMessage>({
     id: project.id,
     transport,
@@ -1295,6 +1385,32 @@ function CanvasWorkspace({
     messagesRef.current = messages;
     applyPendingToolOutputs(messages);
   }, [applyPendingToolOutputs, messages]);
+
+  useEffect(() => {
+    if (status === 'submitted' || status === 'streaming') return;
+    const existingIds = new Set(messages.map((message) => message.id));
+    const summaries = workflowReceiptsFromMessages(messages).flatMap(
+      (workflow) => {
+        if (
+          !seenTools.current.has(workflow.id) ||
+          existingIds.has(studioWorkflowSummaryMessageId(workflow.id))
+        ) {
+          return [];
+        }
+        const summary = buildStudioWorkflowSummaryMessage(
+          workflow,
+          nodes,
+          studioWorkflowLanguage(messages, workflow.id),
+        );
+        return summary ? [summary] : [];
+      },
+    );
+    if (!summaries.length) return;
+    const next = [...messages, ...summaries];
+    messagesRef.current = next;
+    setMessages(next);
+    void saveStudioProjectSynced(buildProjectSnapshot(next));
+  }, [buildProjectSnapshot, messages, nodes, setMessages, status]);
 
   const sendAgentMessage = useCallback(
     (

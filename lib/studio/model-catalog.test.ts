@@ -30,7 +30,7 @@ test('every selectable model has a matching parameter contract', () => {
 test('model policy disables choices and selects an enabled fallback', () => {
   const runtime = normalizeStudioRuntimeConfig({
     modelPolicy: {
-      'xai/grok-imagine-image-2.0': { enabled: false },
+      'spacexai/grok-imagine-image-2.0': { enabled: false },
     },
   });
   const grok = STUDIO_MODEL_OPTIONS.image[0];

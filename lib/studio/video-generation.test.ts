@@ -24,7 +24,7 @@ const VALID_PARAMETERS = {
     videoResolution: '2k',
     generateAudio: true,
   },
-  'xai/grok-imagine-video-1.5': {
+  'spacexai/grok-imagine-video-1.5': {
     aspect: '2:3',
     duration: 15,
     videoResolution: '1080p',
@@ -38,7 +38,7 @@ const VALID_PARAMETERS = {
   },
   'google/veo-3.1-fast-generate-001': {
     aspect: '16:9',
-    duration: 4,
+    duration: 8,
     videoResolution: '4k',
     generateAudio: false,
   },
@@ -105,6 +105,14 @@ describe('Studio video contract matrix', () => {
           parameters: { aspect: '1:1' },
         }),
       /16:9, 9:16/,
+    );
+    assert.throws(
+      () =>
+        normalizeStudioVideoRequest({
+          modelId: 'google/veo-3.1-fast-generate-001',
+          parameters: { duration: 6, videoResolution: '1080p' },
+        }),
+      /requires an 8-second duration/,
     );
   });
 
@@ -196,6 +204,33 @@ describe('Studio video Gateway payload', () => {
     assert.equal('providerOptions' in payload, false);
   });
 
+  it('omits unsupported audio switches for native-audio models', () => {
+    for (const modelId of [
+      'minimax/minimax-h3',
+      'spacexai/grok-imagine-video-1.5',
+      'google/veo-3.1-lite-generate-001',
+    ] as const) {
+      const request = normalizeStudioVideoRequest({
+        modelId,
+        parameters: { generateAudio: false },
+      });
+      const payload = buildStudioVideoGeneratePayload({
+        prompt: 'Slow dolly forward.',
+        request,
+      });
+      assert.equal(request.generateAudio, true);
+      assert.equal('generateAudio' in payload, false);
+    }
+  });
+
+  it('migrates the former xAI Gateway namespace', () => {
+    const request = normalizeStudioVideoRequest({
+      modelId: 'xai/grok-imagine-video-1.5',
+      parameters: {},
+    });
+    assert.equal(request.modelId, 'spacexai/grok-imagine-video-1.5');
+  });
+
   it('uses the exact 2K and 4K Gateway pixel dimensions', () => {
     const minimax = normalizeStudioVideoRequest({
       modelId: 'minimax/minimax-h3',
@@ -222,7 +257,7 @@ describe('Studio video Gateway payload', () => {
     );
     assert.doesNotThrow(() =>
       normalizeStudioVideoRequest({
-        modelId: 'xai/grok-imagine-video-1.5',
+        modelId: 'spacexai/grok-imagine-video-1.5',
         parameters: {},
         referenceImage: 'data:image/png;base64,AAAA',
       }),
@@ -316,25 +351,25 @@ describe('Studio video upstream pricing', () => {
   it('prices every duration/audio/resolution tier from the Gateway matrix', () => {
     const cases = [
       ['minimax/minimax-h3', '2k', 5, false, 650_000],
-      ['xai/grok-imagine-video-1.5', '480p', 1, false, 80_000],
-      ['xai/grok-imagine-video-1.5', '720p', 1, true, 140_000],
-      ['xai/grok-imagine-video-1.5', '1080p', 1, true, 250_000],
-      ['google/veo-3.1-lite-generate-001', '720p', 4, false, 120_000],
+      ['spacexai/grok-imagine-video-1.5', '480p', 1, false, 80_000],
+      ['spacexai/grok-imagine-video-1.5', '720p', 1, true, 140_000],
+      ['spacexai/grok-imagine-video-1.5', '1080p', 1, true, 250_000],
+      ['google/veo-3.1-lite-generate-001', '720p', 4, false, 200_000],
       ['google/veo-3.1-lite-generate-001', '720p', 4, true, 200_000],
-      ['google/veo-3.1-lite-generate-001', '1080p', 4, false, 200_000],
+      ['google/veo-3.1-lite-generate-001', '1080p', 4, false, 320_000],
       ['google/veo-3.1-lite-generate-001', '1080p', 4, true, 320_000],
       ['google/veo-3.1-fast-generate-001', '720p', 4, false, 400_000],
       ['google/veo-3.1-fast-generate-001', '720p', 4, true, 600_000],
-      ['google/veo-3.1-fast-generate-001', '1080p', 4, false, 400_000],
-      ['google/veo-3.1-fast-generate-001', '1080p', 4, true, 600_000],
-      ['google/veo-3.1-fast-generate-001', '4k', 4, false, 1_200_000],
-      ['google/veo-3.1-fast-generate-001', '4k', 4, true, 1_400_000],
+      ['google/veo-3.1-fast-generate-001', '1080p', 8, false, 800_000],
+      ['google/veo-3.1-fast-generate-001', '1080p', 8, true, 1_200_000],
+      ['google/veo-3.1-fast-generate-001', '4k', 8, false, 2_400_000],
+      ['google/veo-3.1-fast-generate-001', '4k', 8, true, 2_800_000],
       ['google/veo-3.1-generate-001', '720p', 4, false, 800_000],
       ['google/veo-3.1-generate-001', '720p', 4, true, 1_600_000],
-      ['google/veo-3.1-generate-001', '1080p', 4, false, 800_000],
-      ['google/veo-3.1-generate-001', '1080p', 4, true, 1_600_000],
-      ['google/veo-3.1-generate-001', '4k', 4, false, 1_600_000],
-      ['google/veo-3.1-generate-001', '4k', 4, true, 2_400_000],
+      ['google/veo-3.1-generate-001', '1080p', 8, false, 1_600_000],
+      ['google/veo-3.1-generate-001', '1080p', 8, true, 3_200_000],
+      ['google/veo-3.1-generate-001', '4k', 8, false, 3_200_000],
+      ['google/veo-3.1-generate-001', '4k', 8, true, 4_800_000],
     ] as const;
 
     for (const [
@@ -360,6 +395,15 @@ describe('Studio video upstream pricing', () => {
     }
   });
 
+  it('includes Grok reference-image input pricing', () => {
+    const request = normalizeStudioVideoRequest({
+      modelId: 'spacexai/grok-imagine-video-1.5',
+      parameters: { duration: 1, videoResolution: '480p' },
+      hasReferenceImage: true,
+    });
+    assert.equal(estimateStudioVideoUpstreamUsdMicros(request), 90_000);
+  });
+
   it('applies product markup after aggregating the upstream clip charge', () => {
     const request = normalizeStudioVideoRequest({
       modelId: 'bytedance/seedance-2.5',
@@ -378,7 +422,7 @@ describe('Studio video upstream pricing', () => {
         credits: 174,
         upstreamUsdMicros: 1_155_600,
         markupBps: 15_000,
-        pricingVersion: '2026-08-25.v2',
+        pricingVersion: '2026-08-25.v3',
       },
     );
   });
