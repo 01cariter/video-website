@@ -27,6 +27,10 @@ function isNewerProject(candidate: StudioProject, baseline: StudioProject) {
   return projectUpdatedAt(candidate) > projectUpdatedAt(baseline);
 }
 
+interface StudioProjectSaveOptions {
+  keepalive?: boolean;
+}
+
 export async function listStudioProjectsSynced() {
   const local = listStudioProjects();
   try {
@@ -108,7 +112,10 @@ export async function createStudioProjectSynced(input: {
   return draft;
 }
 
-export async function saveStudioProjectSynced(project: StudioProject) {
+export async function saveStudioProjectSynced(
+  project: StudioProject,
+  options: StudioProjectSaveOptions = {},
+) {
   const local = saveStudioProject(project);
   try {
     const response = await fetch(
@@ -117,6 +124,7 @@ export async function saveStudioProjectSynced(project: StudioProject) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project: local }),
+        keepalive: options.keepalive,
       },
     );
     if (response.ok) {

@@ -1479,6 +1479,7 @@ function CanvasWorkspace({
   }, [
     agentOpen,
     buildProjectSnapshot,
+    messages,
     nodes,
     title,
     toolReceiptRevision,
@@ -1486,18 +1487,27 @@ function CanvasWorkspace({
   ]);
 
   useEffect(() => {
-    const flushLocal = () => {
-      saveStudioProject(buildProjectSnapshot());
+    let finalSaveStarted = false;
+    const flushRemote = () => {
+      if (finalSaveStarted) return;
+      finalSaveStarted = true;
+      void saveStudioProjectSynced(buildProjectSnapshot(), {
+        keepalive: true,
+      });
     };
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') flushLocal();
+      if (document.visibilityState === 'hidden') {
+        flushRemote();
+      } else {
+        finalSaveStarted = false;
+      }
     };
-    window.addEventListener('pagehide', flushLocal);
+    window.addEventListener('pagehide', flushRemote);
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
-      window.removeEventListener('pagehide', flushLocal);
+      window.removeEventListener('pagehide', flushRemote);
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      flushLocal();
+      flushRemote();
     };
   }, [buildProjectSnapshot]);
 

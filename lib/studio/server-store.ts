@@ -1,7 +1,8 @@
 import 'server-only';
 
-import { sql } from '@/lib/db';
+import { sql, sqlJson } from '@/lib/db';
 import { normalizeStudioProject } from './store';
+import { decodeStudioJsonb, studioProjectJsonFields } from './server-record';
 import type { StudioProject } from './types';
 
 interface StudioProjectRow extends Record<string, unknown> {
@@ -12,8 +13,8 @@ interface StudioProjectRow extends Record<string, unknown> {
     viewport?: Record<string, unknown>;
     revision?: number;
     appliedToolCallIds?: unknown[];
-  };
-  messages: unknown[];
+  } | string;
+  messages: unknown[] | string;
   cover_urls: string[];
   pending_prompt: string | null;
   agent_open: boolean;
@@ -26,9 +27,14 @@ function iso(value: string | Date) {
 }
 
 function fromRow(row: StudioProjectRow): StudioProject {
-  const storedToolReceipts = Array.isArray(row.document?.appliedToolCallIds)
+  const document = decodeStudioJsonb<Exclude<StudioProjectRow['document'], string>>(
+    row.document,
+    {},
+  );
+  const messages = decodeStudioJsonb<unknown[]>(row.messages, []);
+  const storedToolReceipts = Array.isArray(document.appliedToolCallIds)
     ? {
-        appliedToolCallIds: row.document.appliedToolCallIds.filter(
+        appliedToolCallIds: document.appliedToolCallIds.filter(
           (id): id is string => typeof id === 'string',
         ),
       }
@@ -36,28 +42,19 @@ function fromRow(row: StudioProjectRow): StudioProject {
   const project = normalizeStudioProject({
     id: row.id,
     title: row.title,
-    nodes: row.document?.nodes || [],
-    viewport: row.document?.viewport || undefined,
+    nodes: document.nodes || [],
+    viewport: document.viewport || undefined,
     ...storedToolReceipts,
-    messages: Array.isArray(row.messages) ? row.messages : [],
+    messages: Array.isArray(messages) ? messages : [],
     coverUrls: Array.isArray(row.cover_urls) ? row.cover_urls : [],
     pendingPrompt: row.pending_prompt || undefined,
     agentOpen: row.agent_open,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
-    revision: row.document?.revision,
+    revision: document.revision,
   });
   if (!project) throw new Error('Stored Studio project is invalid.');
   return project;
-}
-
-function projectDocument(project: StudioProject) {
-  return JSON.stringify({
-    nodes: project.nodes,
-    viewport: project.viewport,
-    revision: project.revision,
-    appliedToolCallIds: project.appliedToolCallIds || [],
-  });
 }
 
 export async function listStudioProjectsForUser(userId: string) {
@@ -94,6 +91,7 @@ export async function saveStudioProjectForUser(
     .filter((src): src is string => Boolean(src))
     .slice(0, 4);
   const coverUrls = covers.length ? covers : project.coverUrls;
+  const jsonFields = studioProjectJsonFields(project);
   const [row] = await sql<StudioProjectRow[]>`
     INSERT INTO public.studio_projects (
       id,
@@ -111,8 +109,8 @@ export async function saveStudioProjectForUser(
       ${project.id},
       ${userId},
       ${project.title.trim() || 'Untitled project'},
-      ${projectDocument(project)}::jsonb,
-      ${JSON.stringify(project.messages)}::jsonb,
+      ${sqlJson(jsonFields.document)},
+      ${sqlJson(jsonFields.messages)},
       ${coverUrls},
       ${project.pendingPrompt || null},
       ${project.agentOpen},

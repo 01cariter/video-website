@@ -32,6 +32,12 @@ function getSqlClient() {
   return globalForDb.__snackdSql;
 }
 
+function json(value: unknown) {
+  return getSqlClient().json(
+    value as Parameters<SqlClient['json']>[0],
+  );
+}
+
 const query = (<TRows extends readonly object[]>(
   strings: TemplateStringsArray,
   ...values: unknown[]
@@ -42,4 +48,4 @@ query.unsafe = <TRows extends readonly object[] = DbRow[]>(
   parameters: readonly unknown[] = [],
 ) => getSqlClient().unsafe(statement, parameters as never[]) as unknown as Promise<TRows>;
 
-export { query as sql };
+export { json as sqlJson, query as sql };
