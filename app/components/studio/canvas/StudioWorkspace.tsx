@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Frame, Leafer } from '@/lib/leafer-react';
 import {
   arrangeStudioNodes,
+  expandSectionsForExplicitChildren,
   findOpenStudioPosition,
   sizeForAspect,
   sizeForMediaDimensions,
@@ -39,10 +40,17 @@ import {
 import {
   applyNewStudioToolOutputs,
   attachmentsForStudioNodes,
+  buildStudioAgentMessageMetadata,
   buildCanvasNodeSnapshots,
+  filePartsForStudioNodes,
   MAX_SELECTED_CANVAS_NODES,
   type StudioAgentAttachment,
+  type StudioAgentUIMessage,
 } from '@/lib/studio/agent-context';
+import {
+  resolveStudioAutomationAction,
+  workflowGroupPosition,
+} from '@/lib/studio/agent-automation';
 import {
   getStudioProjectSynced,
   saveStudioProjectSynced,
@@ -74,6 +82,7 @@ import { StudioCanvasNode } from './nodes';
 import {
   StudioCanvasProvider,
   type StudioCanvasApi,
+  type StudioReferencePickerState,
   type StudioTool,
 } from './studio-context';
 import {
@@ -239,6 +248,7 @@ function CanvasWorkspace({
   const persistTimer = useRef<number | null>(null);
   const localPersistTimer = useRef<number | null>(null);
   const generating = useRef(new Set<string>());
+  const automationQueued = useRef(new Set<string>());
   const videoPosterProbes = useRef(new Set<string>());
   const seenTools = useRef(new Set(project.appliedToolCallIds ?? []));
   const appliedToolCallIdsRef = useRef(project.appliedToolCallIds ?? []);
@@ -262,15 +272,24 @@ function CanvasWorkspace({
     useState<AgentDraftRequest | null>(null);
   const [agentContextError, setAgentContextError] = useState<Error>();
   const [toolReceiptRevision, setToolReceiptRevision] = useState(0);
+  const [referencePicker, setReferencePicker] =
+    useState<StudioReferencePickerState | null>(null);
   const nodesRef = useRef(nodes);
   const viewportRef = useRef(viewport);
   const titleRef = useRef(title);
   const agentOpenRef = useRef(agentOpen);
-  const messagesRef = useRef(project.messages);
+  const messagesRef = useRef<StudioAgentUIMessage[]>(
+    project.messages as StudioAgentUIMessage[],
+  );
   const addNodeRef = useRef<
     (kind: StudioNodeKind, extras?: AddNodeExtras) => string
   >(() => '');
   const canvasCenterRef = useRef(() => ({ x: 320, y: 240 }));
+  const fitNodesRef = useRef<(ids?: string[]) => void>(() => undefined);
+  const referencePickerRef = useRef<StudioReferencePickerState | null>(null);
+  const referencePickCallbackRef = useRef<((src: string) => void) | null>(
+    null,
+  );
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -302,6 +321,67 @@ function CanvasWorkspace({
       ids.filter((id, index) => existing.has(id) && ids.indexOf(id) === index),
     );
   }, []);
+
+  const cancelReferencePicker = useCallback(() => {
+    const current = referencePickerRef.current;
+    referencePickerRef.current = null;
+    referencePickCallbackRef.current = null;
+    setReferencePicker(null);
+    if (current) selectIds([current.targetId]);
+  }, [selectIds]);
+
+  const startReferencePicker = useCallback(
+    (
+      targetId: string,
+      allowedIds: string[],
+      onPick: (src: string) => void,
+    ) => {
+      const uniqueAllowedIds = allowedIds.filter(
+        (id, index) => id !== targetId && allowedIds.indexOf(id) === index,
+      );
+      if (!uniqueAllowedIds.length) return;
+      const next = { targetId, allowedIds: uniqueAllowedIds };
+      referencePickerRef.current = next;
+      referencePickCallbackRef.current = onPick;
+      setReferencePicker(next);
+      setMenu(null);
+      setTool('select');
+      selectIds([targetId]);
+    },
+    [selectIds],
+  );
+
+  const pickCanvasReference = useCallback(
+    (sourceId: string) => {
+      const current = referencePickerRef.current;
+      if (!current?.allowedIds.includes(sourceId)) return;
+      const source = nodesRef.current.find((node) => node.id === sourceId);
+      const src =
+        source?.type === 'image' && typeof source.data.src === 'string'
+          ? source.data.src.trim()
+          : '';
+      if (!src) return;
+      const onPick = referencePickCallbackRef.current;
+      referencePickerRef.current = null;
+      referencePickCallbackRef.current = null;
+      setReferencePicker(null);
+      selectIds([current.targetId]);
+      onPick?.(src);
+    },
+    [selectIds],
+  );
+
+  useEffect(() => {
+    if (!referencePicker) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      cancelReferencePicker();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [cancelReferencePicker, referencePicker]);
 
   const updateNode = useCallback(
     (id: string, patch: Partial<StudioNode>) => {
@@ -611,6 +691,38 @@ function CanvasWorkspace({
     addNodeRef.current = addNode;
   }, [addNode]);
 
+  useEffect(() => {
+    for (const node of nodes) {
+      if (automationQueued.current.has(node.id)) continue;
+      const action = resolveStudioAutomationAction(node, nodes);
+      if (action.type === 'wait') continue;
+      if (action.type === 'fail') {
+        updateNodeData(node.id, {
+          status: 'error',
+          error: action.error,
+          agentAutoGenerate: false,
+        });
+        continue;
+      }
+      if (action.references.length) {
+        updateNodeData(node.id, {
+          refSrc: action.references[0],
+          refSrcs: action.references,
+        });
+      }
+      automationQueued.current.add(node.id);
+      window.setTimeout(() => {
+        automationQueued.current.delete(node.id);
+        void generateNode(node.id);
+      }, 0);
+    }
+  }, [generateNode, nodes, updateNodeData]);
+
+  useEffect(() => {
+    const expanded = expandSectionsForExplicitChildren(nodesRef.current);
+    if (expanded !== nodesRef.current) commitNodes(() => expanded);
+  }, [commitNodes, nodes]);
+
   const removeNodes = useCallback(
     (ids: string[]) => {
       const drop = new Set(ids);
@@ -825,10 +937,11 @@ function CanvasWorkspace({
   );
 
   const propertiesPanelInset = useMemo(() => {
+    if (referencePicker) return 0;
     if (selectedIds.length !== 1) return 0;
     const selected = nodes.find((node) => node.id === selectedIds[0]);
     return selected && selected.type !== 'section' ? 340 : 0;
-  }, [nodes, selectedIds]);
+  }, [nodes, referencePicker, selectedIds]);
 
   const {
     hostRef,
@@ -861,6 +974,12 @@ function CanvasWorkspace({
       addNodeRef.current('image', {
         position: { x: point.x - 150, y: point.y - 150 },
       }),
+    onNodeDoubleClick: (id) => {
+      window.requestAnimationFrame(() => fitNodesRef.current([id]));
+    },
+    referencePicker,
+    onReferencePick: pickCanvasReference,
+    onReferencePickCancel: cancelReferencePicker,
     onSectionDraw: (rect) =>
       addNodeRef.current('section', {
         position: { x: rect.x, y: rect.y },
@@ -872,6 +991,9 @@ function CanvasWorkspace({
       right: propertiesPanelInset,
     },
   });
+  useEffect(() => {
+    fitNodesRef.current = fitNodes;
+  }, [fitNodes]);
   useEffect(() => {
     canvasCenterRef.current = canvasCenter;
   }, [canvasCenter]);
@@ -1030,16 +1152,43 @@ function CanvasWorkspace({
         ) {
           return;
         }
+        const group = operation.node.groupId
+          ? nodesRef.current.find(
+              (node) =>
+                node.id === operation.node.groupId && node.type === 'section',
+            )
+          : undefined;
+        const explicitPosition =
+          typeof operation.node.x === 'number' &&
+          typeof operation.node.y === 'number'
+            ? { x: operation.node.x, y: operation.node.y }
+            : undefined;
+        const groupPosition =
+          group && typeof operation.node.groupIndex === 'number'
+            ? workflowGroupPosition(group, operation.node.groupIndex)
+            : undefined;
         addNode(operation.node.kind, {
           id: operation.node.id,
           prompt: operation.node.prompt,
           title: operation.node.title,
           text: operation.node.text,
-          position:
-            typeof operation.node.x === 'number' &&
-            typeof operation.node.y === 'number'
-              ? { x: operation.node.x, y: operation.node.y }
-              : undefined,
+          data: {
+            ...operation.node.parameters,
+            ...(operation.node.modelId
+              ? { modelId: operation.node.modelId }
+              : {}),
+            ...(operation.node.groupId
+              ? { groupId: operation.node.groupId }
+              : {}),
+            agentAutoGenerate: operation.node.autoGenerate === true,
+            ...(operation.node.dependsOn
+              ? { agentDependsOn: operation.node.dependsOn }
+              : {}),
+            ...(operation.node.referenceNodeIds
+              ? { agentReferenceNodeIds: operation.node.referenceNodeIds }
+              : {}),
+          },
+          position: explicitPosition ?? groupPosition,
           size:
             typeof operation.node.width === 'number' &&
             typeof operation.node.height === 'number'
@@ -1063,7 +1212,7 @@ function CanvasWorkspace({
           id: operation.id,
           prompt: operation.prompt,
           title: operation.title,
-          autoGenerate: false,
+          autoGenerate: operation.autoGenerate ?? true,
         });
         if (!createdId) throw new Error('Variant source no longer exists.');
         return;
@@ -1128,10 +1277,11 @@ function CanvasWorkspace({
     [],
   );
 
-  const { messages, sendMessage, stop, status, error } = useChat({
+  const { messages, sendMessage, stop, status, error } =
+    useChat<StudioAgentUIMessage>({
     id: project.id,
     transport,
-    messages: project.messages,
+    messages: project.messages as StudioAgentUIMessage[],
     throttle: 50,
     onFinish: ({ messages: next }) => {
       window.dispatchEvent(new Event('credits:changed'));
@@ -1169,7 +1319,15 @@ function CanvasWorkspace({
         .slice(0, MAX_SELECTED_CANVAS_NODES);
       setAgentContextError(undefined);
       void sendMessage(
-        { text },
+        {
+          text,
+          files: filePartsForStudioNodes(nodesRef.current, contextIds),
+          metadata: buildStudioAgentMessageMetadata(
+            nodesRef.current,
+            contextIds,
+            skillIds,
+          ),
+        },
         {
           body: {
             requestId: requestId(),
@@ -1269,6 +1427,7 @@ function CanvasWorkspace({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (referencePicker) return;
       const target = event.target as HTMLElement | null;
       if (
         target?.closest(
@@ -1305,7 +1464,14 @@ function CanvasWorkspace({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [duplicateNodes, fitNodes, removeNodes, selectIds, selectedIds]);
+  }, [
+    duplicateNodes,
+    fitNodes,
+    referencePicker,
+    removeNodes,
+    selectIds,
+    selectedIds,
+  ]);
 
   const api = useMemo<StudioCanvasApi>(
     () => ({
@@ -1337,6 +1503,9 @@ function CanvasWorkspace({
       zoom,
       changeZoom,
       fitView: fitNodes,
+      referencePicker,
+      startReferencePicker,
+      cancelReferencePicker,
     }),
     [
       addNode,
@@ -1355,10 +1524,13 @@ function CanvasWorkspace({
       removeNodes,
       changeZoom,
       fitNodes,
+      cancelReferencePicker,
+      referencePicker,
       runtimeConfig,
       selectIds,
       selectedIds,
       sendToBack,
+      startReferencePicker,
       setNodeAspect,
       toggleNodeHidden,
       toggleNodeLocked,
@@ -1369,12 +1541,22 @@ function CanvasWorkspace({
     ],
   );
 
+  const referencePickableIds = useMemo(
+    () => new Set(referencePicker?.allowedIds ?? []),
+    [referencePicker],
+  );
   const renderedNodes = useMemo(
     () =>
       nodes
         .toSorted((a, b) => a.zIndex - b.zIndex)
-        .map((node) => <StudioCanvasNode key={node.id} node={node} />),
-    [nodes],
+        .map((node) => (
+          <StudioCanvasNode
+            key={node.id}
+            node={node}
+            referencePickable={referencePickableIds.has(node.id)}
+          />
+        )),
+    [nodes, referencePickableIds],
   );
   const uploadingNodes = useMemo(
     () => nodes.filter((node) => node.data.status === 'uploading'),
@@ -1453,6 +1635,7 @@ function CanvasWorkspace({
                 onAppReady={handleAppReady}
                 className={cn(
                   'h-full w-full overflow-hidden',
+                  referencePicker && 'cursor-copy',
                   tool === 'pan' && 'cursor-grab active:cursor-grabbing',
                   tool === 'section' && 'cursor-crosshair',
                 )}
@@ -1468,6 +1651,23 @@ function CanvasWorkspace({
                   {renderedNodes}
                 </Frame>
               </Leafer>
+
+              {referencePicker ? (
+                <div
+                  data-testid="studio-reference-picker"
+                  data-moodboard-floating-occluder
+                  className="pointer-events-none absolute top-3 left-1/2 z-30 -translate-x-1/2"
+                  role="status"
+                >
+                  <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-card/95 px-3 py-1.5 text-[11px] font-medium shadow-md backdrop-blur-xl">
+                    <ImageIcon className="size-3.5 text-primary" />
+                    <span>Choose an image from canvas</span>
+                    <kbd className="rounded border border-border px-1 py-0.5 text-[9px] leading-none text-muted-foreground">
+                      Esc
+                    </kbd>
+                  </div>
+                </div>
+              ) : null}
 
               {runtimeReady && nodes.length === 0 ? (
                 <section
@@ -1643,10 +1843,7 @@ function CanvasWorkspace({
                 open={layersOpen}
                 onClose={() => setLayersOpen(false)}
               />
-              <div
-                className="pointer-events-none absolute bottom-3 z-20"
-                style={{ right: 12 + propertiesPanelInset }}
-              >
+              <div className="pointer-events-none absolute bottom-3 left-3 z-20">
                 <div className="pointer-events-auto">
                   <ZoomControl />
                 </div>
@@ -1666,6 +1863,7 @@ function CanvasWorkspace({
           onClose={closeAgent}
           title={title}
           messages={messages}
+          nodes={nodes}
           status={status}
           error={agentContextError ?? error}
           onSend={sendFromAgentPanel}

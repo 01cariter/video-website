@@ -24,6 +24,7 @@ import {
   estimateStudioLanguageUpstreamUsdMicros,
   isStudioModelEnabled,
   priceStudioUsage,
+  studioAgentModelForInput,
   STUDIO_AGENT_MAX_OUTPUT_TOKENS_PER_STEP,
   STUDIO_AGENT_MAX_STEPS,
 } from '@/lib/studio/pricing';
@@ -112,20 +113,39 @@ export async function POST(request: Request) {
 
   try {
     const runtime = await getStudioRuntimeConfig();
-    if (!isStudioModelEnabled(runtime.agentModelId, runtime)) {
+    const hasImageInput = messages.some(
+      (message) =>
+        message.role === 'user' &&
+        message.parts.some(
+          (part) =>
+            part.type === 'file' &&
+            (part.mediaType === 'image' ||
+              part.mediaType.startsWith('image/')),
+        ),
+    );
+    const agentModelId = studioAgentModelForInput(runtime, hasImageInput);
+    if (!agentModelId || !isStudioModelEnabled(agentModelId, runtime)) {
       return Response.json(
-        { error: 'The configured Agent model is currently disabled.' },
+        {
+          error: hasImageInput
+            ? 'No vision-capable Agent model is currently enabled.'
+            : 'The configured Agent model is currently disabled.',
+        },
         { status: 503 },
       );
     }
+    const agentRuntime =
+      agentModelId === runtime.agentModelId
+        ? runtime
+        : { ...runtime, agentModelId };
     const reservedInputTokens = estimateStudioAgentInputTokenReserve({
       requestBytes: requestInputBytes,
       hasSkills: skillIds.length > 0,
     });
     const reservedQuote = priceStudioUsage({
-      modelId: runtime.agentModelId,
+      modelId: agentModelId,
       upstreamUsdMicros: estimateStudioLanguageUpstreamUsdMicros({
-        modelId: runtime.agentModelId,
+        modelId: agentModelId,
         inputTokens: reservedInputTokens,
         outputTokens:
           STUDIO_AGENT_MAX_STEPS *
@@ -210,12 +230,12 @@ export async function POST(request: Request) {
       );
       const actualQuote = completeUsage
         ? priceStudioUsage({
-            modelId: runtime.agentModelId,
+            modelId: agentModelId,
             upstreamUsdMicros: steps.reduce(
               (total, step) =>
                 total +
                 estimateStudioLanguageUpstreamUsdMicros({
-                  modelId: runtime.agentModelId,
+                  modelId: agentModelId,
                   inputTokens: step.inputTokens ?? 0,
                   outputTokens: step.outputTokens ?? 0,
                 }),
@@ -249,7 +269,7 @@ export async function POST(request: Request) {
 
     const agent = createStudioAgent(
       canvas,
-      runtime,
+      agentRuntime,
       ({ usage, steps }) => {
         agentUsage = { ...usage, steps };
       },

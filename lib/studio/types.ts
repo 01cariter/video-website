@@ -29,8 +29,18 @@ export interface StudioNodeData {
   error?: string;
   hidden?: boolean;
   locked?: boolean;
+  /** Stable section membership used by Agent-created workflows. */
+  groupId?: string;
+  /** Resume-safe generation intent for Agent-created nodes. */
+  agentAutoGenerate?: boolean;
+  /** Nodes that must finish before this node can generate. */
+  agentDependsOn?: string[];
+  /** Ready image nodes whose assets become this node's references. */
+  agentReferenceNodeIds?: string[];
   [key: string]: unknown;
 }
+
+export type StudioOperationParameter = string | number | boolean;
 
 export interface StudioNode {
   id: string;
@@ -94,6 +104,13 @@ export type StudioCanvasOperation =
         y?: number;
         width?: number;
         height?: number;
+        modelId?: string;
+        parameters?: Record<string, StudioOperationParameter>;
+        autoGenerate?: boolean;
+        dependsOn?: string[];
+        referenceNodeIds?: string[];
+        groupId?: string;
+        groupIndex?: number;
       };
     }
   | {
@@ -102,6 +119,7 @@ export type StudioCanvasOperation =
       sourceId: string;
       prompt?: string;
       title?: string;
+      autoGenerate?: boolean;
     }
   | {
       type: 'update_node';

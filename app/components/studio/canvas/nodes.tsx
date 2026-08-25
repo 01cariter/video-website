@@ -7,13 +7,15 @@ import type { StudioNode } from '@/lib/studio/types';
 
 const NODE_FILL = '#f8f3ec';
 const NODE_STROKE = '#d9cec1';
-const NODE_RADIUS = 6;
+const NODE_RADIUS = 0;
 const NODE_EDIT_CONFIG = { rotateable: false };
 
 export const StudioCanvasNode = memo(function StudioCanvasNode({
   node,
+  referencePickable = false,
 }: {
   node: StudioNode;
+  referencePickable?: boolean;
 }) {
   const locked = node.data.locked === true;
   const visible = node.data.hidden !== true;
@@ -50,6 +52,19 @@ export const StudioCanvasNode = memo(function StudioCanvasNode({
       data={data}
     >
       <NodeBody key={contentKey} node={node} data={data} />
+      {referencePickable ? (
+        <Rect
+          x={2}
+          y={2}
+          width={Math.max(1, node.width - 4)}
+          height={Math.max(1, node.height - 4)}
+          fill="transparent"
+          stroke="#cc5428"
+          strokeWidth={3}
+          cornerRadius={0}
+          hittable={false}
+        />
+      ) : null}
     </Frame>
   );
 });
@@ -73,7 +88,7 @@ function NodeBody({
           stroke="#9fb8bf"
           strokeWidth={1}
           dashPattern={[8, 6]}
-          cornerRadius={4}
+          cornerRadius={0}
           hittable
           data={data}
         />

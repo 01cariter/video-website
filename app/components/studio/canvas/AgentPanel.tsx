@@ -10,10 +10,15 @@ import {
 import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowUp,
+  AlertCircle,
   BookOpen,
   Check,
+  CheckCircle2,
+  Circle,
   FileText,
   ImageIcon,
+  LoaderCircle,
+  Paperclip,
   Plus,
   Search,
   Sparkles,
@@ -21,7 +26,7 @@ import {
   Video,
   X,
 } from 'lucide-react';
-import type { UIMessage } from 'ai';
+import type { FileUIPart } from 'ai';
 import {
   studioItem,
   studioSnap,
@@ -54,14 +59,25 @@ import {
   studioSkillById,
   type StudioSkillId,
 } from '@/lib/studio/skills/catalog';
-import type { StudioAgentAttachment } from '@/lib/studio/agent-context';
-import type { StudioNodeKind } from '@/lib/studio/types';
+import {
+  studioAgentMessageContext,
+  type StudioAgentAttachment,
+  type StudioAgentUIMessage,
+} from '@/lib/studio/agent-context';
+import { modelOptionsForKind } from '@/lib/studio/model-catalog';
+import type { StudioNode, StudioNodeKind } from '@/lib/studio/types';
+import AgentMarkdown from './AgentMarkdown';
+import {
+  workflowProgress,
+  workflowReceiptFromPart,
+} from './AgentPanel.logic';
 
 interface AgentPanelProps {
   open: boolean;
   onClose: () => void;
   title: string;
-  messages: UIMessage[];
+  messages: StudioAgentUIMessage[];
+  nodes: StudioNode[];
   status: 'submitted' | 'streaming' | 'ready' | 'error';
   error?: Error | undefined;
   onSend: (
@@ -80,7 +96,7 @@ interface AgentPanelProps {
 
 const SKILL_LIST_ID = 'studio-agent-skill-list';
 
-function textOf(message: UIMessage) {
+function textOf(message: StudioAgentUIMessage) {
   return message.parts
     .filter(
       (part): part is { type: 'text'; text: string } => part.type === 'text',
@@ -89,8 +105,174 @@ function textOf(message: UIMessage) {
     .join('');
 }
 
+function attachmentIcon(kind: StudioNodeKind) {
+  return kind === 'video' ? (
+    <Video className="size-3.5" />
+  ) : kind === 'text' ? (
+    <FileText className="size-3.5" />
+  ) : (
+    <ImageIcon className="size-3.5" />
+  );
+}
+
+function UserMessageContext({ message }: { message: StudioAgentUIMessage }) {
+  const context = studioAgentMessageContext(message);
+  if (!context || (!context.attachments.length && !context.skills.length)) {
+    return null;
+  }
+  return (
+    <div className="mb-2 flex flex-col gap-1.5" aria-label="Message context">
+      {context.attachments.length ? (
+        <div className="grid gap-1.5">
+          {context.attachments.map((attachment) => (
+            <div
+              key={attachment.id}
+              className="flex min-w-0 items-center gap-2 border border-border/70 bg-background/55 p-1.5"
+            >
+              <span className="grid size-9 shrink-0 place-items-center overflow-hidden bg-muted text-muted-foreground">
+                {attachment.previewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={attachment.previewUrl}
+                    alt=""
+                    className="size-full object-cover"
+                  />
+                ) : (
+                  attachmentIcon(attachment.kind)
+                )}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[11px] font-semibold">
+                  {attachment.title}
+                </span>
+                <span className="block truncate text-[9.5px] text-muted-foreground">
+                  {attachment.source === 'upload' ? 'Uploaded ' : 'Canvas '}
+                  {attachment.kind}
+                  {attachment.modelId ? ` · ${attachment.modelId}` : ''}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {context.skills.length ? (
+        <div className="flex flex-wrap gap-1" aria-label="Referenced skills">
+          {context.skills.map((skill) => (
+            <span
+              key={skill.id}
+              className="inline-flex max-w-full items-center gap-1 border border-primary/15 bg-primary/[0.06] px-1.5 py-1 text-[10px] font-semibold text-primary"
+              title={skill.category}
+            >
+              <BookOpen className="size-2.5" />
+              <span className="truncate">{skill.name}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MessageFile({ part }: { part: FileUIPart }) {
+  const image = part.mediaType.startsWith('image/');
+  return (
+    <div className="flex min-w-0 items-center gap-2 border border-border/70 bg-background/55 p-1.5">
+      <span className="grid size-10 shrink-0 place-items-center overflow-hidden bg-muted text-muted-foreground">
+        {image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={part.url} alt="" className="size-full object-cover" />
+        ) : (
+          <Paperclip className="size-3.5" />
+        )}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[10.5px] font-semibold">
+        {part.filename || 'Attachment'}
+      </span>
+    </div>
+  );
+}
+
+function AgentWorkflowCard({
+  workflow,
+  nodes,
+}: {
+  workflow: NonNullable<ReturnType<typeof workflowReceiptFromPart>>;
+  nodes: StudioNode[];
+}) {
+  const progress = workflowProgress(workflow, nodes);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const percent = progress.total
+    ? Math.round(((progress.ready + progress.errors) / progress.total) * 100)
+    : 0;
+  return (
+    <section
+      className="mt-1 overflow-hidden border border-border bg-[var(--studio-raised)]"
+      aria-label={`Workflow: ${workflow.title}`}
+    >
+      <div className="flex items-center gap-2 border-b border-border/75 px-2.5 py-2">
+        {progress.complete ? (
+          <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600" />
+        ) : progress.errors ? (
+          <AlertCircle className="size-3.5 shrink-0 text-destructive" />
+        ) : (
+          <LoaderCircle className="size-3.5 shrink-0 animate-spin text-primary" />
+        )}
+        <span className="min-w-0 flex-1 truncate text-[11.5px] font-semibold">
+          {workflow.title}
+        </span>
+        <span className="text-[10px] tabular-nums text-muted-foreground">
+          {progress.ready}/{progress.total}
+        </span>
+      </div>
+      <div className="h-px bg-border/45">
+        <div
+          className="h-full bg-primary transition-[width] duration-300"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      <div className="grid gap-px bg-border/55">
+        {workflow.nodes.map((receipt) => {
+          const node = byId.get(receipt.id);
+          const status = node?.data.status ?? 'idle';
+          const model = modelOptionsForKind(receipt.kind).find(
+            (option) => option.id === receipt.modelId,
+          );
+          return (
+            <div
+              key={receipt.id}
+              className="flex min-w-0 items-center gap-2 bg-card px-2.5 py-2"
+            >
+              {status === 'ready' ? (
+                <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600" />
+              ) : status === 'error' ? (
+                <AlertCircle className="size-3.5 shrink-0 text-destructive" />
+              ) : status === 'generating' || status === 'uploading' ? (
+                <LoaderCircle className="size-3.5 shrink-0 animate-spin text-primary" />
+              ) : (
+                <Circle className="size-3.5 shrink-0 text-muted-foreground/65" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[10.5px] font-semibold">
+                  {receipt.title}
+                </span>
+                <span className="block truncate text-[9.5px] text-muted-foreground">
+                  {model?.label || receipt.modelId}
+                  {status === 'idle' && receipt.dependsOn.length
+                    ? ' · Waiting for dependencies'
+                    : ` · ${status}`}
+                </span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function toolLabel(type: string) {
   if (type.includes('readSkillResource')) return 'Read Skill';
+  if (type.includes('createCanvasWorkflow')) return 'Run creative workflow';
   if (type.includes('addCanvasNode')) return 'Add canvas node';
   if (type.includes('createCanvasVariant')) return 'Create canvas variant';
   if (type.includes('updateCanvasNode')) return 'Update canvas node';
@@ -107,6 +289,7 @@ function AgentPanel({
   onClose,
   title,
   messages,
+  nodes,
   status,
   error,
   onSend,
@@ -397,7 +580,7 @@ function AgentPanel({
                 transition={studioSnap}
                 className={
                   message.role === 'user'
-                    ? 'ml-auto max-w-[88%] rounded-xl rounded-br-sm bg-accent px-3 py-2'
+                    ? 'ml-auto max-w-[94%] border border-border/65 bg-accent/70 px-3 py-2.5'
                     : 'flex max-w-full flex-col gap-1.5'
                 }
               >
@@ -406,15 +589,32 @@ function AgentPanel({
                     Agent
                   </span>
                 ) : null}
+                {message.role === 'user' ? (
+                  <UserMessageContext message={message} />
+                ) : null}
                 {message.parts.map((part, index) => {
                   if (part.type === 'text' && part.text) {
                     return (
-                      <p
+                      <AgentMarkdown
                         key={`${message.id}-t-${index}`}
-                        className="whitespace-pre-wrap text-[13.5px] leading-relaxed"
+                        compact={message.role === 'user'}
                       >
                         {part.text}
-                      </p>
+                      </AgentMarkdown>
+                    );
+                  }
+                  if (part.type === 'file') {
+                    const alreadyShown = studioAgentMessageContext(
+                      message,
+                    )?.attachments.some(
+                      (attachment) => attachment.previewUrl === part.url,
+                    );
+                    if (alreadyShown) return null;
+                    return (
+                      <MessageFile
+                        key={`${message.id}-f-${index}`}
+                        part={part}
+                      />
                     );
                   }
                   if (part.type === 'reasoning' && part.text) {
@@ -425,6 +625,16 @@ function AgentPanel({
                     );
                   }
                   if (part.type.startsWith('tool-')) {
+                    const workflow = workflowReceiptFromPart(part);
+                    if (workflow) {
+                      return (
+                        <AgentWorkflowCard
+                          key={`${message.id}-workflow-${index}`}
+                          workflow={workflow}
+                          nodes={nodes}
+                        />
+                      );
+                    }
                     const state = 'state' in part ? String(part.state) : '';
                     return (
                       <AgentActivity
@@ -727,4 +937,29 @@ function AgentPanel({
   );
 }
 
-export default memo(AgentPanel);
+function sameWorkflowNodeStatuses(left: StudioNode[], right: StudioNode[]) {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  const rightStatuses = new Map(
+    right.map((node) => [node.id, node.data.status]),
+  );
+  return left.every(
+    (node) => rightStatuses.get(node.id) === node.data.status,
+  );
+}
+
+export default memo(
+  AgentPanel,
+  (previous, next) =>
+    previous.open === next.open &&
+    previous.title === next.title &&
+    previous.messages === next.messages &&
+    previous.status === next.status &&
+    previous.error === next.error &&
+    previous.onClose === next.onClose &&
+    previous.onSend === next.onSend &&
+    previous.onStop === next.onStop &&
+    previous.onAddNode === next.onAddNode &&
+    previous.draftRequest === next.draftRequest &&
+    sameWorkflowNodeStatuses(previous.nodes, next.nodes),
+);

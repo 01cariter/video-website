@@ -30,7 +30,10 @@ import {
   type StudioSnapGuide,
 } from '@/lib/studio/geometry';
 import type { StudioNode, StudioViewport } from '@/lib/studio/types';
-import type { StudioTool } from './studio-context';
+import type {
+  StudioReferencePickerState,
+  StudioTool,
+} from './studio-context';
 
 export interface StudioFloatingRect {
   left: number;
@@ -62,6 +65,10 @@ interface UseLeaferStudioRuntimeOptions {
   onNodesChange: (nodes: StudioNode[]) => void;
   onViewportChange: (viewport: StudioViewport) => void;
   onBlankDoubleClick: (point: { x: number; y: number }) => void;
+  onNodeDoubleClick: (id: string) => void;
+  referencePicker: StudioReferencePickerState | null;
+  onReferencePick: (id: string) => void;
+  onReferencePickCancel: () => void;
   onSectionDraw: (rect: {
     x: number;
     y: number;
@@ -303,6 +310,10 @@ export function useLeaferStudioRuntime({
   onNodesChange,
   onViewportChange,
   onBlankDoubleClick,
+  onNodeDoubleClick,
+  referencePicker,
+  onReferencePick,
+  onReferencePickCancel,
   onSectionDraw,
   onContextMenu,
   viewportInsets,
@@ -323,6 +334,10 @@ export function useLeaferStudioRuntime({
     onNodesChange,
     onViewportChange,
     onBlankDoubleClick,
+    onNodeDoubleClick,
+    referencePicker,
+    onReferencePick,
+    onReferencePickCancel,
     onSectionDraw,
     onContextMenu,
   });
@@ -361,17 +376,25 @@ export function useLeaferStudioRuntime({
       onNodesChange,
       onViewportChange,
       onBlankDoubleClick,
+      onNodeDoubleClick,
+      referencePicker,
+      onReferencePick,
+      onReferencePickCancel,
       onSectionDraw,
       onContextMenu,
     };
   }, [
     nodes,
     onBlankDoubleClick,
+    onNodeDoubleClick,
     onContextMenu,
     onNodesChange,
+    onReferencePick,
+    onReferencePickCancel,
     onSectionDraw,
     onSelectIds,
     onViewportChange,
+    referencePicker,
     selectedIds,
     tool,
   ]);
@@ -873,6 +896,10 @@ export function useLeaferStudioRuntime({
     const host = hostRef.current;
 
     const onNativePointerDown = (event: globalThis.PointerEvent) => {
+      if (callbacksRef.current.referencePicker) {
+        selectionGestureRef.current = null;
+        return;
+      }
       selectionGestureRef.current = {
         ids: [...selectedIdsRef.current],
         additive: event.metaKey || event.ctrlKey || event.shiftKey,
@@ -880,6 +907,20 @@ export function useLeaferStudioRuntime({
     };
 
     const syncSelection = () => {
+      const picker = callbacksRef.current.referencePicker;
+      if (picker) {
+        const ids = [picker.targetId];
+        if (!sameIds(ids, nodeIdsFromTarget(editor.target))) {
+          selectAppNodes(appRef.current, ids);
+        }
+        if (!sameIds(ids, selectedIdsRef.current)) {
+          selectedIdsRef.current = ids;
+          callbacksRef.current.onSelectIds(ids);
+        }
+        clearSnapGuides();
+        scheduleSelectionRect();
+        return;
+      }
       const ids = nodeIdsFromTarget(editor.target);
       if (!sameIds(ids, selectedIdsRef.current)) {
         selectedIdsRef.current = ids;
@@ -938,6 +979,19 @@ export function useLeaferStudioRuntime({
       const targetId = nodeIdFromTarget(
         (event as { target?: unknown } | undefined)?.target,
       );
+      const picker = callbacksRef.current.referencePicker;
+      if (picker) {
+        if (targetId && picker.allowedIds.includes(targetId)) {
+          callbacksRef.current.onReferencePick(targetId);
+        } else if (!targetId) {
+          callbacksRef.current.onReferencePickCancel();
+        }
+        selectAppNodes(appRef.current, [picker.targetId]);
+        selectedIdsRef.current = [picker.targetId];
+        callbacksRef.current.onSelectIds([picker.targetId]);
+        scheduleSelectionRect();
+        return;
+      }
       if (toolRef.current === 'section' && !targetId) {
         sectionStartRef.current = eventCanvasPoint(event as never);
         selectAppNodes(appRef.current, []);
@@ -1034,10 +1088,26 @@ export function useLeaferStudioRuntime({
       endNodeTransform();
     };
     const onDoubleTap = (event: unknown) => {
-      if (nodeIdFromTarget((event as { target?: unknown })?.target)) return;
+      if (callbacksRef.current.referencePicker) return;
+      const nodeId = nodeIdFromTarget(
+        (event as { target?: unknown } | undefined)?.target,
+      );
+      if (nodeId) {
+        selectAppNodes(appRef.current, [nodeId]);
+        selectedIdsRef.current = [nodeId];
+        callbacksRef.current.onSelectIds([nodeId]);
+        callbacksRef.current.onContextMenu(null);
+        callbacksRef.current.onNodeDoubleClick(nodeId);
+        scheduleSelectionRect();
+        return;
+      }
       callbacksRef.current.onBlankDoubleClick(eventCanvasPoint(event as never));
     };
     const onTap = (event: unknown) => {
+      if (callbacksRef.current.referencePicker) {
+        selectionGestureRef.current = null;
+        return;
+      }
       const targetId = nodeIdFromTarget(
         (event as { target?: unknown } | undefined)?.target,
       );
@@ -1059,6 +1129,7 @@ export function useLeaferStudioRuntime({
     };
     const onMenu = (event: unknown) => {
       (event as { preventDefault?: () => void }).preventDefault?.();
+      if (callbacksRef.current.referencePicker) return;
       const targetId =
         nodeIdFromTarget((event as { target?: unknown })?.target) ||
         nodeIdFromTarget(editor.target);
@@ -1226,8 +1297,8 @@ export function useLeaferStudioRuntime({
       };
     }
     if (app.editor.config) {
-      app.editor.config.boxSelect = tool === 'select';
-      app.editor.config.moveable = tool === 'select';
+      app.editor.config.boxSelect = tool === 'select' && !referencePicker;
+      app.editor.config.moveable = tool === 'select' && !referencePicker;
       app.editor.config.rotateable = false;
     }
     clearSnapGuides();
@@ -1238,7 +1309,13 @@ export function useLeaferStudioRuntime({
       callbacksRef.current.onSelectIds([]);
       scheduleSelectionRect();
     }
-  }, [clearSnapGuides, runtimeReady, scheduleSelectionRect, tool]);
+  }, [
+    clearSnapGuides,
+    referencePicker,
+    runtimeReady,
+    scheduleSelectionRect,
+    tool,
+  ]);
 
   const changeZoom = useCallback(
     (nextZoom: number) => {
@@ -1301,7 +1378,7 @@ export function useLeaferStudioRuntime({
         changeZoom(1);
         return;
       }
-      const padding = 110;
+      const padding = ids?.length === 1 && selected.length === 1 ? 36 : 110;
       const availableWidth = Math.max(
         1,
         host.clientWidth - insetLeft - insetRight,

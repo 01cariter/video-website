@@ -14,6 +14,7 @@ import {
   normalizeStudioRuntimeConfig,
   priceStudioUsage,
   resolveStudioAgentModelId,
+  studioAgentModelForInput,
   StudioModelDisabledError,
 } from './pricing';
 
@@ -111,6 +112,29 @@ test('falls back to the first enabled Agent when DeepSeek is disabled', () => {
   assert.equal(
     resolveStudioAgentModelId('openai/gpt-5.6-sol', runtime),
     'openai/gpt-5.6-luna',
+  );
+});
+
+test('routes image context to the cheapest enabled vision-capable Agent', () => {
+  const runtime = normalizeStudioRuntimeConfig({
+    agentModelId: 'deepseek/deepseek-v4-flash',
+  });
+  assert.equal(
+    studioAgentModelForInput(runtime, false),
+    'deepseek/deepseek-v4-flash',
+  );
+  assert.equal(
+    studioAgentModelForInput(runtime, true),
+    'openai/gpt-5.6-luna',
+  );
+
+  const withoutLuna = normalizeStudioRuntimeConfig({
+    agentModelId: 'deepseek/deepseek-v4-flash',
+    modelPolicy: { 'openai/gpt-5.6-luna': { enabled: false } },
+  });
+  assert.equal(
+    studioAgentModelForInput(withoutLuna, true),
+    'openai/gpt-5.6-terra',
   );
 });
 

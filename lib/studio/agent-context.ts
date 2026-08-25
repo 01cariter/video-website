@@ -1,9 +1,14 @@
-import type { UIMessage } from 'ai';
+import type { FileUIPart, UIMessage } from 'ai';
+import {
+  studioSkillById,
+  type StudioSkillId,
+} from './skills/catalog';
 import type {
   StudioCanvasOperation,
   StudioGenStatus,
   StudioNode,
   StudioNodeKind,
+  StudioOperationParameter,
 } from './types';
 
 const NODE_KINDS = new Set<StudioNodeKind>([
@@ -54,13 +59,32 @@ export interface CanvasNodeSnapshot {
 }
 
 export const MAX_SELECTED_CANVAS_NODES = 50;
+export const MAX_STUDIO_AGENT_FILE_ATTACHMENTS = 8;
 
 export interface StudioAgentAttachment {
   id: string;
   kind: StudioNodeKind;
   title: string;
   previewUrl?: string;
+  status?: StudioGenStatus;
+  source?: 'canvas' | 'upload';
+  modelId?: string;
 }
+
+export interface StudioAgentSkillAttachment {
+  id: StudioSkillId;
+  name: string;
+  category: string;
+}
+
+export interface StudioAgentMessageMetadata {
+  studioContext?: {
+    attachments: StudioAgentAttachment[];
+    skills: StudioAgentSkillAttachment[];
+  };
+}
+
+export type StudioAgentUIMessage = UIMessage<StudioAgentMessageMetadata>;
 
 export interface StudioToolOperationReceipt {
   toolCallId: string;
@@ -158,9 +182,60 @@ export function attachmentsForStudioNodes(
               ? node.data.posterSrc || node.data.src
               : node.data.src,
           ),
+          status: node.data.status,
+          source: node.data.uploadMime ? 'upload' : 'canvas',
+          modelId:
+            typeof node.data.modelId === 'string'
+              ? node.data.modelId.slice(0, 160)
+              : undefined,
         },
       ];
     });
+}
+
+export function filePartsForStudioNodes(
+  nodes: StudioNode[],
+  ids: readonly string[],
+): FileUIPart[] {
+  return attachmentsForStudioNodes(nodes, ids)
+    .filter(
+      (attachment) =>
+        Boolean(attachment.previewUrl) &&
+        (attachment.kind === 'image' || attachment.kind === 'video'),
+    )
+    .slice(0, MAX_STUDIO_AGENT_FILE_ATTACHMENTS)
+    .map((attachment) => ({
+      type: 'file',
+      filename: attachment.title.slice(0, 120),
+      mediaType: 'image',
+      url: attachment.previewUrl!,
+    }));
+}
+
+export function buildStudioAgentMessageMetadata(
+  nodes: StudioNode[],
+  attachmentIds: readonly string[],
+  skillIds: readonly StudioSkillId[],
+): StudioAgentMessageMetadata {
+  return {
+    studioContext: {
+      attachments: attachmentsForStudioNodes(nodes, attachmentIds),
+      skills: skillIds.map((id) => {
+        const skill = studioSkillById(id);
+        return { id, name: skill.name, category: skill.category };
+      }),
+    },
+  };
+}
+
+export function studioAgentMessageContext(message: UIMessage) {
+  const metadata = message.metadata;
+  if (!metadata || typeof metadata !== 'object') return undefined;
+  const context = (metadata as StudioAgentMessageMetadata).studioContext;
+  if (!context || !Array.isArray(context.attachments) || !Array.isArray(context.skills)) {
+    return undefined;
+  }
+  return context;
 }
 
 export function normalizeCanvasNodeSnapshots(
@@ -301,6 +376,44 @@ function optionalGeometry(value: unknown) {
   return finiteNumber(value) ?? null;
 }
 
+function optionalBoolean(value: unknown) {
+  if (value === undefined) return undefined;
+  return typeof value === 'boolean' ? value : null;
+}
+
+function optionalStringArray(value: unknown, limit: number) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > limit) return null;
+  const values: string[] = [];
+  for (const item of value) {
+    if (typeof item !== 'string' || !item || item.length > 160) return null;
+    if (!values.includes(item)) values.push(item);
+  }
+  return values;
+}
+
+function optionalParameters(value: unknown) {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const parameters: Record<string, StudioOperationParameter> = {};
+  const entries = Object.entries(value).slice(0, 20);
+  for (const [key, parameter] of entries) {
+    if (key.length > 60) return null;
+    if (
+      typeof parameter !== 'string' &&
+      typeof parameter !== 'number' &&
+      typeof parameter !== 'boolean'
+    ) {
+      return null;
+    }
+    if (typeof parameter === 'number' && !Number.isFinite(parameter)) {
+      return null;
+    }
+    parameters[key] = parameter;
+  }
+  return parameters;
+}
+
 function operationFromValue(value: unknown): StudioCanvasOperation | null {
   if (!value || typeof value !== 'object') return null;
   const candidate = value as Record<string, unknown>;
@@ -317,7 +430,32 @@ function operationFromValue(value: unknown): StudioCanvasOperation | null {
     const y = optionalGeometry(node.y);
     const width = optionalGeometry(node.width);
     const height = optionalGeometry(node.height);
-    if ([id, prompt, title, text, x, y, width, height].includes(null)) {
+    const modelId = optionalString(node.modelId, 160);
+    const parameters = optionalParameters(node.parameters);
+    const autoGenerate = optionalBoolean(node.autoGenerate);
+    const dependsOn = optionalStringArray(node.dependsOn, 24);
+    const referenceNodeIds = optionalStringArray(node.referenceNodeIds, 8);
+    const groupId = optionalString(node.groupId, 160);
+    const groupIndex = optionalGeometry(node.groupIndex);
+    if (
+      [
+        id,
+        prompt,
+        title,
+        text,
+        x,
+        y,
+        width,
+        height,
+        modelId,
+        parameters,
+        autoGenerate,
+        dependsOn,
+        referenceNodeIds,
+        groupId,
+        groupIndex,
+      ].includes(null)
+    ) {
       return null;
     }
     return {
@@ -332,6 +470,13 @@ function operationFromValue(value: unknown): StudioCanvasOperation | null {
         y: y ?? undefined,
         width: width ?? undefined,
         height: height ?? undefined,
+        modelId: modelId || undefined,
+        parameters: parameters || undefined,
+        autoGenerate: autoGenerate ?? undefined,
+        dependsOn: dependsOn || undefined,
+        referenceNodeIds: referenceNodeIds || undefined,
+        groupId: groupId || undefined,
+        groupIndex: groupIndex ?? undefined,
       },
     };
   }
@@ -341,13 +486,17 @@ function operationFromValue(value: unknown): StudioCanvasOperation | null {
     const sourceId = optionalString(candidate.sourceId, 160);
     const prompt = optionalString(candidate.prompt, 4000);
     const title = optionalString(candidate.title, 120);
-    if (!sourceId || [id, prompt, title].includes(null)) return null;
+    const autoGenerate = optionalBoolean(candidate.autoGenerate);
+    if (!sourceId || [id, prompt, title, autoGenerate].includes(null)) {
+      return null;
+    }
     return {
       type: 'create_variant',
       id: id || undefined,
       sourceId,
       prompt: prompt || undefined,
       title: title || undefined,
+      autoGenerate: autoGenerate ?? undefined,
     };
   }
 

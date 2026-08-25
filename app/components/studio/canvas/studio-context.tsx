@@ -11,6 +11,11 @@ import type {
 
 export type StudioTool = 'select' | 'pan' | 'section';
 
+export interface StudioReferencePickerState {
+  targetId: string;
+  allowedIds: string[];
+}
+
 export interface StudioCanvasApi {
   nodes: StudioNode[];
   selectedIds: string[];
@@ -55,6 +60,13 @@ export interface StudioCanvasApi {
   zoom: number;
   changeZoom: (zoom: number) => void;
   fitView: (ids?: string[]) => void;
+  referencePicker: StudioReferencePickerState | null;
+  startReferencePicker: (
+    targetId: string,
+    allowedIds: string[],
+    onPick: (src: string) => void,
+  ) => void;
+  cancelReferencePicker: () => void;
 }
 
 const StudioCanvasContext = createContext<StudioCanvasApi | null>(null);

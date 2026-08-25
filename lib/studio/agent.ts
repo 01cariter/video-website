@@ -21,6 +21,10 @@ import {
   studioAgentOperationId,
   type CanvasNodeSnapshot,
 } from './agent-context';
+import {
+  buildStudioAgentWorkflow,
+  studioAgentModelContractText,
+} from './agent-workflow';
 
 export type { CanvasNodeSnapshot } from './agent-context';
 
@@ -36,6 +40,41 @@ interface StudioAgentUsageEvent {
 }
 
 const kindSchema = z.enum(['image', 'video', 'text', 'section']);
+const generativeKindSchema = z.enum(['image', 'video', 'text']);
+const workflowParameterSchema = z.union([
+  z.string().max(160),
+  z.number().finite(),
+  z.boolean(),
+]);
+const workflowParametersSchema = z
+  .record(z.string().max(60), workflowParameterSchema)
+  .refine((value) => Object.keys(value).length <= 20, {
+    message: 'A node can configure at most 20 parameters.',
+  });
+const workflowNodeSchema = z.object({
+  key: z
+    .string()
+    .regex(/^[a-zA-Z0-9_-]{1,64}$/)
+    .describe('A local key used by dependency and reference fields.'),
+  kind: generativeKindSchema,
+  title: z.string().max(80).optional(),
+  prompt: z.string().min(1).max(4000),
+  text: z.string().max(8000).optional(),
+  modelId: z.string().max(160).optional(),
+  parameters: workflowParametersSchema.optional(),
+  dependsOn: z.array(z.string().max(160)).max(24).optional(),
+  referenceNodeIds: z
+    .array(z.string().max(160))
+    .max(8)
+    .optional()
+    .describe(
+      'Canvas node IDs or workflow keys whose ready image assets should be used as references.',
+    ),
+  generate: z
+    .boolean()
+    .optional()
+    .describe('Defaults to true. Use false only when the user asks for a draft.'),
+});
 
 export function createStudioAgent(
   canvas: CanvasNodeSnapshot[],
@@ -122,18 +161,23 @@ export function createStudioAgent(
     },
     stopWhen: isStepCount(STUDIO_AGENT_MAX_STEPS),
     maxOutputTokens: STUDIO_AGENT_MAX_OUTPUT_TOKENS_PER_STEP,
-    instructions: `You are the professional AI canvas Agent in Snackd Creator Studio. You operate a LeaferJS infinite canvas.
+    instructions: `You are the professional AI canvas Agent in Snackd Creator Studio. You operate a LeaferJS infinite canvas and execute creative work to completion.
 
 Working rules:
 - Respond concisely in the language used by the user. Understand the creative goal, then use tools to edit the canvas directly.
 - Use image for image requests; video for shots, motion, or clips; text for copy or storyboard cards; and section to organize related content.
-- Every new generation node must include a production-ready prompt. Agent-created generators stay as drafts so the user can review the model, parameters, and visible credit quote before pressing Generate.
-- Prefer one to three essential nodes per step. A series may use more, but group and arrange them clearly with sections.
+- When the user asks you to make or generate content, create configured generator nodes AND start generation. Do not stop after creating drafts. Draft-only nodes are allowed only when explicitly requested.
+- For a multi-stage request, call createCanvasWorkflow once with the full dependency graph. The client waits for prerequisite generations, attaches their real assets, and then starts dependent generations even after this response ends.
+- Every generated node must include a production-ready prompt, an explicit modelId, and deliberate parameters. Map natural names such as Grok and Hailuo to the exact enabled IDs below. Follow explicit user choices; otherwise select the model and parameters that best fit the requested medium, aspect, quality, duration, and cost.
+- For image-to-video work, put the image node key or existing canvas image ID in the video's referenceNodeIds. This also creates the generation dependency. If several storyboard frames need motion, create one video per frame; if the user asks for one final video, select the strongest lead frame unless a real video composition capability is available. Never claim clips were merged when they were not.
+- Selected image and video-poster attachments are included as user image parts when available. Inspect their visible content and use it together with the canvas prompt and metadata; do not pretend to see an attachment that was not provided as an image part.
+- Use separate image nodes for distinct storyboard shots instead of one multi-output node. Multi-node workflows are automatically grouped; keep related later nodes in that workflow group.
+- Prefer only the essential nodes needed for the requested outcome. A series may use more, but avoid filler.
 - Use createCanvasVariant when revising generated work. Preserve the source node and inherit its model, parameters, and references. Use updateCanvasNode only for names, text, and layout.
 - You cannot delete canvas content. If deletion is requested, tell the user to confirm it with the canvas toolbar.
 - Respect the enabled model policy enforced by the generation endpoints. AI Gateway account credits are not a per-model capability.
 - Node coordinates use canvas world space. Common sizes: image 300×300, video 300×169, text 280×176, section 720×460.
-- After tools finish, summarize what changed in one or two sentences without exposing internal tool details.
+- After tools finish, summarize what was scheduled in one or two Markdown sentences. Do not say an asset is finished until its live workflow card reports it ready.
 ${
   activeSkillText
     ? `
@@ -150,28 +194,95 @@ ${activeSkillText}
 }
 
 Current canvas:
-${canvasInventoryText(canvas)}`,
+${canvasInventoryText(canvas)}
+
+Enabled model and parameter contracts:
+${studioAgentModelContractText(runtime)}`,
     tools: {
       ...skillTools,
+      createCanvasWorkflow: tool({
+        description:
+          'Create and automatically execute a complete multi-node creative workflow. Use this for scripts plus storyboards, image-to-video, multiple shots, or any request with dependencies. References can point to existing canvas node IDs or local workflow keys.',
+        inputSchema: z.object({
+          title: z.string().max(120).optional(),
+          groupTitle: z.string().max(80).optional(),
+          nodes: z.array(workflowNodeSchema).min(1).max(16),
+        }),
+        execute: async (workflow, { toolCallId }) =>
+          buildStudioAgentWorkflow({
+            workflow,
+            toolCallId,
+            canvasNodeIds: canvas.map((node) => node.id),
+            runtime,
+          }),
+      }),
       addCanvasNode: tool({
         description:
-          'Add an image, video, text, or section draft to the infinite canvas. Generator drafts do not spend credits until the user reviews the quote and presses Generate.',
+          'Add one canvas node. Generated image, video, and text nodes start automatically unless generate is false. Use createCanvasWorkflow for multiple nodes or dependencies.',
         inputSchema: z.object({
           kind: kindSchema,
           title: z.string().max(80).optional(),
           prompt: z.string().max(4000).optional(),
           text: z.string().max(8000).optional(),
+          modelId: z.string().max(160).optional(),
+          parameters: workflowParametersSchema.optional(),
+          generate: z.boolean().optional(),
           x: z.number().optional(),
           y: z.number().optional(),
           width: z.number().min(80).max(2400).optional(),
           height: z.number().min(60).max(2400).optional(),
         }),
-        execute: async (node, { toolCallId }) => ({
-          operation: {
-            type: 'add_node' as const,
-            node: { ...node, id: studioAgentOperationId(toolCallId) },
-          },
-        }),
+        execute: async (node, { toolCallId }) => {
+          if (node.kind === 'section') {
+            return {
+              operation: {
+                type: 'add_node' as const,
+                node: { ...node, id: studioAgentOperationId(toolCallId) },
+              },
+            };
+          }
+          const result = buildStudioAgentWorkflow({
+            workflow: {
+              title: node.title,
+              nodes: [
+                {
+                  key: 'node',
+                  kind: node.kind,
+                  title: node.title,
+                  prompt: node.prompt || node.text || 'Create the requested content.',
+                  text: node.text,
+                  modelId: node.modelId,
+                  parameters: node.parameters,
+                  generate: node.generate,
+                },
+              ],
+            },
+            toolCallId,
+            canvasNodeIds: canvas.map((item) => item.id),
+            runtime,
+          });
+          const operation = result.operations[0];
+          if (
+            operation.type === 'add_node' &&
+            typeof node.x === 'number' &&
+            typeof node.y === 'number'
+          ) {
+            operation.node.x = node.x;
+            operation.node.y = node.y;
+          }
+          if (
+            operation.type === 'add_node' &&
+            typeof node.width === 'number' &&
+            typeof node.height === 'number'
+          ) {
+            operation.node.width = node.width;
+            operation.node.height = node.height;
+          }
+          return {
+            workflow: result.workflow,
+            operations: [operation],
+          };
+        },
       }),
       createCanvasVariant: tool({
         description:
@@ -192,6 +303,7 @@ ${canvasInventoryText(canvas)}`,
               sourceId,
               prompt,
               title,
+              autoGenerate: true,
             },
           };
         },

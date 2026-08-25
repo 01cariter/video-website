@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { modelSpecFor, resolveStudioModel } from '@/lib/studio/model-catalog';
 import type { StudioNode, StudioNodeData } from '@/lib/studio/types';
 import NodeInspector from './NodeInspector';
+import type { StudioCanvasReferenceOption } from './CanvasChrome.logic';
 import {
   buildQuickEditParameters,
   initialEditData,
@@ -20,9 +21,13 @@ export {
 
 export default function QuickEditComposer({
   node,
+  canvasReferences,
+  onRequestCanvasReference,
   onCancel,
 }: {
   node: StudioNode;
+  canvasReferences: StudioCanvasReferenceOption[];
+  onRequestCanvasReference: (onPick: (src: string) => void) => void;
   onCancel: () => void;
 }) {
   const { runtimeConfig, quickEditNode } = useStudioCanvas();
@@ -46,6 +51,8 @@ export default function QuickEditComposer({
       data={draft}
       canSubmit={Boolean(source && draft.prompt.trim() && spec.maxRefs > 0)}
       runtimeConfig={runtimeConfig}
+      canvasReferences={canvasReferences}
+      onRequestCanvasReference={onRequestCanvasReference}
       requireReferenceCapableModel
       lockedReferenceCount={1}
       submitLabel="Generate edit"

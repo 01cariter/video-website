@@ -15,9 +15,11 @@ import {
   Check,
   ChevronDown,
   ImagePlus,
+  Images,
   Minus,
   Plus,
   SlidersHorizontal,
+  Upload,
   X,
   Zap,
 } from 'lucide-react';
@@ -45,6 +47,14 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent } from '@/app/components/ui/card';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/app/components/ui/dropdown-menu';
+import {
   Popover,
   PopoverContent,
   PopoverDescription,
@@ -59,12 +69,15 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from '@/app/components/ui/toggle-group';
+import type { StudioCanvasReferenceOption } from './CanvasChrome.logic';
 
 interface NodeInspectorProps {
   kind: StudioGenerativeKind;
   data: StudioNodeData;
   canSubmit: boolean;
   runtimeConfig: StudioRuntimeConfig;
+  canvasReferences?: StudioCanvasReferenceOption[];
+  onRequestCanvasReference?: (onPick: (src: string) => void) => void;
   onPromptChange: (value: string) => void;
   onFieldChange: (key: string, value: string | number | boolean) => void;
   onModelChange: (
@@ -454,6 +467,8 @@ export default function NodeInspector({
   data,
   canSubmit,
   runtimeConfig,
+  canvasReferences = [],
+  onRequestCanvasReference,
   onPromptChange,
   onFieldChange,
   onModelChange,
@@ -488,6 +503,9 @@ export default function NodeInspector({
     data.status === 'uploading' ||
     referencesBusy;
   const references = referenceSources(data).slice(0, spec.maxRefs);
+  const availableCanvasReferences = canvasReferences.filter(
+    (reference) => !references.includes(reference.src),
+  );
   const values: Record<string, unknown> = { ...spec.defaults };
   for (const field of spec.fields) {
     if (data[field.key] !== undefined) values[field.key] = data[field.key];
@@ -619,17 +637,61 @@ export default function NodeInspector({
 
           <div className="flex items-center gap-1 border-t border-border/75 px-2 py-2">
             {spec.maxRefs > 0 ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                disabled={busy || references.length >= spec.maxRefs}
-                className="size-8 rounded-[9px] text-muted-foreground hover:bg-[var(--studio-composer)] hover:text-foreground"
-                aria-label={`Add reference image, ${references.length} of ${spec.maxRefs} added`}
-                onClick={() => fileRef.current?.click()}
-              >
-                <ImagePlus className="size-3.5" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    disabled={busy || references.length >= spec.maxRefs}
+                    className="size-8 rounded-[9px] text-muted-foreground hover:bg-[var(--studio-composer)] hover:text-foreground"
+                    aria-label={`Add reference image, ${references.length} of ${spec.maxRefs} added`}
+                  >
+                    <ImagePlus className="size-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  side="top"
+                  sideOffset={8}
+                  className="w-56 rounded-lg p-1.5"
+                  onCloseAutoFocus={(event) => event.preventDefault()}
+                >
+                  <DropdownMenuLabel className="px-2 py-1 text-[10px] font-semibold tracking-[0.06em] text-muted-foreground uppercase">
+                    Reference image
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    disabled={
+                      !onRequestCanvasReference ||
+                      !availableCanvasReferences.length
+                    }
+                    className="h-9 rounded-md px-2 text-xs"
+                    onSelect={() =>
+                      onRequestCanvasReference?.((src) =>
+                        onRefsChange(
+                          [...references, src]
+                            .filter(
+                              (reference, index, all) =>
+                                all.indexOf(reference) === index,
+                            )
+                            .slice(0, spec.maxRefs),
+                        ),
+                      )
+                    }
+                  >
+                    <Images className="size-4" />
+                    Choose from canvas
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="h-9 rounded-md px-2 text-xs"
+                    onSelect={() => fileRef.current?.click()}
+                  >
+                    <Upload className="size-4" />
+                    Upload image
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : null}
 
             <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>

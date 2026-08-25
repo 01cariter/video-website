@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   Bookmark,
-  Grid3X3,
   Heart,
   Play,
   Sparkles,
@@ -19,7 +18,7 @@ import type {
   SocialToggle,
   Video,
 } from '@/lib/types';
-import { LEVEL_RULE, levelProgress } from '@/lib/levels';
+import { levelProgress } from '@/lib/levels';
 import { postHeadline } from '@/lib/post-text';
 import { fmtLikes, initials, profileHref } from '@/app/components/media';
 import DeleteMenu from '@/app/components/feed/DeleteMenu';
@@ -39,32 +38,6 @@ interface ProfileClientProps {
 }
 
 type ProfileView = 'posts' | 'followers' | 'likes' | 'saved';
-
-const VIEW_COPY: Record<
-  ProfileView,
-  { eyebrow: string; title: string; description: string }
-> = {
-  posts: {
-    eyebrow: 'Published',
-    title: 'Posts',
-    description: 'Everything shared by this creator.',
-  },
-  followers: {
-    eyebrow: 'Community',
-    title: 'Followers',
-    description: 'People following this creator.',
-  },
-  likes: {
-    eyebrow: 'Response',
-    title: 'Most liked',
-    description: 'Posts ordered by the likes they received.',
-  },
-  saved: {
-    eyebrow: 'Private',
-    title: 'Saved posts',
-    description: 'A personal collection visible only to you.',
-  },
-};
 
 function tileThumb(video: Video): string | null {
   const first = video.assets?.[0];
@@ -132,7 +105,6 @@ export default function ProfileClient({
     profilePosts.reduce((total, post) => total + post.likes_count, 0);
   const totalLikes = Math.max(0, profile.total_likes - deletedLikes);
   const progress = levelProgress(profile.xp);
-  const activeCopy = VIEW_COPY[view];
   const loginNext = `/login?next=/u/${encodeURIComponent(
     (profile.handle || '').replace(/^@+/, ''),
   )}`;
@@ -202,29 +174,47 @@ export default function ProfileClient({
           <ArrowLeft aria-hidden="true" />
         </button>
         <div className="pf-topbar-title">
-          <b>{profile.display_name}</b>
-          {profile.handle && <span>{profile.handle}</span>}
+          <b>{isOwner ? 'Profile' : profile.display_name}</b>
         </div>
-        <Link href="/" className="pf-home-link">
-          Home
-        </Link>
       </header>
 
       <section className="pf-hero">
         <div className="pf-identity">
-          <div className="pf-avatar-wrap">
-            <span className="pf-av" style={{ background: profile.avatar_color }}>
-              {initials(profile.display_name)}
-            </span>
-            <span className="pf-level-badge">L{progress.level}</span>
-          </div>
+          <span className="pf-av" style={{ background: profile.avatar_color }}>
+            {initials(profile.display_name)}
+          </span>
 
           <div className="pf-id">
-            <span className="pf-kicker">
-              {isOwner ? 'Your profile' : 'Creator profile'}
-            </span>
-            <h1>{profile.display_name}</h1>
-            <p className="pf-handle">{profile.handle}</p>
+            <div className="pf-name-row">
+              <div className="pf-name">
+                <h1>{profile.display_name}</h1>
+                <p className="pf-handle">{profile.handle}</p>
+              </div>
+
+              <div className="pf-actions">
+                {isOwner ? (
+                  <button
+                    type="button"
+                    className="pf-primary"
+                    onClick={() =>
+                      window.dispatchEvent(new Event(OPEN_COMPOSE_EVENT))
+                    }
+                  >
+                    New post
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={`pf-primary ${following ? 'on' : ''}`}
+                    onClick={() => void toggleFollow()}
+                    disabled={pending}
+                  >
+                    {following ? 'Following' : 'Follow'}
+                  </button>
+                )}
+              </div>
+            </div>
+
             {profile.bio ? (
               <p className="pf-bio">{profile.bio}</p>
             ) : (
@@ -234,55 +224,27 @@ export default function ProfileClient({
                   : 'This creator has not added a bio yet.'}
               </p>
             )}
-          </div>
 
-          <div className="pf-actions">
-            {isOwner ? (
-              <button
-                type="button"
-                className="pf-primary"
-                onClick={() =>
-                  window.dispatchEvent(new Event(OPEN_COMPOSE_EVENT))
-                }
+            <div className="pf-level">
+              <div className="pf-level-top">
+                <span>
+                  <b>Level {progress.level}</b>
+                  {progress.into} / {progress.needed} XP
+                </span>
+                <span>{progress.remaining} to next level</span>
+              </div>
+              <span
+                className="pf-level-bar"
+                role="progressbar"
+                aria-valuenow={progress.into}
+                aria-valuemin={0}
+                aria-valuemax={progress.needed}
+                aria-label={`Progress to level ${progress.level + 1}`}
               >
-                Create post
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={`pf-primary ${following ? 'on' : ''}`}
-                onClick={() => void toggleFollow()}
-                disabled={pending}
-              >
-                {following ? 'Following' : 'Follow'}
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="pf-level">
-          <div className="pf-level-top">
-            <div>
-              <span>Creator level</span>
-              <b>Level {progress.level}</b>
+                <i style={{ width: `${Math.round(progress.fraction * 100)}%` }} />
+              </span>
             </div>
-            <span>
-              {progress.into} / {progress.needed} XP
-            </span>
           </div>
-          <span
-            className="pf-level-bar"
-            role="progressbar"
-            aria-valuenow={progress.into}
-            aria-valuemin={0}
-            aria-valuemax={progress.needed}
-            aria-label={`Progress to level ${progress.level + 1}`}
-          >
-            <i style={{ width: `${Math.round(progress.fraction * 100)}%` }} />
-          </span>
-          <small>
-            {LEVEL_RULE}. {progress.remaining} XP to level {progress.level + 1}.
-          </small>
         </div>
       </section>
 
@@ -293,7 +255,6 @@ export default function ProfileClient({
           onClick={() => setView('posts')}
           aria-pressed={view === 'posts'}
         >
-          <Grid3X3 aria-hidden="true" />
           <span>Posts</span>
           <b>{fmtLikes(postsCount)}</b>
         </button>
@@ -303,7 +264,6 @@ export default function ProfileClient({
           onClick={() => setView('followers')}
           aria-pressed={view === 'followers'}
         >
-          <Users aria-hidden="true" />
           <span>Followers</span>
           <b>{fmtLikes(followersCount)}</b>
         </button>
@@ -313,7 +273,6 @@ export default function ProfileClient({
           onClick={() => setView('likes')}
           aria-pressed={view === 'likes'}
         >
-          <Heart aria-hidden="true" />
           <span>Likes</span>
           <b>{fmtLikes(totalLikes)}</b>
         </button>
@@ -324,7 +283,6 @@ export default function ProfileClient({
             onClick={() => setView('saved')}
             aria-pressed={view === 'saved'}
           >
-            <Bookmark aria-hidden="true" />
             <span>Saved</span>
             <b>{fmtLikes(profileSaved.length)}</b>
           </button>
@@ -332,14 +290,6 @@ export default function ProfileClient({
       </nav>
 
       <section className="pf-content">
-        <header className="pf-content-head">
-          <div>
-            <span>{activeCopy.eyebrow}</span>
-            <h2>{activeCopy.title}</h2>
-          </div>
-          <p>{activeCopy.description}</p>
-        </header>
-
         {view === 'followers' ? (
           profileFollowers.length > 0 ? (
             <div className="pf-people" role="list">

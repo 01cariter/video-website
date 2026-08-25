@@ -374,9 +374,51 @@ export function containedNodeIdsForSection(
   return nodes
     .filter(
       (node) =>
-        node.type !== 'section' && nodeCenterInsideSection(section, node),
+        node.type !== 'section' &&
+        (node.data.groupId === sectionId ||
+          nodeCenterInsideSection(section, node)),
     )
     .map((node) => node.id);
+}
+
+/** Expands explicit workflow groups to keep later outputs and variants inside. */
+export function expandSectionsForExplicitChildren(nodes: StudioNode[]) {
+  let changed = false;
+  const next = nodes.map((section) => {
+    if (section.type !== 'section') return section;
+    const children = nodes.filter(
+      (node) => node.type !== 'section' && node.data.groupId === section.id,
+    );
+    if (!children.length) return section;
+
+    const left = Math.min(section.x, ...children.map((node) => node.x - 24));
+    const top = Math.min(section.y, ...children.map((node) => node.y - 52));
+    const right = Math.max(
+      section.x + section.width,
+      ...children.map((node) => node.x + node.width + 24),
+    );
+    const bottom = Math.max(
+      section.y + section.height,
+      ...children.map((node) => node.y + node.height + 24),
+    );
+    if (
+      left === section.x &&
+      top === section.y &&
+      right === section.x + section.width &&
+      bottom === section.y + section.height
+    ) {
+      return section;
+    }
+    changed = true;
+    return {
+      ...section,
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+    };
+  });
+  return changed ? next : nodes;
 }
 
 function axisPoints(bounds: StudioBounds, axis: 'x' | 'y') {

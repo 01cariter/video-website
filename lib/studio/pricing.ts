@@ -29,6 +29,13 @@ export type StudioBillableModelId =
 
 export const DEFAULT_STUDIO_AGENT_MODEL_ID: StudioAgentModelId =
   'deepseek/deepseek-v4-flash';
+export const STUDIO_VISION_AGENT_MODEL_IDS = [
+  'openai/gpt-5.6-luna',
+  'openai/gpt-5.6-terra',
+  'openai/gpt-5.6-sol',
+  'anthropic/claude-sonnet-5',
+  'google/gemini-3.1-pro-preview',
+] as const satisfies readonly StudioAgentModelId[];
 export const STUDIO_PRICING_VERSION = '2026-08-25.v2';
 export const DEFAULT_STUDIO_MARKUP_BPS = 15_000;
 export const MIN_STUDIO_MARKUP_BPS = 12_500;
@@ -80,6 +87,23 @@ export interface StudioRuntimeConfig {
   agentModelId: StudioAgentModelId;
   modelPolicy: StudioModelPolicy;
   pricingVersion: typeof STUDIO_PRICING_VERSION;
+}
+
+export function studioAgentModelForInput(
+  runtime: StudioRuntimeConfig,
+  hasImageInput: boolean,
+) {
+  if (!hasImageInput) return runtime.agentModelId;
+  if (
+    STUDIO_VISION_AGENT_MODEL_IDS.some(
+      (modelId) => modelId === runtime.agentModelId,
+    )
+  ) {
+    return runtime.agentModelId;
+  }
+  return STUDIO_VISION_AGENT_MODEL_IDS.find(
+    (modelId) => runtime.modelPolicy[modelId].enabled,
+  );
 }
 
 export interface StudioPriceQuote {

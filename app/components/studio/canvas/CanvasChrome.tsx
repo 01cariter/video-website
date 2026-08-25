@@ -75,6 +75,10 @@ import {
 import NodeInspector from './NodeInspector';
 import NodePropertiesPanel from './NodePropertiesPanel';
 import QuickEditComposer from './QuickEditComposer';
+import {
+  canvasReferenceOptions,
+  selectionIntersectsViewport,
+} from './CanvasChrome.logic';
 import { useStudioCanvas } from './studio-context';
 import type { StudioFloatingRect } from './useLeaferStudioRuntime';
 
@@ -155,7 +159,7 @@ function ContextIconButton({
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="size-8 rounded-lg [&_svg]:size-3.5"
+          className="size-8 rounded-md [&_svg]:size-3.5"
           aria-label={label}
           onClick={onClick}
         >
@@ -247,15 +251,15 @@ export function ZoomControl() {
     >
       <button
         type="button"
-        className="grid size-8 place-items-center rounded-md transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="grid size-6 place-items-center rounded transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         aria-label="Zoom out"
         onClick={() => changeZoom(zoom * 0.88)}
       >
-        <Minus className="size-3.5" />
+        <Minus className="size-3" />
       </button>
       <button
         type="button"
-        className="h-8 min-w-11 rounded-md px-1.5 text-center text-[11px] font-medium tabular-nums transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="h-6 min-w-9 rounded px-1 text-center text-[10px] font-medium tabular-nums transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         aria-label="Reset zoom to 100%"
         onClick={() => changeZoom(1)}
       >
@@ -263,11 +267,11 @@ export function ZoomControl() {
       </button>
       <button
         type="button"
-        className="grid size-8 place-items-center rounded-md transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="grid size-6 place-items-center rounded transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         aria-label="Zoom in"
         onClick={() => changeZoom(zoom * 1.14)}
       >
-        <Plus className="size-3.5" />
+        <Plus className="size-3" />
       </button>
     </div>
   );
@@ -300,6 +304,8 @@ export function NodeOverlays({
     setNodeAspect,
     fitView,
     runtimeConfig,
+    referencePicker,
+    startReferencePicker,
   } = useStudioCanvas();
   const selected =
     selectedIds.length === 1
@@ -330,6 +336,21 @@ export function NodeOverlays({
   const selectedId = selected?.id ?? null;
   const selectedType = selected?.type ?? null;
   const selectedSrc = selected?.data.src ?? '';
+  const canvasReferences = useMemo(
+    () => canvasReferenceOptions(nodes, selectedId ? [selectedId] : []),
+    [nodes, selectedId],
+  );
+  const requestCanvasReference = useCallback(
+    (onPick: (src: string) => void) => {
+      if (!selectedId || !canvasReferences.length) return;
+      startReferencePicker(
+        selectedId,
+        canvasReferences.map((reference) => reference.id),
+        onPick,
+      );
+    },
+    [canvasReferences, selectedId, startReferencePicker],
+  );
   const quickEditOpen = Boolean(
     hasQuickEditModel &&
       selectedId === quickEditNodeId &&
@@ -418,8 +439,15 @@ export function NodeOverlays({
   }, [quickEditOpen, selected?.id, selected?.data.status, selectionKey]);
 
   const chrome = useMemo(() => {
+    const selectionVisible = selectionIntersectsViewport(selectionRect, {
+      width: stageSize.width,
+      height: stageSize.height,
+      leftInset,
+      rightInset: effectiveRightInset,
+    });
     if (
       !selectionRect ||
+      !selectionVisible ||
       (!selected && !multiSelected) ||
       !stageSize.width ||
       !stageSize.height
@@ -466,10 +494,11 @@ export function NodeOverlays({
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
       <AnimatePresence>
-        {multiSelected ||
-        (selected &&
-          selected.data.status !== 'generating' &&
-          selected.data.status !== 'uploading') ? (
+        {(chrome.visible || Boolean(referencePicker)) &&
+        (multiSelected ||
+          (selected &&
+            selected.data.status !== 'generating' &&
+            selected.data.status !== 'uploading')) ? (
           <motion.div
             key={multiSelected ? `multi:${selectionKey}` : selected?.id}
             ref={surfaceRef}
@@ -481,7 +510,8 @@ export function NodeOverlays({
                 240,
                 stageSize.width - leftInset - effectiveRightInset - 20,
               ),
-              visibility: chrome.visible ? 'visible' : 'hidden',
+              visibility:
+                chrome.visible && !referencePicker ? 'visible' : 'hidden',
             }}
             initial={reduceMotion ? false : { opacity: 0, y: 5, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -507,6 +537,8 @@ export function NodeOverlays({
                 data={selected.data}
                 canSubmit={selected.data.prompt.trim().length > 0}
                 runtimeConfig={runtimeConfig}
+                canvasReferences={canvasReferences}
+                onRequestCanvasReference={requestCanvasReference}
                 onPromptChange={(value) =>
                   updateNodeData(selected.id, { prompt: value })
                 }
@@ -544,6 +576,8 @@ export function NodeOverlays({
             ) : selected && quickEditOpen ? (
               <QuickEditComposer
                 node={selected}
+                canvasReferences={canvasReferences}
+                onRequestCanvasReference={requestCanvasReference}
                 onCancel={() => setQuickEditNodeId(null)}
               />
             ) : selected ? (
@@ -562,7 +596,11 @@ export function NodeOverlays({
           </motion.div>
         ) : null}
       </AnimatePresence>
-      {selected && selected.type !== 'section' && !quickEditOpen ? (
+      {chrome.visible &&
+      !referencePicker &&
+      selected &&
+      selected.type !== 'section' &&
+      !quickEditOpen ? (
         <NodePropertiesPanel key={selected.id} node={selected} />
       ) : null}
     </div>
@@ -616,7 +654,7 @@ function MultiSelectionToolbar({
             <Button
               type="button"
               size="sm"
-              className="h-8 rounded-lg px-2 text-xs [&_svg]:size-3.5"
+              className="h-8 rounded-md px-2 text-xs [&_svg]:size-3.5"
               onClick={onPublish}
             >
               <Upload /> Publish
@@ -628,7 +666,7 @@ function MultiSelectionToolbar({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-8 rounded-lg px-2 text-xs [&_svg]:size-3.5"
+          className="h-8 rounded-md px-2 text-xs [&_svg]:size-3.5"
           onClick={onSendToAgent}
         >
           <Bot /> Send to Agent
@@ -638,7 +676,7 @@ function MultiSelectionToolbar({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-8 rounded-lg px-2 text-xs [&_svg]:size-3.5"
+          className="h-8 rounded-md px-2 text-xs [&_svg]:size-3.5"
           onClick={onOrganize}
         >
           <LayoutGrid />
@@ -650,7 +688,7 @@ function MultiSelectionToolbar({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-8 rounded-lg px-2 text-xs [&_svg]:size-3.5"
+              className="h-8 rounded-md px-2 text-xs [&_svg]:size-3.5"
             >
               <AlignHorizontalJustifyCenter />
               Align
@@ -748,7 +786,7 @@ function SelectionToolbar({
             <Button
               type="button"
               size="sm"
-              className="h-8 rounded-lg px-2 text-xs [&_svg]:size-3.5"
+              className="h-8 rounded-md px-2 text-xs [&_svg]:size-3.5"
               onClick={onPublish}
             >
               <Upload /> Publish
@@ -762,7 +800,7 @@ function SelectionToolbar({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-8 rounded-lg px-2 text-xs [&_svg]:size-3.5"
+              className="h-8 rounded-md px-2 text-xs [&_svg]:size-3.5"
               onClick={onSendToAgent}
             >
               <Bot /> Send to Agent
@@ -775,7 +813,7 @@ function SelectionToolbar({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-8 rounded-lg px-2 text-xs"
+            className="h-8 rounded-md px-2 text-xs"
             onClick={onQuickEdit}
           >
             <PencilLine className="size-3.5" /> Quick edit
@@ -789,7 +827,7 @@ function SelectionToolbar({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-8 rounded-lg px-2 text-xs [&_svg]:size-3.5"
+            className="h-8 rounded-md px-2 text-xs [&_svg]:size-3.5"
             onClick={onRegenerate}
           >
             <Wand2 /> Regenerate

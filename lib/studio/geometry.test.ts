@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   arrangeStudioNodes,
+  containedNodeIdsForSection,
+  expandSectionsForExplicitChildren,
   findOpenStudioPosition,
   resolveStudioResizeDirection,
   resolveStudioResizeSnap,
@@ -67,6 +69,30 @@ describe('studio multi-selection arrangement', () => {
         { x: 600, y: 180 },
       ],
     );
+  });
+});
+
+describe('explicit Agent workflow groups', () => {
+  it('keeps later members attached and expands the group around them', () => {
+    const section: StudioNode = {
+      ...node('n0', 0, 0),
+      type: 'section',
+      width: 300,
+      height: 200,
+      data: { ...node('n0', 0, 0).data, kind: 'section' },
+    };
+    const child = {
+      ...node('n1', 420, 240),
+      data: { ...node('n1', 420, 240).data, groupId: section.id },
+    };
+
+    assert.deepEqual(containedNodeIdsForSection([section, child], section.id), [
+      child.id,
+    ]);
+    const expanded = expandSectionsForExplicitChildren([section, child]);
+    const nextSection = expanded[0];
+    assert.ok(nextSection.width >= child.x + child.width + 24 - section.x);
+    assert.ok(nextSection.height >= child.y + child.height + 24 - section.y);
   });
 });
 
