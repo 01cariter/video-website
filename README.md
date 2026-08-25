@@ -1,8 +1,8 @@
 # Snackd
 
 A short-form learning/play video app — a feed of bite-sized "study" and "play"
-shorts with a vertical player, search, category filters, likes, and a Solo
-creation workspace. Built with **Next.js + TypeScript (App Router)** and **Supabase** via the Vercel
+shorts with a vertical player, search, category filters, likes, and an AI-native
+CreatorStudio canvas. Built with **Next.js + TypeScript (App Router)** and **Supabase** via the Vercel
 Supabase Integration.
 
 ## Stack
@@ -39,7 +39,7 @@ Key files:
 | `lib/user.ts` | `getCurrentUser()` — merges the Supabase Auth user with the `profiles` row |
 | `app/auth/callback/route.ts` | OAuth / email PKCE callback |
 | `proxy.ts` | Refreshes Supabase cookies |
-| `app/components/CreateModal.tsx` | Posting overlay — opened from the feed and the profile, no `/create` route |
+| `app/components/compose/ComposeModal.tsx` | Posting overlay — opened from the feed, profile, or selected Studio nodes |
 
 ## Environment
 
@@ -60,7 +60,6 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.example
 AI_GATEWAY_API_KEY=...
 STRIPE_SECRET_KEY=sk_...
 STRIPE_WEBHOOK_SECRET=whsec_...
-NEXT_PUBLIC_SOLO_URL=https://work-solo.ai/ # optional
 ```
 
 ## Run locally
@@ -134,21 +133,12 @@ Supabase Auth user id via a `TEXT` `user_id` column.
 - Search bar and category filters
 - **Follow** creators, **like**, **save** (favourite) and **comment** — all
   persisted per signed-in user
-- **Create** asks first: *"I have my own"* or *"Make it with AI"*.
-  - **I have my own** — drag-and-drop photo/video uploader. Files go from the
-    browser straight to Supabase Storage with a real progress bar, dimensions
-    and clip duration are read client-side, and a cover frame is grabbed from
-    video with a canvas so the post has a feed poster. Publishing lands on
-    `/videos/:id`.
-  - **Make it with AI** — hands off to the Solo studio and takes the finished
-    file back through the uploader. There is no Solo API integration. The page
-    still mounts Solo in a full-height iframe first, but **Solo refuses to
-    render when it is not the top window** — it sends no `X-Frame-Options` and
-    no `frame-ancestors` CSP, so the frame fires `load` and then stays blank,
-    and nothing cross-origin reveals that. After a 3s grace period the page
-    offers **Open Solo** (its own tab) and **I have the file — upload it**,
-    with a "Show the embed anyway" escape hatch in case Solo ever allows
-    framing.
+- **Post** accepts images and videos from the device or selected CreatorStudio
+  nodes. Uploads go directly to Supabase Storage with progress, dimensions,
+  duration, and generated video covers; publishing lands on `/videos/:id`.
+- **CreatorStudio** combines a LeaferJS infinite canvas, image/video/text
+  generators, Agent + Skills, Quick Edit, reusable prompts and parameters, and
+  direct publishing of selected nodes.
 - **Profiles** at `/u/:handle` — avatar, bio, follower/post/like counts, follow
   button, and the creator's posts. Your own profile adds a **Saved** tab.
   Reachable from the sidebar and from the author on any video.
@@ -162,10 +152,11 @@ Supabase Auth user id via a `TEXT` `user_id` column.
   first load.
 - Signed-in projects sync to Supabase; localStorage remains an offline/guest
   cache.
-- Models are Vercel AI Gateway ids only:
-  `openai/gpt-5.6-luna`, `openai/gpt-5.6-terra`,
-  `xai/grok-imagine-image-2.0`, and `bytedance/seedance-2.5`.
-  No direct AI-provider SDK is used.
+- Models use Vercel AI Gateway ids only. The versioned catalog contains the
+  supported Agent, text, image, and video parameter contracts; Vercel Flags
+  choose the Agent model and control each model's availability and credit
+  formula, including a safe upstream-rate multiplier. Language requests are
+  pinned to the priced Gateway provider.
 - Each AI request has a unique request id. Postgres atomically reserves
   credits, rejects duplicate work, stores completed results, and refunds failed
   generations. Generated image/video bytes are persisted in the Supabase

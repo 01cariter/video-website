@@ -241,21 +241,21 @@ export function ZoomControl() {
   const percent = Math.round(zoom * 100);
   return (
     <div
-      className="flex items-center rounded-xl border border-border bg-card/95 p-1 text-muted-foreground shadow-[0_8px_28px_-20px_rgba(0,0,0,.55)] backdrop-blur-xl"
+      className="flex items-center gap-0.5 text-muted-foreground"
       role="group"
       aria-label="Canvas zoom"
     >
       <button
         type="button"
-        className="grid size-10 place-items-center rounded-lg hover:bg-accent hover:text-foreground"
+        className="grid size-8 place-items-center rounded-md transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         aria-label="Zoom out"
         onClick={() => changeZoom(zoom * 0.88)}
       >
-        <Minus className="size-4" />
+        <Minus className="size-3.5" />
       </button>
       <button
         type="button"
-        className="min-w-14 px-1 text-center text-xs font-medium tabular-nums hover:text-foreground"
+        className="h-8 min-w-11 rounded-md px-1.5 text-center text-[11px] font-medium tabular-nums transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         aria-label="Reset zoom to 100%"
         onClick={() => changeZoom(1)}
       >
@@ -263,11 +263,11 @@ export function ZoomControl() {
       </button>
       <button
         type="button"
-        className="grid size-10 place-items-center rounded-lg hover:bg-accent hover:text-foreground"
+        className="grid size-8 place-items-center rounded-md transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         aria-label="Zoom in"
         onClick={() => changeZoom(zoom * 1.14)}
       >
-        <Plus className="size-4" />
+        <Plus className="size-3.5" />
       </button>
     </div>
   );

@@ -4,6 +4,7 @@ import { isStepCount, ToolLoopAgent, tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import {
   DEFAULT_STUDIO_RUNTIME_CONFIG,
+  STUDIO_AGENT_GATEWAY_PROVIDER_BY_MODEL,
   STUDIO_AGENT_MAX_OUTPUT_TOKENS_PER_STEP,
   STUDIO_AGENT_MAX_STEPS,
   STUDIO_AGENT_SKILL_CONTEXT_BYTE_LIMIT,
@@ -38,12 +39,11 @@ const kindSchema = z.enum(['image', 'video', 'text', 'section']);
 
 export function createStudioAgent(
   canvas: CanvasNodeSnapshot[],
-  runtimeOrLegacy: StudioRuntimeConfig | boolean =
-    DEFAULT_STUDIO_RUNTIME_CONFIG,
+  runtimeConfig: StudioRuntimeConfig = DEFAULT_STUDIO_RUNTIME_CONFIG,
   onEnd?: (event: StudioAgentUsageEvent) => Promise<void> | void,
   skillIds: readonly StudioSkillId[] = [],
 ) {
-  const runtime = normalizeStudioRuntimeConfig(runtimeOrLegacy);
+  const runtime = normalizeStudioRuntimeConfig(runtimeConfig);
   const activeSkillText = studioSkillSelectionText(skillIds);
   const skillTools: ToolSet = {};
   if (skillIds.length) {
@@ -112,6 +112,14 @@ export function createStudioAgent(
   return new ToolLoopAgent({
     id: 'snackd-canvas-agent',
     model: runtime.agentModelId,
+    providerOptions: {
+      gateway: {
+        only: [
+          STUDIO_AGENT_GATEWAY_PROVIDER_BY_MODEL[runtime.agentModelId],
+        ],
+        tags: ['feature:studio-agent'],
+      },
+    },
     stopWhen: isStepCount(STUDIO_AGENT_MAX_STEPS),
     maxOutputTokens: STUDIO_AGENT_MAX_OUTPUT_TOKENS_PER_STEP,
     instructions: `You are the professional AI canvas Agent in Snackd Creator Studio. You operate a LeaferJS infinite canvas.

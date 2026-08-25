@@ -12,6 +12,8 @@ import {
 import type { FormEvent, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { AppUser, Comment, SocialToggle, Video } from '@/lib/types';
+import ActionNotice from '../feed/ActionNotice';
+import { requestSocialAction } from '../feed/social-action';
 import MediaPreview from '../MediaPreview';
 import { POST_DELETED_EVENT } from './compose-events';
 
@@ -60,6 +62,7 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
   const [draft, setDraft] = useState('');
   const [posting, setPosting] = useState(false);
   const [sharedId, setSharedId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState('');
   const pending = useRef(new Set<string>());
   const commentsCache = useRef(new Map<number, Comment[]>());
   const viewedIds = useRef(new Set<number>());
@@ -72,6 +75,7 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
     setIndex(0);
     setDirection(0);
     setDraft('');
+    setActionError('');
   }, []);
 
   const openPreview = useCallback(({ video: next, playlist: list }: OpenPreviewOptions) => {
@@ -87,6 +91,7 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
     setDirection(0);
     setDraft('');
     setSharedId(null);
+    setActionError('');
   }, []);
 
   const patchVideo = useCallback((id: number, patch: Partial<Video>) => {
@@ -110,19 +115,6 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
     window.addEventListener(POST_DELETED_EVENT, handleDeleted);
     return () => window.removeEventListener(POST_DELETED_EVENT, handleDeleted);
   }, [removeDeletedVideo]);
-
-  async function act<T>(url: string, body?: object): Promise<T | null> {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (response.status === 401) {
-      onNeedAuth();
-      return null;
-    }
-    return response.ok ? (response.json() as Promise<T>) : null;
-  }
 
   const loadComments = useCallback(async (id: number) => {
     const cached = commentsCache.current.get(id);
@@ -210,8 +202,12 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
       liked: optimistic,
       likes_count: Math.max(0, target.likes_count + (optimistic ? 1 : -1)),
     });
+    setActionError('');
     try {
-      const data = await act<SocialToggle>(`/api/videos/${target.id}/like`);
+      const data = await requestSocialAction<SocialToggle>(
+        `/api/videos/${target.id}/like`,
+        { onUnauthorized: onNeedAuth },
+      );
       if (!data) {
         patchVideo(target.id, { liked: target.liked, likes_count: target.likes_count });
         return;
@@ -222,6 +218,7 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
       });
     } catch {
       patchVideo(target.id, { liked: target.liked, likes_count: target.likes_count });
+      setActionError('Could not update this like. Try again.');
     } finally {
       pending.current.delete(`like-${target.id}`);
     }
@@ -236,8 +233,12 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
       saved: optimistic,
       saves_count: Math.max(0, target.saves_count + (optimistic ? 1 : -1)),
     });
+    setActionError('');
     try {
-      const data = await act<SocialToggle>(`/api/videos/${target.id}/save`);
+      const data = await requestSocialAction<SocialToggle>(
+        `/api/videos/${target.id}/save`,
+        { onUnauthorized: onNeedAuth },
+      );
       if (!data) {
         patchVideo(target.id, { saved: target.saved, saves_count: target.saves_count });
         return;
@@ -248,6 +249,7 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
       });
     } catch {
       patchVideo(target.id, { saved: target.saved, saves_count: target.saves_count });
+      setActionError('Could not update this bookmark. Try again.');
     } finally {
       pending.current.delete(`save-${target.id}`);
     }
@@ -269,8 +271,12 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
           : item,
       ),
     );
+    setActionError('');
     try {
-      const data = await act<SocialToggle>(`/api/authors/${encodeURIComponent(target.author_id)}/follow`);
+      const data = await requestSocialAction<SocialToggle>(
+        `/api/authors/${encodeURIComponent(target.author_id)}/follow`,
+        { onUnauthorized: onNeedAuth },
+      );
       if (!data) {
         setPlaylist((items) =>
           items.map((item) =>
@@ -300,6 +306,7 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
             : item,
         ),
       );
+      setActionError('Could not update this follow. Try again.');
     } finally {
       pending.current.delete(`follow-${target.author_id}`);
     }
@@ -329,14 +336,20 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
     const body = draft.trim();
     if (!body || posting) return;
     setPosting(true);
+    setActionError('');
     try {
-      const data = await act<CommentResponse>(`/api/videos/${video.id}/comments`, { body });
+      const data = await requestSocialAction<CommentResponse>(
+        `/api/videos/${video.id}/comments`,
+        { body: { body }, onUnauthorized: onNeedAuth },
+      );
       if (!data?.comment) return;
       const next = [...comments, data.comment];
       setComments(next);
       commentsCache.current.set(video.id, next);
       patchVideo(video.id, { comments_count: data.comments_count });
       setDraft('');
+    } catch {
+      setActionError('Could not post this comment. Try again.');
     } finally {
       setPosting(false);
     }
@@ -371,6 +384,10 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
   return (
     <MediaPreviewContext.Provider value={value}>
       {children}
+      <ActionNotice
+        message={actionError}
+        onDismiss={() => setActionError('')}
+      />
       <AnimatePresence>
         {video && (
           <motion.div

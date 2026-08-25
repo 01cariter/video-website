@@ -13,6 +13,7 @@ import {
   isStudioAgentModelId,
   isStudioModelEnabled,
   priceStudioUsage,
+  STUDIO_AGENT_GATEWAY_PROVIDER_BY_MODEL,
 } from '@/lib/studio/pricing';
 import { getAuthUser } from '@/lib/supabase/server';
 
@@ -142,11 +143,16 @@ export async function POST(request: Request) {
       model: modelId,
       prompt: generationPrompt,
       maxOutputTokens,
-      providerOptions: modelId.startsWith('openai/')
-        ? {
-            openai: { reasoningEffort: effort },
-          }
-        : undefined,
+      providerOptions: {
+        gateway: {
+          only: [STUDIO_AGENT_GATEWAY_PROVIDER_BY_MODEL[modelId]],
+          user: user.id,
+          tags: ['feature:studio-text'],
+        },
+        ...(modelId.startsWith('openai/')
+          ? { openai: { reasoningEffort: effort } }
+          : {}),
+      },
     });
     const response = {
       text: result.text,

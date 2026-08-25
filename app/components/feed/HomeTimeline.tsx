@@ -15,7 +15,10 @@ import {
 import { useShellSearch } from '../shell/AppShell';
 import { POST_DELETED_EVENT, PUBLISHED_EVENT } from '../shell/compose-events';
 import AuthModal from '../AuthModal';
+import ActionNotice from './ActionNotice';
+import { patchCachedVideo, prependCachedVideo } from './feed-cache';
 import FeedTabs, { type HomeTabId } from './FeedTabs';
+import { requestSocialAction } from './social-action';
 import TimelineFeed from './TimelineFeed';
 
 interface HomeTimelineProps {
@@ -63,11 +66,12 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
   const [loading, setLoading] = useState(initialTab !== 'foryou');
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(false);
-  const [pending, setPending] = useState<Record<string, boolean>>({});
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
+  const [actionError, setActionError] = useState('');
 
   const requestId = useRef(0);
   const loadingMoreRef = useRef(false);
+  const pending = useRef(new Set<string>());
   const feedCache = useRef(
     new Map<HomeTabId, FeedPage>(
       initialTab === 'foryou'
@@ -81,13 +85,17 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
   }, [tab]);
 
   // Compose publishes from an overlay above this tree (Post modal, or Studio
-  // via the shell), so a freshly published post arrives as a window event
-  // rather than a prop — prepend it here only while looking at For You.
+  // via the shell), so a freshly published post arrives as a window event.
   useEffect(() => {
     function handlePublished(event: Event) {
       const video = (event as CustomEvent<Video | undefined>).detail;
-      if (!video || tabRef.current !== 'foryou') return;
-      setVideos((items) => (items.some((item) => item.id === video.id) ? items : [video, ...items]));
+      if (!video) return;
+      prependCachedVideo(feedCache.current, 'foryou', video);
+      if (tabRef.current === 'foryou') {
+        setVideos((items) =>
+          items.some((item) => item.id === video.id) ? items : [video, ...items],
+        );
+      }
     }
     window.addEventListener(PUBLISHED_EVENT, handlePublished);
     return () => window.removeEventListener(PUBLISHED_EVENT, handlePublished);
@@ -143,31 +151,26 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
   const needAuth = useCallback(() => setAuthMode('login'), []);
 
   const patchVideo = useCallback((id: number, patch: Partial<Video>) => {
+    patchCachedVideo(feedCache.current, id, patch);
     setVideos((items) => items.map((video) => (video.id === id ? { ...video, ...patch } : video)));
   }, []);
-
-  const act = useCallback(async <T,>(url: string): Promise<T | null> => {
-    const response = await fetch(url, { method: 'POST' });
-    if (response.status === 401) {
-      needAuth();
-      return null;
-    }
-    if (!response.ok) return null;
-    return response.json() as Promise<T>;
-  }, [needAuth]);
 
   const like = useCallback(
     async (video: Video) => {
       const key = `like-${video.id}`;
-      if (pending[key]) return;
+      if (pending.current.has(key)) return;
+      pending.current.add(key);
       const optimistic = !video.liked;
       patchVideo(video.id, {
         liked: optimistic,
         likes_count: Math.max(0, video.likes_count + (optimistic ? 1 : -1)),
       });
-      setPending((state) => ({ ...state, [key]: true }));
+      setActionError('');
       try {
-        const data = await act<SocialToggle>(`/api/videos/${video.id}/like`);
+        const data = await requestSocialAction<SocialToggle>(
+          `/api/videos/${video.id}/like`,
+          { onUnauthorized: needAuth },
+        );
         if (data) {
           patchVideo(video.id, { liked: data.liked ?? optimistic, likes_count: data.likes_count ?? video.likes_count });
         } else {
@@ -175,25 +178,30 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
         }
       } catch {
         patchVideo(video.id, { liked: video.liked, likes_count: video.likes_count });
+        setActionError('Could not update this like. Try again.');
       } finally {
-        setPending((state) => ({ ...state, [key]: false }));
+        pending.current.delete(key);
       }
     },
-    [act, patchVideo, pending],
+    [needAuth, patchVideo],
   );
 
   const save = useCallback(
     async (video: Video) => {
       const key = `save-${video.id}`;
-      if (pending[key]) return;
+      if (pending.current.has(key)) return;
+      pending.current.add(key);
       const optimistic = !video.saved;
       patchVideo(video.id, {
         saved: optimistic,
         saves_count: Math.max(0, video.saves_count + (optimistic ? 1 : -1)),
       });
-      setPending((state) => ({ ...state, [key]: true }));
+      setActionError('');
       try {
-        const data = await act<SocialToggle>(`/api/videos/${video.id}/save`);
+        const data = await requestSocialAction<SocialToggle>(
+          `/api/videos/${video.id}/save`,
+          { onUnauthorized: needAuth },
+        );
         if (data) {
           patchVideo(video.id, { saved: data.saved ?? optimistic, saves_count: data.saves_count ?? video.saves_count });
         } else {
@@ -201,11 +209,12 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
         }
       } catch {
         patchVideo(video.id, { saved: video.saved, saves_count: video.saves_count });
+        setActionError('Could not update this bookmark. Try again.');
       } finally {
-        setPending((state) => ({ ...state, [key]: false }));
+        pending.current.delete(key);
       }
     },
-    [act, patchVideo, pending],
+    [needAuth, patchVideo],
   );
 
   async function share(video: Video) {
@@ -352,6 +361,11 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
         onShare={(video) => void share(video)}
         onDelete={deletePost}
         onNeedAuth={needAuth}
+      />
+
+      <ActionNotice
+        message={actionError}
+        onDismiss={() => setActionError('')}
       />
 
       <AnimatePresence>

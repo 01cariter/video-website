@@ -1475,49 +1475,65 @@ function CanvasWorkspace({
                   className="pointer-events-none absolute inset-0 z-10 grid place-items-center p-6"
                   aria-label="Start creating"
                 >
-                  <div className="flex max-w-[520px] flex-col items-center text-center">
-                    <h2 className="text-[16px] font-semibold tracking-[-0.02em] text-foreground/90">
+                  <div className="flex w-full max-w-[520px] flex-col items-center text-center">
+                    <h2 className="text-[18px] font-semibold tracking-[-0.025em] text-foreground/90">
                       What do you want to make?
                     </h2>
-                    <p className="mt-1 text-[12px] text-muted-foreground">
-                      Ask Agent, drop a file, or choose a starting point.
-                    </p>
-                    <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5">
+                    <div className="mt-4 flex flex-col items-center gap-2 sm:flex-row sm:gap-0">
                       <Button
                         type="button"
+                        variant="ghost"
                         size="sm"
-                        className="pointer-events-auto h-9 rounded-full px-3.5 shadow-none"
+                        className="group pointer-events-auto h-9 rounded-full px-2.5 text-[12px] font-medium text-foreground/85 transition-[color,background-color,transform] duration-200 hover:bg-card/75 hover:text-foreground active:scale-[.98]"
                         onClick={askAgentFromEmptyCanvas}
                       >
-                        <Sparkles /> Ask Agent
+                        <span className="grid size-6 place-items-center rounded-full bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+                          <Sparkles className="size-3.5" />
+                        </span>
+                        Ask Agent
                       </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="pointer-events-auto h-9 rounded-full px-3 text-muted-foreground hover:text-foreground"
-                        onClick={() => addNode('image')}
-                      >
-                        <ImageIcon /> Image
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="pointer-events-auto h-9 rounded-full px-3 text-muted-foreground hover:text-foreground"
-                        onClick={() => addNode('video')}
-                      >
-                        <VideoIcon /> Video
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="pointer-events-auto h-9 rounded-full px-3 text-muted-foreground hover:text-foreground"
-                        onClick={() => addNode('text')}
-                      >
-                        <FileText /> Text
-                      </Button>
+                      <span
+                        aria-hidden
+                        className="mx-2.5 hidden h-5 w-px bg-border/70 sm:block"
+                      />
+                      <div className="flex items-center gap-0.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="group pointer-events-auto h-9 rounded-full px-2.5 text-[12px] font-medium text-muted-foreground transition-[color,background-color,transform] duration-200 hover:bg-card/75 hover:text-foreground active:scale-[.98]"
+                          onClick={() => addNode('image')}
+                        >
+                          <span className="grid size-6 place-items-center rounded-full bg-foreground/[.045] transition-colors group-hover:bg-foreground/[.075]">
+                            <ImageIcon className="size-3.5" />
+                          </span>
+                          Image
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="group pointer-events-auto h-9 rounded-full px-2.5 text-[12px] font-medium text-muted-foreground transition-[color,background-color,transform] duration-200 hover:bg-card/75 hover:text-foreground active:scale-[.98]"
+                          onClick={() => addNode('video')}
+                        >
+                          <span className="grid size-6 place-items-center rounded-full bg-foreground/[.045] transition-colors group-hover:bg-foreground/[.075]">
+                            <VideoIcon className="size-3.5" />
+                          </span>
+                          Video
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="group pointer-events-auto h-9 rounded-full px-2.5 text-[12px] font-medium text-muted-foreground transition-[color,background-color,transform] duration-200 hover:bg-card/75 hover:text-foreground active:scale-[.98]"
+                          onClick={() => addNode('text')}
+                        >
+                          <span className="grid size-6 place-items-center rounded-full bg-foreground/[.045] transition-colors group-hover:bg-foreground/[.075]">
+                            <FileText className="size-3.5" />
+                          </span>
+                          Text
+                        </Button>
+                      </div>
                     </div>
                     <p className="mt-3 text-[10.5px] text-muted-foreground/65">
                       Double-click anywhere for an image generator

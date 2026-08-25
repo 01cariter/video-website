@@ -17,8 +17,8 @@ interface ComposeModalProps {
 
 const MODAL_EASE = [0.22, 1, 0.36, 1] as const;
 
-// Post is upload-only — no AI/Solo choice here. Studio is the one surface
-// that embeds Worksolo; this modal never renders it.
+// Post is upload-only. AI creation starts in CreatorStudio, whose selected
+// canvas nodes can prefill this modal for publishing.
 export default function ComposeModal({
   user,
   initialDraft,

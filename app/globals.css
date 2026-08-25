@@ -332,27 +332,7 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible,input:focus-v
 .solo-close:hover{border-color:var(--line);background:var(--field);color:var(--ink)}
 .solo-close:active{transform:scale(.96)}
 .solo-close svg{width:18px;height:18px}
-.back{display:inline-flex;align-items:center;gap:7px;padding:9px 14px 9px 11px;border:2px solid var(--line);
-  border-radius:999px;background:var(--field);font-size:14px;font-weight:600;transition:.18s}
-.back:hover{border-color:var(--orange);color:var(--orange-d)}
-.back svg{width:17px;height:17px}
-.solo-divider{width:2px;height:26px;background:var(--line)}
-.stitle{display:flex;align-items:center;gap:9px;font-size:19px;font-weight:750}
-.stitle .mark{width:27px;height:27px;border-radius:8px}
-.stitle .mark::after{font-size:15px}
 .solo-status{padding:6px 9px;border-radius:999px;background:var(--play-bg);color:var(--orange-d);font-size:11.5px;font-weight:700}
-.solo-external{display:inline-flex;align-items:center;gap:7px;padding:10px 14px;border-radius:8px;background:var(--orange-fill);
-  color:var(--on-fill);font-size:13.5px;font-weight:600;transition:.18s}
-.solo-external:hover{background:var(--orange-fill-hover)}
-.solo-external svg{width:17px;height:17px}
-.create-switch{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border:2px solid var(--line);
-  border-radius:999px;background:var(--field);color:var(--muted);font-size:12.5px;font-weight:700;
-  cursor:pointer;transition:.16s}
-.create-switch:hover{border-color:var(--orange);color:var(--orange-d)}
-.create-switch svg{width:15px;height:15px}
-
-.solo-frame{position:relative;min-height:0;height:100%;background:var(--field)}
-.solo-frame iframe{display:block;width:100%;height:100%;border:0;background:var(--field)}
 
 /* Create / uploader */
 .up-shell{height:100%;min-height:0;overflow:hidden;background:var(--cream)}
@@ -494,16 +474,7 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible,input:focus-v
   .create-modal{width:100vw;height:100dvh}
   .solo-shell{border:0;border-radius:0}
   .solo-header{padding:10px 12px}
-  .solo-header-copy p,.solo-status,.solo-divider,.solo-external span,.back span,.stitle>span:last-child{display:none}
-  .solo-external{width:42px;height:42px;padding:0;justify-content:center}
-  .create-switch span{display:none}
-  .create-switch{padding:9px 11px}
-  /* The fallback panel is prose, not a toolbar — its buttons keep their labels. */
-  .solo-blocked-card{padding:22px 18px}
-  .solo-blocked-actions .solo-external{width:auto;height:auto;padding:10px 14px}
-  .solo-blocked-actions .solo-external span,
-  .solo-blocked-actions .create-switch span{display:inline}
-  .solo-blocked-actions .create-switch{padding:10px 14px}
+  .solo-header-copy p,.solo-status{display:none}
   .up-stage-col{padding:18px 14px 24px}
   .up-form{padding:20px 14px 24px}
   .up-form-head{display:grid}

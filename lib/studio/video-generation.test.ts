@@ -378,7 +378,7 @@ describe('Studio video upstream pricing', () => {
         credits: 174,
         upstreamUsdMicros: 1_155_600,
         markupBps: 15_000,
-        pricingVersion: '2026-08-20.v1',
+        pricingVersion: '2026-08-25.v2',
       },
     );
   });

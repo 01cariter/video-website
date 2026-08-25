@@ -7,8 +7,10 @@ import { useRouter } from 'next/navigation';
 import { AnimatePresence } from 'motion/react';
 import type { AppUser, Comment, SocialToggle, Video } from '@/lib/types';
 import AuthModal from '@/app/components/AuthModal';
+import ActionNotice from '@/app/components/feed/ActionNotice';
 import PostDetail from '@/app/components/feed/PostDetail';
 import PostDetailSkeleton from '@/app/components/feed/PostDetailSkeleton';
+import { requestSocialAction } from '@/app/components/feed/social-action';
 import { POST_DELETED_EVENT } from '@/app/components/shell/compose-events';
 
 interface VideoPageClientProps {
@@ -42,6 +44,7 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
   const [posting, setPosting] = useState(false);
   const [shared, setShared] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
+  const [actionError, setActionError] = useState('');
   const pending = useRef(new Set<string>());
   const viewed = useRef(false);
 
@@ -102,19 +105,6 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
       .catch(() => {});
   }, [video]);
 
-  async function act<T>(url: string, body?: object): Promise<T | null> {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (response.status === 401) {
-      needAuth();
-      return null;
-    }
-    return response.ok ? (response.json() as Promise<T>) : null;
-  }
-
   async function like() {
     if (!video) return;
     if (!user) return needAuth();
@@ -127,9 +117,16 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
       liked: optimistic,
       likes_count: Math.max(0, video.likes_count + (optimistic ? 1 : -1)),
     });
+    setActionError('');
     try {
-      const result = await act<SocialToggle>(`/api/videos/${video.id}/like`);
-      if (!result) throw new Error('Like failed.');
+      const result = await requestSocialAction<SocialToggle>(
+        `/api/videos/${video.id}/like`,
+        { onUnauthorized: needAuth },
+      );
+      if (!result) {
+        setVideo(previous);
+        return;
+      }
       setVideo((current) =>
         current
           ? {
@@ -141,6 +138,7 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
       );
     } catch {
       setVideo(previous);
+      setActionError('Could not update this like. Try again.');
     } finally {
       pending.current.delete('like');
     }
@@ -158,9 +156,16 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
       saved: optimistic,
       saves_count: Math.max(0, video.saves_count + (optimistic ? 1 : -1)),
     });
+    setActionError('');
     try {
-      const result = await act<SocialToggle>(`/api/videos/${video.id}/save`);
-      if (!result) throw new Error('Save failed.');
+      const result = await requestSocialAction<SocialToggle>(
+        `/api/videos/${video.id}/save`,
+        { onUnauthorized: needAuth },
+      );
+      if (!result) {
+        setVideo(previous);
+        return;
+      }
       setVideo((current) =>
         current
           ? {
@@ -172,6 +177,7 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
       );
     } catch {
       setVideo(previous);
+      setActionError('Could not update this bookmark. Try again.');
     } finally {
       pending.current.delete('save');
     }
@@ -189,11 +195,16 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
       following: optimistic,
       author_followers: Math.max(0, video.author_followers + (optimistic ? 1 : -1)),
     });
+    setActionError('');
     try {
-      const result = await act<SocialToggle>(
+      const result = await requestSocialAction<SocialToggle>(
         `/api/authors/${encodeURIComponent(video.author_id)}/follow`,
+        { onUnauthorized: needAuth },
       );
-      if (!result) throw new Error('Follow failed.');
+      if (!result) {
+        setVideo(previous);
+        return;
+      }
       setVideo((current) =>
         current
           ? {
@@ -205,6 +216,7 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
       );
     } catch {
       setVideo(previous);
+      setActionError('Could not update this follow. Try again.');
     } finally {
       pending.current.delete('follow');
     }
@@ -237,8 +249,12 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
     const body = draft.trim();
     if (!body || posting) return;
     setPosting(true);
+    setActionError('');
     try {
-      const result = await act<CommentResponse>(`/api/videos/${video.id}/comments`, { body });
+      const result = await requestSocialAction<CommentResponse>(
+        `/api/videos/${video.id}/comments`,
+        { body: { body }, onUnauthorized: needAuth },
+      );
       if (result) {
         setComments((items) => [result.comment, ...items]);
         setVideo((current) =>
@@ -246,6 +262,8 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
         );
         setDraft('');
       }
+    } catch {
+      setActionError('Could not post this comment. Try again.');
     } finally {
       setPosting(false);
     }
@@ -331,6 +349,11 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
         onComment={postComment}
         onRetryComments={() => void retryComments()}
         onNeedAuth={needAuth}
+      />
+
+      <ActionNotice
+        message={actionError}
+        onDismiss={() => setActionError('')}
       />
 
       <AnimatePresence>

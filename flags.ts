@@ -5,6 +5,7 @@ import { flag } from 'flags/next';
 import {
   DEFAULT_STUDIO_AGENT_MODEL_ID,
   DEFAULT_STUDIO_RUNTIME_CONFIG,
+  FAIL_CLOSED_STUDIO_MODEL_POLICY,
   STUDIO_AGENT_MODEL_IDS,
   normalizeStudioRuntimeConfig,
   type StudioAgentModelId,
@@ -40,21 +41,7 @@ export const studioModelPolicy = flag<StudioModelPolicyFlag>({
   adapter: vercelAdapter,
   defaultValue: DEFAULT_STUDIO_RUNTIME_CONFIG.modelPolicy,
   description:
-    'Per-model enabled, markupBps, and minimumCredits overrides. Model contracts and upstream prices remain versioned in code.',
-});
-
-/** @deprecated AI Gateway account credits apply to every model. Kept only so
- * older Studio pages can roll forward without a flag-key migration. */
-export const freeCreditModelsOnly = flag({
-  key: 'free-credit-models-only',
-  adapter: vercelAdapter,
-  defaultValue: false,
-  description:
-    'Legacy compatibility flag. AI Gateway free account credits do not restrict the model catalog.',
-  options: [
-    { value: false, label: 'All Gateway models' },
-    { value: true, label: 'Legacy on (no model filtering)' },
-  ],
+    'Per-model enabled, upstreamRateBps, markupBps, minimumCredits, creditMode, and fixedCredits. Rate and fixed floors cannot undercut the official sustainable baseline.',
 });
 
 async function safeFlagValue<T>(read: () => Promise<T>, fallback: T) {
@@ -66,12 +53,13 @@ async function safeFlagValue<T>(read: () => Promise<T>, fallback: T) {
 }
 
 export async function getStudioRuntimeConfig(): Promise<StudioRuntimeConfig> {
-  const [agentModelId, modelPolicy, legacyFreeCreditModelsOnly] =
-    await Promise.all([
-      safeFlagValue(() => studioAgentModel(), DEFAULT_STUDIO_AGENT_MODEL_ID),
-      safeFlagValue(() => studioModelPolicy(), {}),
-      safeFlagValue(() => freeCreditModelsOnly(), false),
-    ]);
+  const [agentModelId, modelPolicy] = await Promise.all([
+    safeFlagValue(() => studioAgentModel(), DEFAULT_STUDIO_AGENT_MODEL_ID),
+    safeFlagValue(
+      () => studioModelPolicy(),
+      FAIL_CLOSED_STUDIO_MODEL_POLICY,
+    ),
+  ]);
 
   return normalizeStudioRuntimeConfig({
     agentModelId:
@@ -79,6 +67,5 @@ export async function getStudioRuntimeConfig(): Promise<StudioRuntimeConfig> {
         ? agentModelId
         : DEFAULT_STUDIO_AGENT_MODEL_ID,
     modelPolicy,
-    legacyFreeCreditModelsOnly,
   });
 }

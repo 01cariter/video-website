@@ -29,7 +29,7 @@ export type StudioBillableModelId =
 
 export const DEFAULT_STUDIO_AGENT_MODEL_ID: StudioAgentModelId =
   'deepseek/deepseek-v4-flash';
-export const STUDIO_PRICING_VERSION = '2026-08-20.v1';
+export const STUDIO_PRICING_VERSION = '2026-08-25.v2';
 export const DEFAULT_STUDIO_MARKUP_BPS = 15_000;
 export const MIN_STUDIO_MARKUP_BPS = 12_500;
 export const USD_MICROS_PER_CREDIT = 10_000;
@@ -41,6 +41,8 @@ const STUDIO_AGENT_FIXED_INPUT_TOKEN_RESERVE = 256_000;
 const MAX_STUDIO_AGENT_REQUEST_BYTES = 64_000;
 
 const MAX_STUDIO_MARKUP_BPS = 1_000_000;
+const MIN_UPSTREAM_RATE_BPS = 10_000;
+const MAX_UPSTREAM_RATE_BPS = 1_000_000;
 const MAX_MINIMUM_CREDITS = 1_000_000;
 
 export const STUDIO_BILLABLE_MODEL_IDS = [
@@ -53,12 +55,18 @@ export interface StudioModelPolicyOverride {
   enabled?: boolean;
   markupBps?: number;
   minimumCredits?: number;
+  upstreamRateBps?: number;
+  creditMode?: 'cost-plus' | 'fixed-floor';
+  fixedCredits?: number;
 }
 
 export interface StudioResolvedModelPolicy {
   enabled: boolean;
   markupBps: number;
   minimumCredits: number;
+  upstreamRateBps: number;
+  creditMode: 'cost-plus' | 'fixed-floor';
+  fixedCredits: number;
 }
 
 export type StudioModelPolicy = Record<
@@ -66,15 +74,12 @@ export type StudioModelPolicy = Record<
   StudioResolvedModelPolicy
 >;
 
-/** Serializable server-to-client configuration. Official model contracts and
- * upstream prices stay in code; the JSON flag only supplies policy overrides. */
+/** Serializable server-to-client configuration. Provider parameter contracts
+ * stay versioned in code; the JSON flag controls availability and billing. */
 export interface StudioRuntimeConfig {
   agentModelId: StudioAgentModelId;
   modelPolicy: StudioModelPolicy;
   pricingVersion: typeof STUDIO_PRICING_VERSION;
-  /** Kept while older pages still pass the former boolean flag. Gateway's
-   * account credit is not a model capability, so this does not filter models. */
-  legacyFreeCreditModelsOnly: boolean;
 }
 
 export interface StudioPriceQuote {
@@ -108,7 +113,9 @@ const LANGUAGE_TOKEN_RATES_USD_MICROS_PER_MILLION: Record<
     longContext?: { threshold: number; input: number; output: number };
   }
 > = {
-  'deepseek/deepseek-v4-flash': { input: 130_000, output: 260_000 },
+  // Every rate below matches the pinned Gateway provider. Do not change one
+  // without changing STUDIO_AGENT_GATEWAY_PROVIDER_BY_MODEL and the version.
+  'deepseek/deepseek-v4-flash': { input: 90_000, output: 180_000 },
   'openai/gpt-5.6-luna': {
     input: 200_000,
     output: 1_200_000,
@@ -124,12 +131,12 @@ const LANGUAGE_TOKEN_RATES_USD_MICROS_PER_MILLION: Record<
     },
   },
   'openai/gpt-5.6-sol': {
-    input: 2_500_000,
-    output: 15_000_000,
+    input: 2_000_000,
+    output: 10_000_000,
     longContext: {
       threshold: 272_000,
-      input: 5_000_000,
-      output: 22_500_000,
+      input: 4_000_000,
+      output: 15_000_000,
     },
   },
   'anthropic/claude-sonnet-5': { input: 2_000_000, output: 10_000_000 },
@@ -142,6 +149,18 @@ const LANGUAGE_TOKEN_RATES_USD_MICROS_PER_MILLION: Record<
       output: 18_000_000,
     },
   },
+};
+
+export const STUDIO_AGENT_GATEWAY_PROVIDER_BY_MODEL: Record<
+  StudioAgentModelId,
+  string
+> = {
+  'deepseek/deepseek-v4-flash': 'deepinfra',
+  'openai/gpt-5.6-luna': 'openai',
+  'openai/gpt-5.6-terra': 'openai',
+  'openai/gpt-5.6-sol': 'openai',
+  'anthropic/claude-sonnet-5': 'anthropic',
+  'google/gemini-3.1-pro-preview': 'google',
 };
 
 export class StudioModelDisabledError extends Error {
@@ -211,6 +230,20 @@ function resolvedPolicy(value: unknown): StudioResolvedModelPolicy {
       1,
       MAX_MINIMUM_CREDITS,
     ),
+    upstreamRateBps: safeInteger(
+      override.upstreamRateBps,
+      MIN_UPSTREAM_RATE_BPS,
+      MIN_UPSTREAM_RATE_BPS,
+      MAX_UPSTREAM_RATE_BPS,
+    ),
+    creditMode:
+      override.creditMode === 'fixed-floor' ? 'fixed-floor' : 'cost-plus',
+    fixedCredits: safeInteger(
+      override.fixedCredits,
+      1,
+      1,
+      MAX_MINIMUM_CREDITS,
+    ),
   };
 }
 
@@ -224,6 +257,10 @@ function normalizePolicy(raw: unknown): StudioModelPolicy {
   ) as StudioModelPolicy;
 }
 
+export const FAIL_CLOSED_STUDIO_MODEL_POLICY = Object.fromEntries(
+  STUDIO_BILLABLE_MODEL_IDS.map((modelId) => [modelId, { enabled: false }]),
+) as Record<StudioBillableModelId, StudioModelPolicyOverride>;
+
 function firstEnabledAgentModel(modelPolicy: StudioModelPolicy) {
   if (modelPolicy[DEFAULT_STUDIO_AGENT_MODEL_ID].enabled) {
     return DEFAULT_STUDIO_AGENT_MODEL_ID;
@@ -234,20 +271,11 @@ function firstEnabledAgentModel(modelPolicy: StudioModelPolicy) {
   );
 }
 
-/** Accepts the new runtime object, a raw JSON policy flag, or the former
- * boolean flag. Unknown ids and malformed values never escape this boundary. */
+/** Accepts a runtime object or raw JSON policy flag. Unknown ids and malformed
+ * values never escape this boundary. */
 export function normalizeStudioRuntimeConfig(
   value?: unknown,
 ): StudioRuntimeConfig {
-  const legacyFreeCreditModelsOnly =
-    typeof value === 'boolean'
-      ? value
-      : isRecord(value) && typeof value.freeCreditModelsOnly === 'boolean'
-        ? value.freeCreditModelsOnly
-        : isRecord(value) &&
-            typeof value.legacyFreeCreditModelsOnly === 'boolean'
-          ? value.legacyFreeCreditModelsOnly
-          : false;
   const record = parseJsonRecord(value);
   const rawPolicy = record?.modelPolicy ?? record?.policy ?? record ?? {};
   const modelPolicy = normalizePolicy(rawPolicy);
@@ -262,7 +290,6 @@ export function normalizeStudioRuntimeConfig(
     agentModelId,
     modelPolicy,
     pricingVersion: STUDIO_PRICING_VERSION,
-    legacyFreeCreditModelsOnly,
   };
 }
 
@@ -298,16 +325,29 @@ export function priceStudioUsage(input: {
   const policy = runtime.modelPolicy[input.modelId];
   if (!policy?.enabled) throw new StudioModelDisabledError(input.modelId);
 
-  const upstreamUsdMicros = safeInteger(
+  const rawUpstreamUsdMicros = safeInteger(
     input.upstreamUsdMicros,
     0,
     0,
-    Number.MAX_SAFE_INTEGER / MAX_STUDIO_MARKUP_BPS,
+    Math.floor(
+      (Number.MAX_SAFE_INTEGER * 10_000) /
+        (MAX_STUDIO_MARKUP_BPS * MAX_UPSTREAM_RATE_BPS),
+    ),
   );
+  const upstreamUsdMicros = Math.ceil(
+    (rawUpstreamUsdMicros * policy.upstreamRateBps) / 10_000,
+  );
+  const appliedMarkupBps =
+    policy.creditMode === 'fixed-floor'
+      ? MIN_STUDIO_MARKUP_BPS
+      : policy.markupBps;
   const credits = Math.max(
     policy.minimumCredits,
+    policy.creditMode === 'fixed-floor'
+      ? policy.fixedCredits
+      : 0,
     Math.ceil(
-      (upstreamUsdMicros * policy.markupBps) /
+      (upstreamUsdMicros * appliedMarkupBps) /
         (10_000 * USD_MICROS_PER_CREDIT),
     ),
   );
@@ -315,7 +355,7 @@ export function priceStudioUsage(input: {
   return {
     credits,
     upstreamUsdMicros,
-    markupBps: policy.markupBps,
+    markupBps: appliedMarkupBps,
     pricingVersion: runtime.pricingVersion,
   };
 }

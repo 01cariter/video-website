@@ -12,6 +12,7 @@ import {
   expectedStudioCreditsStatus,
   isStudioModelEnabled,
   priceStudioUsage,
+  STUDIO_AGENT_GATEWAY_PROVIDER_BY_MODEL,
 } from '@/lib/studio/pricing';
 import { getAuthUser } from '@/lib/supabase/server';
 import { MAX_POST_BODY_LENGTH } from '@/lib/types';
@@ -26,18 +27,6 @@ import {
 } from './contract';
 
 export const maxDuration = 45;
-
-// Pin AI Fill to the provider whose current Gateway endpoint price is covered
-// by the versioned quote. Cross-provider fallback can cost materially more and
-// would break the user-approved credit ceiling.
-const COMPOSE_ASSIST_PROVIDER_BY_MODEL = {
-  'deepseek/deepseek-v4-flash': 'deepinfra',
-  'openai/gpt-5.6-luna': 'openai',
-  'openai/gpt-5.6-terra': 'openai',
-  'openai/gpt-5.6-sol': 'openai',
-  'anthropic/claude-sonnet-5': 'anthropic',
-  'google/gemini-3.1-pro-preview': 'google',
-} as const;
 
 export async function POST(request: Request) {
   const user = await getAuthUser();
@@ -159,7 +148,7 @@ export async function POST(request: Request) {
       abortSignal: request.signal,
       providerOptions: {
         gateway: {
-          only: [COMPOSE_ASSIST_PROVIDER_BY_MODEL[modelId]],
+          only: [STUDIO_AGENT_GATEWAY_PROVIDER_BY_MODEL[modelId]],
           user: user.id,
           tags: ['feature:compose-ai-fill'],
         },

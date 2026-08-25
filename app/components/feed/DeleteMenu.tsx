@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { DropdownMenu } from 'radix-ui';
 import { MoreHorizontal, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

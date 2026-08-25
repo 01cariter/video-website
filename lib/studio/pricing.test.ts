@@ -3,6 +3,8 @@ import test from 'node:test';
 import {
   DEFAULT_STUDIO_AGENT_MODEL_ID,
   MIN_STUDIO_MARKUP_BPS,
+  FAIL_CLOSED_STUDIO_MODEL_POLICY,
+  STUDIO_AGENT_GATEWAY_PROVIDER_BY_MODEL,
   STUDIO_PRICING_VERSION,
   estimateStudioAgentInputTokenReserve,
   estimateStudioCredits,
@@ -34,28 +36,51 @@ test('normalizes malformed policy values and enforces the markup floor', () => {
     enabled: false,
     markupBps: MIN_STUDIO_MARKUP_BPS,
     minimumCredits: 1,
+    upstreamRateBps: 10_000,
+    creditMode: 'cost-plus',
+    fixedCredits: 1,
   });
   assert.equal(runtime.pricingVersion, STUDIO_PRICING_VERSION);
   assert.equal('unknown/model' in runtime.modelPolicy, false);
 });
 
-test('accepts JSON policy flags and keeps the old boolean input harmless', () => {
+test('accepts JSON policy flags with a safe configurable credit formula', () => {
   const json = JSON.stringify({
-    'openai/gpt-5.6-sol': { markupBps: 17_500, minimumCredits: 9 },
+    'openai/gpt-5.6-sol': {
+      markupBps: 17_500,
+      minimumCredits: 9,
+      upstreamRateBps: 12_500,
+      creditMode: 'fixed-floor',
+      fixedCredits: 40,
+    },
   });
   const runtime = normalizeStudioRuntimeConfig(json);
   assert.equal(runtime.modelPolicy['openai/gpt-5.6-sol'].markupBps, 17_500);
   assert.equal(runtime.modelPolicy['openai/gpt-5.6-sol'].minimumCredits, 9);
+  assert.equal(runtime.modelPolicy['openai/gpt-5.6-sol'].upstreamRateBps, 12_500);
+  assert.equal(runtime.modelPolicy['openai/gpt-5.6-sol'].creditMode, 'fixed-floor');
+  assert.equal(runtime.modelPolicy['openai/gpt-5.6-sol'].fixedCredits, 40);
+});
+
+test('fails closed when the model-policy flag cannot be read', () => {
+  const runtime = normalizeStudioRuntimeConfig({
+    modelPolicy: FAIL_CLOSED_STUDIO_MODEL_POLICY,
+  });
   assert.equal(
-    normalizeStudioRuntimeConfig(true).legacyFreeCreditModelsOnly,
+    Object.values(runtime.modelPolicy).every((policy) => !policy.enabled),
     true,
   );
-  assert.equal(
-    normalizeStudioRuntimeConfig(true).modelPolicy[
-      'deepseek/deepseek-v4-flash'
-    ].enabled,
-    true,
-  );
+});
+
+test('pins every Agent model to the provider covered by its price table', () => {
+  assert.deepEqual(STUDIO_AGENT_GATEWAY_PROVIDER_BY_MODEL, {
+    'deepseek/deepseek-v4-flash': 'deepinfra',
+    'openai/gpt-5.6-luna': 'openai',
+    'openai/gpt-5.6-terra': 'openai',
+    'openai/gpt-5.6-sol': 'openai',
+    'anthropic/claude-sonnet-5': 'anthropic',
+    'google/gemini-3.1-pro-preview': 'google',
+  });
 });
 
 test('falls back to DeepSeek when the requested Agent model is invalid or disabled', () => {
@@ -115,6 +140,50 @@ test('rounds only after applying aggregate markup and respects minimum credits',
       runtime,
     }).credits,
     4,
+  );
+});
+
+test('fixed-floor pricing remains above the sustainable cost floor', () => {
+  const runtime = normalizeStudioRuntimeConfig({
+    modelPolicy: {
+      'minimax/minimax-h3': {
+        creditMode: 'fixed-floor',
+        fixedCredits: 7,
+      },
+    },
+  });
+  assert.equal(
+    priceStudioUsage({
+      modelId: 'minimax/minimax-h3',
+      upstreamUsdMicros: 1_000_000,
+      runtime,
+    }).credits,
+    125,
+  );
+});
+
+test('a flag can raise a model rate immediately but cannot undercut its official baseline', () => {
+  const raised = normalizeStudioRuntimeConfig({
+    modelPolicy: {
+      'minimax/minimax-h3': { upstreamRateBps: 20_000 },
+    },
+  });
+  const undercut = normalizeStudioRuntimeConfig({
+    modelPolicy: {
+      'minimax/minimax-h3': { upstreamRateBps: 1 },
+    },
+  });
+  assert.equal(
+    priceStudioUsage({
+      modelId: 'minimax/minimax-h3',
+      upstreamUsdMicros: 100_000,
+      runtime: raised,
+    }).upstreamUsdMicros,
+    200_000,
+  );
+  assert.equal(
+    undercut.modelPolicy['minimax/minimax-h3'].upstreamRateBps,
+    10_000,
   );
 });
 

@@ -28,8 +28,9 @@ export async function createClient(providedCookieStore?: CookieStore) {
   });
 }
 
-// Per-request memo. Prefer getSession (cookie decode) over getUser (Auth HTTP),
-// so every soft navigation is not blocked on a Supabase Auth round-trip.
+// Per-request memo. Authorization must verify the cookie-backed JWT with
+// Supabase Auth; getSession() only decodes local cookie data and is not safe
+// for protecting server-side data or mutations.
 export const getAuthUser = cache(async () => {
   const cookieStore = await cookies();
   const projectRef = new URL(getSupabaseUrl()).hostname.split('.')[0];
@@ -40,16 +41,11 @@ export const getAuthUser = cache(async () => {
   if (!hasSession) return null;
 
   const supabase = await createClient(cookieStore);
-  const { data, error } = await supabase.auth.getSession();
-  if (error) return null;
-  return data.session?.user ?? null;
-});
-
-// Mutations that remove user data must verify the cookie-backed session with
-// Supabase Auth instead of trusting the locally decoded session payload.
-export const getVerifiedAuthUser = cache(async () => {
-  const supabase = await createClient();
   const { data, error } = await supabase.auth.getUser();
   if (error) return null;
   return data.user ?? null;
 });
+
+// Compatibility alias for routes that previously opted into verification.
+// All server authorization now uses the same verified boundary.
+export const getVerifiedAuthUser = getAuthUser;

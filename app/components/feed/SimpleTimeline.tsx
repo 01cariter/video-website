@@ -6,7 +6,9 @@ import type { AppUser, FeedPage, ProfileSummary, SocialToggle, Video } from '@/l
 import { useShellSearch } from '../shell/AppShell';
 import { POST_DELETED_EVENT } from '../shell/compose-events';
 import AuthModal from '../AuthModal';
+import ActionNotice from './ActionNotice';
 import FollowingCreators from './FollowingCreators';
+import { requestSocialAction } from './social-action';
 import TimelineFeed from './TimelineFeed';
 
 export type SimpleTimelineSource = 'following' | 'bookmarks';
@@ -56,11 +58,12 @@ export default function SimpleTimeline({
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(false);
-  const [pending, setPending] = useState<Record<string, boolean>>({});
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
+  const [actionError, setActionError] = useState('');
 
   const requestId = useRef(0);
   const loadingMoreRef = useRef(false);
+  const pending = useRef(new Set<string>());
 
   const needAuth = useCallback(() => setAuthMode('login'), []);
 
@@ -78,28 +81,22 @@ export default function SimpleTimeline({
     return () => window.removeEventListener(POST_DELETED_EVENT, handleDeleted);
   }, []);
 
-  const act = useCallback(async <T,>(url: string): Promise<T | null> => {
-    const response = await fetch(url, { method: 'POST' });
-    if (response.status === 401) {
-      needAuth();
-      return null;
-    }
-    if (!response.ok) return null;
-    return response.json() as Promise<T>;
-  }, [needAuth]);
-
   const like = useCallback(
     async (video: Video) => {
       const key = `like-${video.id}`;
-      if (pending[key]) return;
+      if (pending.current.has(key)) return;
+      pending.current.add(key);
       const optimistic = !video.liked;
       patchVideo(video.id, {
         liked: optimistic,
         likes_count: Math.max(0, video.likes_count + (optimistic ? 1 : -1)),
       });
-      setPending((state) => ({ ...state, [key]: true }));
+      setActionError('');
       try {
-        const data = await act<SocialToggle>(`/api/videos/${video.id}/like`);
+        const data = await requestSocialAction<SocialToggle>(
+          `/api/videos/${video.id}/like`,
+          { onUnauthorized: needAuth },
+        );
         if (data) {
           patchVideo(video.id, { liked: data.liked ?? optimistic, likes_count: data.likes_count ?? video.likes_count });
         } else {
@@ -107,30 +104,29 @@ export default function SimpleTimeline({
         }
       } catch {
         patchVideo(video.id, { liked: video.liked, likes_count: video.likes_count });
+        setActionError('Could not update this like. Try again.');
       } finally {
-        setPending((state) => ({ ...state, [key]: false }));
+        pending.current.delete(key);
       }
     },
-    [act, patchVideo, pending],
+    [needAuth, patchVideo],
   );
 
   const save = useCallback(
     async (video: Video) => {
       const key = `save-${video.id}`;
-      if (pending[key]) return;
+      if (pending.current.has(key)) return;
+      pending.current.add(key);
       const optimistic = !video.saved;
       // Bookmarks is a list of saved posts, so unsaving one here should drop
       // the row entirely rather than leave a "saved: false" post behind.
       const isBookmarksUnsave = source === 'bookmarks' && !optimistic;
-      let removedAt = -1;
+      const removedAt = isBookmarksUnsave
+        ? videos.findIndex((item) => item.id === video.id)
+        : -1;
 
       if (isBookmarksUnsave) {
-        setVideos((items) => {
-          const index = items.findIndex((item) => item.id === video.id);
-          if (index === -1) return items;
-          removedAt = index;
-          return items.filter((item) => item.id !== video.id);
-        });
+        setVideos((items) => items.filter((item) => item.id !== video.id));
       } else {
         patchVideo(video.id, {
           saved: optimistic,
@@ -152,9 +148,12 @@ export default function SimpleTimeline({
         }
       }
 
-      setPending((state) => ({ ...state, [key]: true }));
+      setActionError('');
       try {
-        const data = await act<SocialToggle>(`/api/videos/${video.id}/save`);
+        const data = await requestSocialAction<SocialToggle>(
+          `/api/videos/${video.id}/save`,
+          { onUnauthorized: needAuth },
+        );
         if (data) {
           const savedResult = data.saved ?? optimistic;
           if (isBookmarksUnsave) {
@@ -168,11 +167,12 @@ export default function SimpleTimeline({
         }
       } catch {
         restore();
+        setActionError('Could not update this bookmark. Try again.');
       } finally {
-        setPending((state) => ({ ...state, [key]: false }));
+        pending.current.delete(key);
       }
     },
-    [act, patchVideo, pending, source],
+    [needAuth, patchVideo, source, videos],
   );
 
   async function share(video: Video) {
@@ -311,6 +311,11 @@ export default function SimpleTimeline({
         onShare={(video) => void share(video)}
         onDelete={deletePost}
         onNeedAuth={needAuth}
+      />
+
+      <ActionNotice
+        message={actionError}
+        onDismiss={() => setActionError('')}
       />
 
       <AnimatePresence>
