@@ -158,11 +158,21 @@ export async function attachVideoAssets<T extends Video>(videos: T[]): Promise<T
 
   return videos.map((video) => {
     const fromTable = byVideo.get(video.id);
-    if (fromTable && fromTable.length > 0) {
-      return { ...video, assets: fromTable };
-    }
-    return { ...video, assets: legacyAssets(video) };
+    const assets =
+      fromTable && fromTable.length > 0 ? fromTable : legacyAssets(video);
+    return { ...video, created_at: isoTimestamp(video.created_at), assets };
   });
+}
+
+/**
+ * Postgres hands back `timestamptz` as a Date. Client-fetched rows are laundered
+ * into ISO strings by JSON, but a server-rendered row is not: `<time dateTime>`
+ * then received a Date whose server and client `toString()` disagree, so the
+ * page hydrated with a mismatch and an invalid datetime attribute.
+ */
+function isoTimestamp(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();
 }
 
 function legacyAssets(video: Video): VideoAsset[] {

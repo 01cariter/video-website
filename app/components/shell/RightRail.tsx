@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { Search } from 'lucide-react';
 import type { SuggestedAuthor } from '@/lib/profiles';
 import { avatarStyle, initials, profileHref } from '../media';
+import SearchBox from './SearchBox';
 
 export interface RailTopic {
   id: string;
@@ -12,8 +12,6 @@ export interface RailTopic {
 }
 
 interface RightRailProps {
-  query: string;
-  onQueryChange: (value: string) => void;
   topics: RailTopic[];
   suggestions: SuggestedAuthor[];
   suggestionsLoading?: boolean;
@@ -21,8 +19,6 @@ interface RightRailProps {
 }
 
 export default function RightRail({
-  query,
-  onQueryChange,
   topics,
   suggestions,
   suggestionsLoading = false,
@@ -30,15 +26,7 @@ export default function RightRail({
 }: RightRailProps) {
   return (
     <aside className="x-right">
-      <label className="x-search">
-        <Search aria-hidden="true" />
-        <input
-          type="search"
-          placeholder="Search Snackd"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-        />
-      </label>
+      <SearchBox />
 
       <div className="x-right-scroll">
         <section className="x-widget">

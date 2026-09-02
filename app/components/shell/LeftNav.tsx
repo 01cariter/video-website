@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bookmark, Clapperboard, Coins, Home, LogOut, Moon, Plus, Sun, User, Users } from 'lucide-react';
+import { Bookmark, Clapperboard, Coins, Home, LogOut, Moon, Plus, Search, Sun, User, Users } from 'lucide-react';
 import type { AppUser } from '@/lib/types';
 import { getThemeServerSnapshot, getThemeSnapshot, setTheme, subscribeTheme } from '@/lib/theme';
 import { avatarStyle, initials, profileHref } from '../media';
@@ -19,6 +19,7 @@ interface LeftNavProps {
 
 const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
+  { href: '/search', label: 'Search', icon: Search },
   { href: '/following', label: 'Following', icon: Users },
   { href: '/bookmarks', label: 'Bookmarks', icon: Bookmark },
   { href: '/studio', label: 'CreatorStudio', icon: Clapperboard },

@@ -6,9 +6,9 @@ import { levelFromXp } from './levels';
 import type { Profile, ProfileSummary, Video } from './types';
 import { attachVideoAssets } from './videos';
 
-// The feed projection, reused by every profile listing. `$1` is the viewer id
-// (nullable) and `$2` is the profile the rows are being read for.
-const VIDEO_COLUMNS = `
+// The feed projection, reused by every profile listing and by search. `$1` is
+// the viewer id (nullable); later placeholders belong to the caller's WHERE.
+export const VIDEO_COLUMNS = `
   v.id, v.title, v.description, v.category, v.label, v.size, v.duration, v.created_at,
   v.likes_count, v.saves_count, v.comments_count, v.views_count, v.author_id,
   p.handle AS author_handle,
@@ -30,7 +30,7 @@ const VIDEO_COLUMNS = `
   ) END AS following
 `;
 
-const VIDEO_SOURCE = `
+export const VIDEO_SOURCE = `
   FROM videos v
   JOIN profiles p ON p.user_id = v.author_id
   LEFT JOIN media pm ON pm.id = v.poster_media_id

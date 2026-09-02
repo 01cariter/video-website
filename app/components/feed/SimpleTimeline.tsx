@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
 import type { AppUser, FeedPage, ProfileSummary, SocialToggle, Video } from '@/lib/types';
-import { useShellSearch } from '../shell/AppShell';
 import { POST_DELETED_EVENT } from '../shell/compose-events';
 import AuthModal from '../AuthModal';
 import ActionNotice from './ActionNotice';
@@ -11,7 +10,7 @@ import FollowingCreators from './FollowingCreators';
 import { requestSocialAction } from './social-action';
 import TimelineFeed from './TimelineFeed';
 
-export type SimpleTimelineSource = 'following' | 'bookmarks';
+export type SimpleTimelineSource = 'following' | 'bookmarks' | 'search';
 
 interface SimpleTimelineProps {
   user: AppUser | null;
@@ -19,11 +18,15 @@ interface SimpleTimelineProps {
   initialVideos: Video[];
   initialNextCursor?: string | null;
   initialAuthors?: ProfileSummary[];
+  /** Where the sign-in modal returns to; defaults to the source's own route. */
+  nextPath?: string;
+  emptyLabel?: string;
 }
 
 const NEXT_PATH: Record<SimpleTimelineSource, string> = {
   following: '/following',
   bookmarks: '/bookmarks',
+  search: '/search',
 };
 
 function defaultEmptyMessage(
@@ -31,6 +34,7 @@ function defaultEmptyMessage(
   user: AppUser | null,
   followingCount: number,
 ): string {
+  if (source === 'search') return 'No posts match this search.';
   if (source === 'bookmarks') return 'You have not bookmarked anything yet.';
   return user
     ? followingCount > 0
@@ -51,8 +55,9 @@ export default function SimpleTimeline({
   initialVideos,
   initialNextCursor = null,
   initialAuthors = [],
+  nextPath,
+  emptyLabel,
 }: SimpleTimelineProps) {
-  const { query } = useShellSearch();
   const [videos, setVideos] = useState(initialVideos);
   const [nextCursor, setNextCursor] = useState(source === 'following' ? initialNextCursor : null);
   const [loading, setLoading] = useState(false);
@@ -237,6 +242,10 @@ export default function SimpleTimeline({
     const id = ++requestId.current;
     setError(false);
 
+    // Search results are rendered from the server route, so there is nothing
+    // for this component to re-request.
+    if (source === 'search') return;
+
     if (source === 'bookmarks') {
       setLoading(true);
       try {
@@ -271,21 +280,8 @@ export default function SimpleTimeline({
     }
   }, [fetchBookmarks, fetchFollowingPage, loadMore, source, videos.length]);
 
-  const list = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return videos;
-    return videos.filter(
-      (video) =>
-        (video.title || '').toLowerCase().includes(normalized) ||
-        (video.description || '').toLowerCase().includes(normalized) ||
-        (video.author_handle || '').toLowerCase().includes(normalized) ||
-        video.author_name.toLowerCase().includes(normalized),
-    );
-  }, [query, videos]);
-
-  const emptyMessage = query.trim()
-    ? `No posts match “${query.trim()}”.`
-    : defaultEmptyMessage(source, user, initialAuthors.length);
+  const emptyMessage =
+    emptyLabel ?? defaultEmptyMessage(source, user, initialAuthors.length);
 
   return (
     <div className="t-home">
@@ -297,7 +293,7 @@ export default function SimpleTimeline({
         </header>
       )}
       <TimelineFeed
-        videos={list}
+        videos={videos}
         user={user}
         loading={loading}
         loadingMore={loadingMore}
@@ -322,7 +318,7 @@ export default function SimpleTimeline({
         {authMode && (
           <AuthModal
             mode={authMode}
-            nextPath={NEXT_PATH[source]}
+            nextPath={nextPath ?? NEXT_PATH[source]}
             onClose={() => setAuthMode(null)}
             onModeChange={setAuthMode}
           />

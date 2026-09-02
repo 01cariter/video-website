@@ -12,7 +12,6 @@ import {
   subscribeCustomTabs,
   writeCustomTabs,
 } from '@/lib/feed-tabs';
-import { useShellSearch } from '../shell/AppShell';
 import { POST_DELETED_EVENT, PUBLISHED_EVENT } from '../shell/compose-events';
 import AuthModal from '../AuthModal';
 import ActionNotice from './ActionNotice';
@@ -55,7 +54,6 @@ export default function HomeTimeline(props: HomeTimelineProps) {
 }
 
 function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab }: HomeTimelineInnerProps) {
-  const { query } = useShellSearch();
   const [tab, setTab] = useState<HomeTabId>(initialTab);
   // Custom category tabs are per-browser (localStorage). Reading them via
   // `useSyncExternalStore` keeps the server's tabless render and the
@@ -316,21 +314,8 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
     if (tab === category) void changeTab('foryou');
   }
 
-  const list = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return videos;
-    return videos.filter(
-      (video) =>
-        (video.title || '').toLowerCase().includes(normalized) ||
-        (video.description || '').toLowerCase().includes(normalized) ||
-        (video.author_handle || '').toLowerCase().includes(normalized) ||
-        video.author_name.toLowerCase().includes(normalized),
-    );
-  }, [query, videos]);
-
-  const emptyMessage = query.trim()
-    ? `No posts match “${query.trim()}”.`
-    : tab === 'following'
+  const emptyMessage =
+    tab === 'following'
       ? user
         ? 'Follow creators to see their posts here.'
         : 'Sign in and follow creators to see their posts here.'
@@ -347,7 +332,7 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
       />
 
       <TimelineFeed
-        videos={list}
+        videos={videos}
         user={user}
         loading={loading}
         loadingMore={loadingMore}

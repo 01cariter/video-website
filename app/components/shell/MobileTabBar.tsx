@@ -2,15 +2,18 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bookmark, Home, Plus, User, Users } from 'lucide-react';
+import { Bookmark, Home, Plus, Search, User, Users } from 'lucide-react';
 import { isNavActive } from './nav-active';
 
 interface MobileTabBarProps {
   onCompose: () => void;
 }
 
+// The right rail that carries search on desktop is hidden here, so the tab bar
+// takes its place.
 const LEADING_TABS = [
   { href: '/', label: 'Home', icon: Home },
+  { href: '/search', label: 'Search', icon: Search },
   { href: '/following', label: 'Following', icon: Users },
 ] as const;
 

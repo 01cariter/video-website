@@ -28,6 +28,7 @@ import {
   profileHref,
 } from '@/app/components/media';
 import DeleteMenu from '@/app/components/feed/DeleteMenu';
+import PersonRow from '@/app/components/feed/PersonRow';
 import { useMediaPreview } from '@/app/components/shell/MediaPreviewContext';
 import {
   OPEN_COMPOSE_EVENT,
@@ -322,34 +323,9 @@ export default function ProfileClient({
         {view === 'followers' ? (
           profileFollowers.length > 0 ? (
             <div className="pf-people" role="list">
-              {profileFollowers.map((follower) => {
-                const href = profileHref(follower.handle) || '#';
-                return (
-                  <Link
-                    key={follower.user_id}
-                    className="pf-person"
-                    href={href}
-                    role="listitem"
-                  >
-                    <span
-                      className="pf-person-av"
-                      style={avatarStyle(follower.avatar_color, follower.avatar_url)}
-                    >
-                      {initials(follower.display_name)}
-                    </span>
-                    <span className="pf-person-copy">
-                      <b>{follower.display_name}</b>
-                      <span>{follower.handle || 'Creator'}</span>
-                    </span>
-                    <span className="pf-person-meta">
-                      <b className="tabular-nums">
-                        {fmtLikes(follower.posts_count)}
-                      </b>
-                      {follower.posts_count === 1 ? 'post' : 'posts'}
-                    </span>
-                  </Link>
-                );
-              })}
+              {profileFollowers.map((follower) => (
+                <PersonRow key={follower.user_id} person={follower} />
+              ))}
             </div>
           ) : (
             <ProfileEmpty

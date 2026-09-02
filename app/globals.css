@@ -619,6 +619,26 @@ body:has(.x-app.wide-workspace){
 .x-search svg{width:16px;height:16px;flex:0 0 auto;color:var(--muted);stroke-width:1.7}
 .x-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--ink);font-size:var(--text-md);font-weight:500}
 .x-search input:focus-visible{outline:0}
+.x-search input::-webkit-search-cancel-button{display:none}
+.x-search-clear{display:grid;place-items:center;width:20px;height:20px;flex:0 0 auto;border:0;border-radius:50%;
+  background:color-mix(in srgb,var(--ink) 12%,transparent);color:var(--ink);cursor:pointer;transition:.15s var(--ease-out)}
+.x-search-clear:hover{background:var(--orange-fill);color:var(--on-fill)}
+.x-search-clear svg{width:12px;height:12px;stroke-width:2.4}
+
+/* Search results */
+.sr-head{padding:18px var(--pad-x) 14px;border-bottom:1px solid color-mix(in srgb,var(--line) 82%,transparent)}
+.sr-head h1{font-family:var(--font-display);font-size:var(--text-xl);font-weight:650;letter-spacing:var(--track-display);
+  overflow-wrap:anywhere}
+.sr-head h1 span{color:var(--orange-d)}
+.sr-head p{margin-top:5px;color:var(--muted);font-size:var(--text-sm);font-weight:600}
+/* The right rail carries the only search field on desktop; below its
+   breakpoint the results page has to provide one. */
+.sr-head-search{display:none}
+@media(max-width:1100px){.sr-head-search{display:block;margin-top:12px}}
+.sr-people{padding:4px var(--pad-x) 10px;border-bottom:1px solid color-mix(in srgb,var(--line) 82%,transparent)}
+.sr-people h2,.sr-section-head{margin:14px 0 2px;color:var(--muted);font-size:10.5px;font-weight:760;
+  letter-spacing:.1em;text-transform:uppercase}
+.sr-section-head{padding:0 var(--pad-x);margin:16px 0 -4px}
 .x-widget{padding:13px 14px;border:1px solid color-mix(in srgb,var(--line) 78%,transparent);border-radius:var(--radius-lg);
   background:color-mix(in srgb,var(--panel) 72%,transparent)}
 .x-widget h2{margin-bottom:9px;color:var(--ink);font-size:var(--text-sm);font-weight:700;letter-spacing:var(--track-label)}

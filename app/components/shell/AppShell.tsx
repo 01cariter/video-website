@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { AnimatePresence } from 'motion/react';
@@ -14,20 +14,6 @@ import { MediaPreviewProvider } from './MediaPreviewContext';
 import LeftNav from './LeftNav';
 import RightRail, { type RailTopic } from './RightRail';
 import MobileTabBar from './MobileTabBar';
-
-export interface ShellSearchContextValue {
-  query: string;
-  setQuery: (value: string) => void;
-}
-
-const ShellSearchContext = createContext<ShellSearchContextValue>({
-  query: '',
-  setQuery: () => {},
-});
-
-export function useShellSearch() {
-  return useContext(ShellSearchContext);
-}
 
 export interface AppShellProps {
   user: AppUser | null;
@@ -45,21 +31,11 @@ export default function AppShell({ user, children }: AppShellProps) {
   const supabase = useMemo(() => createClient(), []);
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
-  const [queryByPath, setQueryByPath] = useState<Record<string, string>>({});
   const [suggestionList, setSuggestionList] = useState<SuggestedAuthor[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
 
   const isStudioHome = pathname === '/studio';
   const isWideWorkspace = isStudioHome || pathname === '/credits';
-  const pathKey = pathname || '/';
-  const query = queryByPath[pathKey] ?? '';
-  const setQuery = useCallback(
-    (value: string) => {
-      setQueryByPath((current) => ({ ...current, [pathKey]: value }));
-    },
-    [pathKey],
-  );
-
   const requireAuth = useCallback(() => setAuthMode('login'), []);
 
   const openCompose = useCallback(() => {
@@ -119,11 +95,8 @@ export default function AppShell({ user, children }: AppShellProps) {
     }
   }
 
-  const searchContextValue = useMemo(() => ({ query, setQuery }), [query, setQuery]);
-
   return (
-    <ShellSearchContext.Provider value={searchContextValue}>
-      <MediaPreviewProvider user={user} onNeedAuth={requireAuth}>
+    <MediaPreviewProvider user={user} onNeedAuth={requireAuth}>
         <div className={`x-app${isWideWorkspace ? ' wide-workspace' : ''}${isStudioHome ? ' studio-home' : ''}`}>
           <LeftNav
             user={user}
@@ -138,8 +111,6 @@ export default function AppShell({ user, children }: AppShellProps) {
           </main>
           {!isWideWorkspace && (
             <RightRail
-              query={query}
-              onQueryChange={setQuery}
               topics={TOPICS}
               suggestions={suggestionList}
               suggestionsLoading={suggestionsLoading}
@@ -174,7 +145,6 @@ export default function AppShell({ user, children }: AppShellProps) {
             />
           )}
         </AnimatePresence>
-      </MediaPreviewProvider>
-    </ShellSearchContext.Provider>
+    </MediaPreviewProvider>
   );
 }
