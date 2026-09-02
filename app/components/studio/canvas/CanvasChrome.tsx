@@ -77,7 +77,7 @@ import NodePropertiesPanel from './NodePropertiesPanel';
 import QuickEditComposer from './QuickEditComposer';
 import {
   canvasReferenceOptions,
-  selectionIntersectsViewport,
+  selectionChromePlacement,
 } from './CanvasChrome.logic';
 import { useStudioCanvas } from './studio-context';
 import type { StudioFloatingRect } from './useLeaferStudioRuntime';
@@ -319,7 +319,6 @@ export function NodeOverlays({
   }, [nodes, selectedIds]);
   const multiSelected = selectedNodes.length > 1;
   const selectionKey = selectedIds.join(':');
-  const surfaceRef = useRef<HTMLDivElement>(null);
   const [surfaceSize, setSurfaceSize] = useState({ width: 560, height: 116 });
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [quickEditNodeId, setQuickEditNodeId] = useState<string | null>(null);
@@ -415,69 +414,53 @@ export function NodeOverlays({
     const stage = stageRef.current;
     if (!stage) return;
     const update = () =>
-      setStageSize({ width: stage.clientWidth, height: stage.clientHeight });
+      setStageSize((current) =>
+        current.width === stage.clientWidth &&
+        current.height === stage.clientHeight
+          ? current
+          : { width: stage.clientWidth, height: stage.clientHeight },
+      );
     update();
     const observer = new ResizeObserver(update);
     observer.observe(stage);
     return () => observer.disconnect();
   }, [hasSelectionRect, stageRef]);
 
-  useLayoutEffect(() => {
-    const surface = surfaceRef.current;
-    if (!surface) return;
+  // Measured from a callback ref rather than an effect with a dependency list.
+  // The toolbar unmounts whenever the selection scrolls out of the viewport, so
+  // an effect keyed on the selection could run while no element existed, drop
+  // its observer, and leave the next toolbar positioned from the previous one's
+  // box — which is what put it far away from the node.
+  const measureSurface = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
     const update = () => {
-      const width = surface.offsetWidth;
-      const height = surface.offsetHeight;
-      if (width && height) {
-        setSurfaceSize({ width, height });
-      }
+      const width = node.offsetWidth;
+      const height = node.offsetHeight;
+      if (!width || !height) return;
+      setSurfaceSize((current) =>
+        current.width === width && current.height === height
+          ? current
+          : { width, height },
+      );
     };
     update();
     const observer = new ResizeObserver(update);
-    observer.observe(surface);
+    observer.observe(node);
     return () => observer.disconnect();
-  }, [quickEditOpen, selected?.id, selected?.data.status, selectionKey]);
+  }, []);
 
   const chrome = useMemo(() => {
-    const selectionVisible = selectionIntersectsViewport(selectionRect, {
-      width: stageSize.width,
-      height: stageSize.height,
-      leftInset,
-      rightInset: effectiveRightInset,
-    });
-    if (
-      !selectionRect ||
-      !selectionVisible ||
-      (!selected && !multiSelected) ||
-      !stageSize.width ||
-      !stageSize.height
-    ) {
-      return { left: 0, top: 0, visible: false };
-    }
-    const padding = 10;
-    const minLeft = Math.max(padding, leftInset + padding);
-    const maxLeft = Math.max(
-      minLeft,
-      stageSize.width - effectiveRightInset - surfaceSize.width - padding,
-    );
+    if (!selected && !multiSelected) return { left: 0, top: 0, visible: false };
     const generator =
       selected && selected.type !== 'section' && isGeneratorNode(selected.data);
-    const preferredTop = generator || quickEditOpen
-      ? selectionRect.bottom + 10
-      : selectionRect.top - surfaceSize.height - 10;
-    return {
-      left: clamp(
-        selectionRect.left + selectionRect.width / 2 - surfaceSize.width / 2,
-        minLeft,
-        maxLeft,
-      ),
-      top: clamp(
-        preferredTop,
-        padding,
-        stageSize.height - surfaceSize.height - padding,
-      ),
-      visible: true,
-    };
+    return selectionChromePlacement({
+      rect: selectionRect,
+      stage: stageSize,
+      surface: surfaceSize,
+      leftInset,
+      rightInset: effectiveRightInset,
+      below: Boolean(generator) || quickEditOpen,
+    });
   }, [
     leftInset,
     multiSelected,
@@ -485,10 +468,8 @@ export function NodeOverlays({
     selected,
     quickEditOpen,
     selectionRect,
-    stageSize.height,
-    stageSize.width,
-    surfaceSize.height,
-    surfaceSize.width,
+    stageSize,
+    surfaceSize,
   ]);
 
   return (
@@ -501,7 +482,7 @@ export function NodeOverlays({
             selected.data.status !== 'uploading')) ? (
           <motion.div
             key={multiSelected ? `multi:${selectionKey}` : selected?.id}
-            ref={surfaceRef}
+            ref={measureSurface}
             className="pointer-events-auto absolute top-0 left-0 will-change-transform"
             style={{
               left: chrome.left,

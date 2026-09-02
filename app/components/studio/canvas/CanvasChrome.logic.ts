@@ -31,6 +31,73 @@ export function selectionIntersectsViewport(
   );
 }
 
+function clamp(value: number, min: number, max: number) {
+  if (max < min) return min;
+  return Math.min(max, Math.max(min, value));
+}
+
+export interface StudioChromePlacement {
+  left: number;
+  top: number;
+  visible: boolean;
+}
+
+// Where the floating selection toolbar sits, in stage pixels. `surface` is the
+// toolbar's own measured box: get it wrong and the toolbar lands nowhere near
+// the node, so it is an input rather than a guess baked in here.
+export function selectionChromePlacement({
+  rect,
+  stage,
+  surface,
+  leftInset = 0,
+  rightInset = 0,
+  below = false,
+  padding = 10,
+}: {
+  rect: StudioFloatingRect | null;
+  stage: { width: number; height: number };
+  surface: { width: number; height: number };
+  leftInset?: number;
+  rightInset?: number;
+  below?: boolean;
+  padding?: number;
+}): StudioChromePlacement {
+  const hidden = { left: 0, top: 0, visible: false };
+  if (!rect || stage.width <= 0 || stage.height <= 0) return hidden;
+  if (
+    !selectionIntersectsViewport(rect, {
+      width: stage.width,
+      height: stage.height,
+      leftInset,
+      rightInset,
+    })
+  ) {
+    return hidden;
+  }
+
+  const minLeft = Math.max(padding, leftInset + padding);
+  const maxLeft = Math.max(
+    minLeft,
+    stage.width - rightInset - surface.width - padding,
+  );
+  const preferredTop = below
+    ? rect.bottom + padding
+    : rect.top - surface.height - padding;
+  return {
+    left: clamp(
+      rect.left + rect.width / 2 - surface.width / 2,
+      minLeft,
+      maxLeft,
+    ),
+    top: clamp(
+      preferredTop,
+      padding,
+      Math.max(padding, stage.height - surface.height - padding),
+    ),
+    visible: true,
+  };
+}
+
 export function canvasReferenceOptions(
   nodes: StudioNode[],
   excludedIds: string[] = [],
