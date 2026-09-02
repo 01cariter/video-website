@@ -17,6 +17,8 @@ export const VIDEO_COLUMNS = `
   am.url AS author_avatar,
   p.bio AS author_bio,
   p.followers_count AS author_followers,
+  v.collection_id,
+  c.title AS collection_title,
   pm.url AS poster_url, pm.width AS poster_w, pm.height AS poster_h,
   vm.url AS video_url, vm.mime AS video_mime, vm.width AS video_w, vm.height AS video_h,
   CASE WHEN $1::text IS NULL THEN false ELSE EXISTS (
@@ -36,6 +38,7 @@ export const VIDEO_SOURCE = `
   LEFT JOIN media pm ON pm.id = v.poster_media_id
   LEFT JOIN media vm ON vm.id = v.video_media_id
   LEFT JOIN media am ON am.id = p.avatar_media_id
+  LEFT JOIN collections c ON c.id = v.collection_id
 `;
 
 // Handles are stored with the leading '@'; URLs carry the bare name.

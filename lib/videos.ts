@@ -2,6 +2,7 @@ import 'server-only';
 
 import { cache } from 'react';
 import { revalidateTag, unstable_cache } from 'next/cache';
+import { assertOwnedCollection, createCollection } from './collections';
 import { sql } from './db';
 import type {
   Comment,
@@ -66,7 +67,9 @@ export async function getFeed({ category = null, userId = null }: FeedOptions = 
 const getCachedPublicFeedPage = unstable_cache(
   async (category: VideoCategory | null, cursor: string | null, limit: number) =>
     queryPublicFeedPage({ category, cursor, limit }),
-  ['ranked-video-feed-v4'],
+  // Bumped with the projection: cached pages from before collections landed
+  // have no collection_id, and would serve chip-less posts for a minute.
+  ['ranked-video-feed-v5'],
   { revalidate: 60, tags: ['videos-feed'] },
 );
 
@@ -217,6 +220,8 @@ function rankedVideoSelect() {
     am.url AS author_avatar,
     p.bio AS author_bio,
     p.followers_count AS author_followers,
+    v.collection_id,
+    c.title AS collection_title,
     pm.url AS poster_url, pm.width AS poster_w, pm.height AS poster_h,
     vm.url AS video_url, vm.mime AS video_mime, vm.width AS video_w, vm.height AS video_h,
     false AS liked,
@@ -255,6 +260,7 @@ async function queryPublicFeedPage({
       LEFT JOIN media pm ON pm.id = v.poster_media_id
       LEFT JOIN media vm ON vm.id = v.video_media_id
       LEFT JOIN media am ON am.id = p.avatar_media_id
+      LEFT JOIN collections c ON c.id = v.collection_id
       WHERE ${category}::text IS NULL OR v.category = ${category}::text
     )
     SELECT *
@@ -299,6 +305,7 @@ async function queryFollowingFeedPage({
       LEFT JOIN media pm ON pm.id = v.poster_media_id
       LEFT JOIN media vm ON vm.id = v.video_media_id
       LEFT JOIN media am ON am.id = p.avatar_media_id
+      LEFT JOIN collections c ON c.id = v.collection_id
       WHERE EXISTS (
         SELECT 1 FROM follows f
         WHERE f.author_id = v.author_id AND f.follower_id = ${userId}
@@ -384,6 +391,8 @@ export const getVideoById = cache(async function getVideoById({
       am.url AS author_avatar,
       p.bio AS author_bio,
       p.followers_count AS author_followers,
+      v.collection_id,
+      c.title AS collection_title,
       pm.url AS poster_url, pm.width AS poster_w, pm.height AS poster_h,
       vm.url AS video_url, vm.mime AS video_mime, vm.width AS video_w, vm.height AS video_h,
       CASE WHEN ${userId}::text IS NULL THEN false ELSE EXISTS (
@@ -400,6 +409,7 @@ export const getVideoById = cache(async function getVideoById({
     LEFT JOIN media pm ON pm.id = v.poster_media_id
     LEFT JOIN media vm ON vm.id = v.video_media_id
     LEFT JOIN media am ON am.id = p.avatar_media_id
+    LEFT JOIN collections c ON c.id = v.collection_id
     WHERE v.id = ${id}
   `;
   if (!row) return null;
@@ -419,6 +429,10 @@ export interface CreateVideoInput {
   posterMediaId?: number | null;
   videoMediaId?: number | null;
   duration?: string;
+  /** An existing collection of the author's, or null for a standalone post. */
+  collectionId?: number | null;
+  /** Creates a collection and posts into it in one step. */
+  newCollectionTitle?: string | null;
 }
 
 export async function createVideo({
@@ -431,6 +445,8 @@ export async function createVideo({
   posterMediaId = null,
   videoMediaId = null,
   duration = '',
+  collectionId = null,
+  newCollectionTitle = null,
 }: CreateVideoInput): Promise<Video> {
   const body = description.trim();
   if (!body) {
@@ -474,12 +490,19 @@ export async function createVideo({
     videoMediaId = null;
   }
 
+  const collection = newCollectionTitle?.trim()
+    ? (await createCollection({ userId, title: newCollectionTitle })).id
+    : collectionId
+      ? await assertOwnedCollection(collectionId, userId)
+      : null;
+
   const [row] = await sql<Array<{ id: number }>>`
     INSERT INTO videos
-      (title, description, category, label, author_id, poster_media_id, video_media_id, duration)
+      (title, description, category, label, author_id, poster_media_id, video_media_id,
+       duration, collection_id)
     VALUES (
       ${title?.trim() || null}, ${body}, ${category}, ${label},
-      ${userId}, ${posterMediaId}, ${videoMediaId}, ${duration}
+      ${userId}, ${posterMediaId}, ${videoMediaId}, ${duration}, ${collection}
     )
     RETURNING id
   `;

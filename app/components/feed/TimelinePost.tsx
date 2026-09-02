@@ -9,6 +9,7 @@ import type { AppUser, Video } from '@/lib/types';
 import { postHeadline } from '@/lib/post-text';
 import { avatarStyle, fmtLikes, fmtRelativeTime, initials, profileHref } from '../media';
 import { useMediaPreview } from '../shell/MediaPreviewContext';
+import CollectionChip from './CollectionChip';
 import DeleteMenu from './DeleteMenu';
 import ShareMenu from './ShareMenu';
 import MediaCarousel from './MediaCarousel';
@@ -91,6 +92,8 @@ export default function TimelinePost({
             {fmtRelativeTime(video.created_at)}
           </time>
         </header>
+
+        <CollectionChip video={video} />
 
         <div className="t-text">
           {video.title?.trim() ? <b>{video.title.trim()}</b> : null}

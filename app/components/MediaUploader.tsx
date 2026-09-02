@@ -38,7 +38,12 @@ import type {
   Video,
   VideoCategory,
 } from '@/lib/types';
-import { MAX_POST_ASSETS, MAX_POST_BODY_LENGTH } from '@/lib/types';
+import {
+  MAX_COLLECTION_TITLE_LENGTH,
+  MAX_POST_ASSETS,
+  MAX_POST_BODY_LENGTH,
+} from '@/lib/types';
+import type { CollectionSummary } from '@/lib/types';
 import type { ComposeAssetDraft, ComposeDraft } from './compose/types';
 
 interface MediaUploaderProps {
@@ -129,6 +134,9 @@ export default function MediaUploader({
   );
   const [category, setCategory] = useState<VideoCategory>('study');
   const [label, setLabel] = useState('');
+  const [collections, setCollections] = useState<CollectionSummary[]>([]);
+  const [collectionId, setCollectionId] = useState('');
+  const [newCollectionTitle, setNewCollectionTitle] = useState('');
   const [stage, setStage] = useState<'idle' | 'uploading' | 'publishing'>(
     'idle',
   );
@@ -157,6 +165,17 @@ export default function MediaUploader({
   useEffect(() => {
     selectionsRef.current = selections;
   }, [selections]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch('/api/collections', { signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { collections?: CollectionSummary[] } | null) =>
+        setCollections(data?.collections ?? []),
+      )
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     if (!draftNeedsHydration(initialDraft)) return;
@@ -420,6 +439,10 @@ export default function MediaUploader({
       setError('Write something before posting.');
       return;
     }
+    if (collectionId === 'new' && !newCollectionTitle.trim()) {
+      setError('Name the new collection, or choose an existing one.');
+      return;
+    }
 
     setError('');
     const hasLocalSelections = selections.some(
@@ -595,6 +618,10 @@ export default function MediaUploader({
           mediaIds,
           posterMediaId,
           duration: durationLabel,
+          collectionId:
+            collectionId && collectionId !== 'new' ? Number(collectionId) : null,
+          newCollectionTitle:
+            collectionId === 'new' ? newCollectionTitle.trim() : null,
         }),
       });
       const payload = (await response
@@ -946,6 +973,38 @@ export default function MediaUploader({
                 required
                 disabled={stage !== 'idle' || assistStage === 'generating'}
               />
+            </div>
+
+            <div className="up-fld">
+              <label htmlFor="up-collection">
+                Collection <small>optional</small>
+              </label>
+              <select
+                id="up-collection"
+                className="up-select"
+                value={collectionId}
+                onChange={(event) => setCollectionId(event.target.value)}
+                disabled={stage !== 'idle'}
+              >
+                <option value="">No collection</option>
+                {collections.map((collection) => (
+                  <option key={collection.id} value={String(collection.id)}>
+                    {collection.title} · {collection.posts_count}
+                  </option>
+                ))}
+                <option value="new">＋ New collection…</option>
+              </select>
+              {collectionId === 'new' ? (
+                <input
+                  className="up-collection-name"
+                  value={newCollectionTitle}
+                  onChange={(event) => setNewCollectionTitle(event.target.value)}
+                  placeholder="Name the collection"
+                  maxLength={MAX_COLLECTION_TITLE_LENGTH}
+                  disabled={stage !== 'idle'}
+                  aria-label="New collection name"
+                />
+              ) : null}
             </div>
 
             <div className="up-meta-grid">

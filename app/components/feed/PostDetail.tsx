@@ -7,6 +7,7 @@ import { ArrowLeft, Bookmark, Heart, MessageCircle, Share2 } from 'lucide-react'
 import type { AppUser, Comment, Video } from '@/lib/types';
 import { avatarStyle, fmtDate, fmtLikes, fmtRelativeTime, initials, profileHref } from '../media';
 import { useMediaPreview } from '../shell/MediaPreviewContext';
+import CollectionSwitcher from './CollectionSwitcher';
 import DeleteMenu from './DeleteMenu';
 import ShareMenu from './ShareMenu';
 import MediaCarousel from './MediaCarousel';
@@ -93,6 +94,8 @@ export default function PostDetail({
             onOpen={() => openPreview({ video })}
           />
         )}
+
+        <CollectionSwitcher video={video} />
 
         {video.title?.trim() ? <h2>{video.title.trim()}</h2> : null}
         <p>{video.description || 'No description yet.'}</p>

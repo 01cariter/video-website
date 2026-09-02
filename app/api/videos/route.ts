@@ -22,6 +22,8 @@ interface CreateVideoBody {
   posterMediaId?: unknown;
   videoMediaId?: unknown;
   duration?: unknown;
+  collectionId?: unknown;
+  newCollectionTitle?: unknown;
 }
 
 export async function GET(request: NextRequest) {
@@ -74,6 +76,9 @@ export async function POST(request: NextRequest) {
   }
 
   const mediaIds = parseMediaIds(body.mediaIds);
+  const collectionId = Number.isInteger(Number(body.collectionId))
+    ? Number(body.collectionId)
+    : null;
   const posterMediaId = mediaIdOrNull(body.posterMediaId);
   const videoMediaId = mediaIdOrNull(body.videoMediaId);
 
@@ -88,6 +93,8 @@ export async function POST(request: NextRequest) {
       posterMediaId,
       videoMediaId,
       duration: trimmed(body.duration, MAX_DURATION_LENGTH),
+      collectionId: collectionId && collectionId > 0 ? collectionId : null,
+      newCollectionTitle: trimmed(body.newCollectionTitle, 60) || null,
     });
     return NextResponse.json({ video }, { status: 201 });
   } catch (error) {

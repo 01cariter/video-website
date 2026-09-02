@@ -88,6 +88,22 @@ CREATE INDEX idx_media_kind  ON media (kind);
 -- videos — the short-form feed content. Authored by a real user (profiles).
 -- Imagery/playback reference the self-hosted `media` table.
 -- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- collections — a creator's own series. A post belongs to at most one; episode
+-- order is publication order, so there is no position column to maintain.
+-- ----------------------------------------------------------------------------
+CREATE TABLE collections (
+  id          SERIAL      PRIMARY KEY,
+  owner_id    TEXT        NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
+  title       TEXT        NOT NULL,
+  description TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT collections_title_not_blank CHECK (length(btrim(title)) > 0)
+);
+
+CREATE INDEX idx_collections_owner ON collections (owner_id, created_at DESC);
+
 CREATE TABLE videos (
   id              SERIAL      PRIMARY KEY,
   title           TEXT,                               -- optional short headline
@@ -96,6 +112,7 @@ CREATE TABLE videos (
   label           TEXT,                               -- optional override badge, e.g. SPORTS
   size            TEXT        NOT NULL DEFAULT '',     -- grid layout hint: '', 'big', 'tall'
   author_id       TEXT        NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
+  collection_id   INTEGER     REFERENCES collections(id) ON DELETE SET NULL,
   poster_media_id INTEGER     REFERENCES media(id) ON DELETE SET NULL,  -- cover image (legacy + OG)
   video_media_id  INTEGER     REFERENCES media(id) ON DELETE SET NULL,  -- first video (legacy)
   duration        TEXT        NOT NULL DEFAULT '',     -- display string, e.g. 0:58
@@ -114,6 +131,7 @@ CREATE TABLE videos (
 
 CREATE INDEX idx_videos_category ON videos (category);
 CREATE INDEX idx_videos_author   ON videos (author_id);
+CREATE INDEX idx_videos_collection ON videos (collection_id, created_at, id);
 
 -- Ordered media attached to a post (0–20). Images and videos may mix.
 CREATE TABLE video_assets (

@@ -22,6 +22,7 @@ import {
 import type { AppUser, Comment, Video, VideoAsset } from '@/lib/types';
 import { postHeadline } from '@/lib/post-text';
 import { avatarStyle, bg, fmtDate, fmtLikes, initials, profileHref } from './media';
+import CollectionChip from './feed/CollectionChip';
 import DeleteMenu from './feed/DeleteMenu';
 import ShareMenu from './feed/ShareMenu';
 
@@ -338,6 +339,7 @@ export default function MediaPreview({
               </section>
 
               <section className="pv-details">
+                <CollectionChip video={video} />
                 <div className="pv-detail-meta">
                   <span>{video.label || (video.category === 'study' ? 'Study' : 'Entertainment')}</span>
                   <span className="tabular-nums">{video.duration}</span>

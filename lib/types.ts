@@ -48,6 +48,8 @@ export interface Video {
   author_color: string;
   author_avatar: string | null;
   author_bio: string | null;
+  collection_id: number | null;
+  collection_title: string | null;
   author_followers: number;
   poster_url: string | null;
   poster_w: number | null;
@@ -63,6 +65,36 @@ export interface Video {
   following: boolean;
 }
 
+export interface Collection {
+  id: number;
+  title: string;
+  description: string | null;
+  owner_id: string;
+  owner_handle: string | null;
+  owner_name: string;
+  owner_color: string;
+  owner_avatar: string | null;
+  posts_count: number;
+  created_at: string;
+}
+
+/** A collection reduced to what an episode switcher draws. */
+export interface CollectionEpisode {
+  id: number;
+  title: string;
+  poster_url: string | null;
+  duration: string;
+  created_at: string;
+}
+
+export interface CollectionSummary {
+  id: number;
+  title: string;
+  owner_id: string;
+  posts_count: number;
+}
+
+export const MAX_COLLECTION_TITLE_LENGTH = 60;
 export const MAX_POST_ASSETS = 20;
 export const MAX_POST_BODY_LENGTH = 4000;
 
