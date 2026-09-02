@@ -1,7 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, DragEvent, FormEvent } from 'react';
+import type {
+  ChangeEvent,
+  ClipboardEvent,
+  DragEvent,
+  FormEvent,
+  KeyboardEvent,
+} from 'react';
 import {
   Check,
   ChevronLeft,
@@ -10,7 +16,9 @@ import {
   Film,
   Image as ImageIcon,
   LoaderCircle,
+  Plus,
   Sparkles,
+  TriangleAlert,
   X,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -112,6 +120,7 @@ export default function MediaUploader({
     draftNeedsHydration(initialDraft),
   );
   const [dragging, setDragging] = useState(false);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const [title, setTitle] = useState(
     () => initialDraft?.title?.slice(0, 120) ?? '',
   );
@@ -326,6 +335,7 @@ export default function MediaUploader({
           setSelections((current) =>
             [...current, ...accepted].slice(0, MAX_POST_ASSETS),
           );
+          setActiveKey(accepted[0].key);
         }
       } finally {
         setReading(false);
@@ -609,61 +619,152 @@ export default function MediaUploader({
     }
   }
 
+  const active =
+    selections.find((item) => item.key === activeKey) ?? selections[0] ?? null;
+  const activeIndex = active
+    ? selections.findIndex((item) => item.key === active.key)
+    : -1;
+
+  function browse() {
+    if (!busy) inputRef.current?.click();
+  }
+
+  function onPaste(event: ClipboardEvent<HTMLElement>) {
+    const files = Array.from(event.clipboardData?.files ?? []);
+    if (files.length === 0) return;
+    event.preventDefault();
+    void acceptFiles(files);
+  }
+
+  // Cmd/Ctrl+Enter publishes from anywhere in the form, including the body.
+  function onFormKeyDown(event: KeyboardEvent<HTMLFormElement>) {
+    if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return;
+    event.preventDefault();
+    event.currentTarget.requestSubmit();
+  }
+
   return (
-    <section className="up-shell">
-      <form className="up-grid" onSubmit={publish}>
+    <section
+      className={`up-shell${dragging ? ' dragging' : ''}`}
+      onDragOver={(event) => {
+        event.preventDefault();
+        if (!busy) setDragging(true);
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          return;
+        }
+        setDragging(false);
+      }}
+      onDrop={onDrop}
+      onPaste={onPaste}
+    >
+      <form className="up-grid" onSubmit={publish} onKeyDown={onFormKeyDown}>
         <div className="up-stage-col">
-          <div className="up-section-heading">
-            <div>
-              <span className="up-eyebrow">Media</span>
-              <h2>{selections.length ? 'Selected work' : 'Add media'}</h2>
-            </div>
-            <span className="up-count">
-              {selections.length}/{MAX_POST_ASSETS}
-            </span>
-          </div>
-          {selections.length > 0 ? (
-            <div className="up-multi">
-              <ul className="up-thumbs">
+          {active ? (
+            <>
+              <figure className="up-hero">
+                {active.probe.kind === 'video' ? (
+                  <video
+                    key={active.key}
+                    className="up-hero-media"
+                    src={active.objectUrl}
+                    poster={
+                      active.source === 'remote'
+                        ? active.asset.posterUrl || undefined
+                        : undefined
+                    }
+                    controls
+                    muted
+                    playsInline
+                    preload="metadata"
+                  />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={active.key}
+                    className="up-hero-media"
+                    src={active.objectUrl}
+                    alt=""
+                  />
+                )}
+                {activeIndex === 0 && (
+                  <span className="up-hero-cover">Cover</span>
+                )}
+                <figcaption className="up-hero-meta">
+                  <span>
+                    {active.probe.kind === 'video' ? (
+                      <Film aria-hidden="true" />
+                    ) : (
+                      <ImageIcon aria-hidden="true" />
+                    )}
+                    {active.probe.kind === 'video' ? 'Video' : 'Image'}
+                  </span>
+                  {active.probe.width && active.probe.height ? (
+                    <span className="tabular-nums">
+                      {active.probe.width}×{active.probe.height}
+                    </span>
+                  ) : null}
+                  {active.probe.duration ? (
+                    <span className="tabular-nums">
+                      {formatDuration(active.probe.duration)}
+                    </span>
+                  ) : null}
+                  <span className="up-hero-pos tabular-nums">
+                    {activeIndex + 1}/{selections.length}
+                  </span>
+                </figcaption>
+              </figure>
+
+              <div className="up-rail" role="list" aria-label="Attached media">
                 {selections.map((item, index) => {
                   const isVideo = item.probe.kind === 'video';
                   return (
-                    <li key={item.key} className="up-thumb">
-                      {isVideo ? (
-                        <video
-                          className="up-thumb-media"
-                          src={item.objectUrl}
-                          poster={
-                            item.source === 'remote'
-                              ? item.asset.posterUrl || undefined
-                              : undefined
-                          }
-                          muted
-                          playsInline
-                          preload="metadata"
-                        />
-                      ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          className="up-thumb-media"
-                          src={item.objectUrl}
-                          alt=""
-                        />
-                      )}
-                      <span className="up-thumb-badge">
+                    <div
+                      key={item.key}
+                      role="listitem"
+                      className={`up-chip${item.key === active.key ? ' on' : ''}`}
+                    >
+                      <button
+                        type="button"
+                        className="up-chip-open"
+                        onClick={() => setActiveKey(item.key)}
+                        aria-label={`Preview item ${index + 1}`}
+                        aria-current={item.key === active.key}
+                      >
                         {isVideo ? (
-                          <Film aria-hidden="true" />
+                          <video
+                            className="up-chip-media"
+                            src={item.objectUrl}
+                            poster={
+                              item.source === 'remote'
+                                ? item.asset.posterUrl || undefined
+                                : undefined
+                            }
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
                         ) : (
-                          <ImageIcon aria-hidden="true" />
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            className="up-chip-media"
+                            src={item.objectUrl}
+                            alt=""
+                          />
                         )}
-                        {index + 1}
-                      </span>
-                      <div className="up-thumb-actions">
+                        <span className="up-chip-index tabular-nums">
+                          {isVideo ? <Film aria-hidden="true" /> : null}
+                          {index + 1}
+                        </span>
+                      </button>
+                      <div className="up-chip-tools">
                         <button
                           type="button"
                           onClick={() => move(item.key, -1)}
                           disabled={busy || index === 0}
                           aria-label="Move earlier"
+                          title="Move earlier"
                         >
                           <ChevronLeft aria-hidden="true" />
                         </button>
@@ -672,70 +773,68 @@ export default function MediaUploader({
                           onClick={() => move(item.key, 1)}
                           disabled={busy || index === selections.length - 1}
                           aria-label="Move later"
+                          title="Move later"
                         >
                           <ChevronRight aria-hidden="true" />
                         </button>
                         <button
                           type="button"
+                          className="up-chip-remove"
                           onClick={() => removeAt(item.key)}
                           disabled={busy}
                           aria-label="Remove"
+                          title="Remove"
                         >
                           <X aria-hidden="true" />
                         </button>
                       </div>
-                    </li>
+                    </div>
                   );
                 })}
-              </ul>
+                {selections.length < MAX_POST_ASSETS && (
+                  <button
+                    type="button"
+                    className="up-chip-add"
+                    onClick={browse}
+                    disabled={busy}
+                    title="Add more media"
+                  >
+                    <Plus aria-hidden="true" />
+                    <span className="tabular-nums">
+                      {selections.length}/{MAX_POST_ASSETS}
+                    </span>
+                  </button>
+                )}
+              </div>
+
               {reading && (
-                <div className="up-loading-note" role="status">
-                  <LoaderCircle aria-hidden="true" />
+                <p className="up-note" role="status">
+                  <LoaderCircle className="up-spin" aria-hidden="true" />
                   Preparing selected canvas media…
-                </div>
+                </p>
               )}
-              {selections.length < MAX_POST_ASSETS && (
-                <button
-                  type="button"
-                  className="up-add-more"
-                  onClick={() => inputRef.current?.click()}
-                  disabled={busy}
-                >
-                  Add more ({selections.length}/{MAX_POST_ASSETS})
-                </button>
-              )}
-            </div>
+            </>
           ) : (
-            <div
-              className={`up-drop ${dragging ? 'on' : ''}`}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={onDrop}
+            <button
+              type="button"
+              className="up-drop"
+              onClick={browse}
+              disabled={busy}
             >
-              {reading ? (
-                <LoaderCircle className="up-drop-spinner" aria-hidden="true" />
-              ) : (
-                <CloudUpload aria-hidden="true" />
-              )}
-              <b>
-                {reading ? 'Reading files...' : 'Drag photos or videos here'}
-              </b>
-              <button
-                type="button"
-                className="up-browse"
-                onClick={() => inputRef.current?.click()}
-                disabled={busy}
-              >
-                Browse files
-              </button>
+              <span className="up-drop-icon">
+                {reading ? (
+                  <LoaderCircle className="up-spin" aria-hidden="true" />
+                ) : (
+                  <CloudUpload aria-hidden="true" />
+                )}
+              </span>
+              <b>{reading ? 'Reading files…' : 'Drop photos or video here'}</b>
               <small>
-                Up to {MAX_POST_ASSETS} files · photos or video ·{' '}
-                {formatBytes(MAX_DIRECT_UPLOAD_BYTES)} each
+                Click to browse, or paste from the clipboard · up to{' '}
+                {MAX_POST_ASSETS} files · {formatBytes(MAX_DIRECT_UPLOAD_BYTES)}{' '}
+                each
               </small>
-            </div>
+            </button>
           )}
           <input
             ref={inputRef}
@@ -749,183 +848,188 @@ export default function MediaUploader({
         </div>
 
         <div className="up-form">
-          <div className="up-form-head">
-            <div>
-              <span className="up-eyebrow">Post details</span>
-              <h2>Tell the story</h2>
-              <p>Shape the copy, then review everything before publishing.</p>
+          <div className="up-form-scroll">
+            <div className="up-form-head">
+              <h2>Post details</h2>
+              <button
+                type="button"
+                className="up-ai"
+                onClick={() => void fillWithAi()}
+                disabled={!assistQuote || !assistHasSource || busy}
+                title={
+                  !assistHasSource
+                    ? 'Add a title or a few source notes first'
+                    : assistQuote
+                      ? `Uses ${assistQuote.credits} credits`
+                      : 'Checking the current AI fill price'
+                }
+              >
+                {assistStage === 'generating' ? (
+                  <LoaderCircle className="up-spin" aria-hidden="true" />
+                ) : assistStage === 'done' ? (
+                  <Check aria-hidden="true" />
+                ) : (
+                  <Sparkles aria-hidden="true" />
+                )}
+                {assistStage === 'generating'
+                  ? 'Drafting…'
+                  : !assistHasSource
+                    ? 'AI fill'
+                    : assistQuote
+                      ? `${title.trim() || body.trim() ? 'Refine' : 'Fill'} with AI · ${assistQuote.credits}`
+                      : assistStage === 'quoting'
+                        ? 'Checking price…'
+                        : 'AI fill'}
+              </button>
             </div>
-            <button
-              type="button"
-              className="up-ai"
-              onClick={() => void fillWithAi()}
-              disabled={!assistQuote || !assistHasSource || busy}
-              title={
-                !assistHasSource
-                  ? 'Add a title or a few source notes first'
-                  : assistQuote
-                  ? `Uses ${assistQuote.credits} credits`
-                  : 'Checking the current AI fill price'
-              }
-            >
-              {assistStage === 'generating' ? (
-                <LoaderCircle className="button-spinner" aria-hidden="true" />
-              ) : assistStage === 'done' ? (
+
+            {error && (
+              <p className="up-flash error" role="alert">
+                <TriangleAlert aria-hidden="true" />
+                {error}
+              </p>
+            )}
+            {assistError && (
+              <p className="up-flash error" role="alert">
+                <TriangleAlert aria-hidden="true" />
+                {assistError}
+              </p>
+            )}
+            {assistStage === 'done' && !assistError && (
+              <p className="up-flash" role="status">
                 <Check aria-hidden="true" />
-              ) : (
-                <Sparkles aria-hidden="true" />
-              )}
-              {assistStage === 'generating'
-                ? 'Drafting…'
-                : !assistHasSource
-                  ? 'Add notes for AI'
-                : assistQuote
-                  ? `${title.trim() || body.trim() ? 'Refine' : 'Fill'} with AI · ${assistQuote.credits} ${assistQuote.credits === 1 ? 'credit' : 'credits'}`
-                  : assistStage === 'quoting'
-                    ? 'Checking price…'
-                    : 'AI fill unavailable'}
-            </button>
-          </div>
-
-          {error && (
-            <div className="up-error" role="alert">
-              {error}
-            </div>
-          )}
-
-          {assistError && (
-            <div className="up-assist-message error" role="alert">
-              {assistError}
-            </div>
-          )}
-          {assistStage === 'done' && !assistError && (
-            <div className="up-assist-message" role="status">
-              <Check aria-hidden="true" />
-              AI draft added. Review and edit it before publishing.
-            </div>
-          )}
-
-          <div className="up-fld">
-            <label htmlFor="up-title">
-              Title <small>optional</small>
-            </label>
-            <input
-              id="up-title"
-              value={title}
-              onChange={(event) => {
-                setTitle(event.target.value);
-                setAssistQuote(null);
-                setAssistStage('idle');
-                setAssistError('');
-              }}
-              placeholder="A clear, specific headline"
-              maxLength={120}
-              disabled={stage !== 'idle' || assistStage === 'generating'}
-            />
-          </div>
-
-          <div className="up-fld">
-            <div className="up-label-row">
-              <label htmlFor="up-body">
-                Body <small>required</small>
-              </label>
-              <span>
-                {body.length}/{MAX_POST_BODY_LENGTH}
-              </span>
-            </div>
-            <textarea
-              id="up-body"
-              value={body}
-              onChange={(event) => {
-                setBody(event.target.value);
-                setAssistQuote(null);
-                setAssistStage('idle');
-                setAssistError('');
-              }}
-              placeholder="Add context, process, or the idea behind this work…"
-              maxLength={MAX_POST_BODY_LENGTH}
-              rows={7}
-              required
-              disabled={stage !== 'idle' || assistStage === 'generating'}
-            />
-          </div>
-
-          <div className="up-meta-grid">
-            <div className="up-fld">
-              <span className="up-label">Category</span>
-              <div className="up-seg" role="group" aria-label="Category">
-                <button
-                  type="button"
-                  className={category === 'study' ? 'on' : ''}
-                  onClick={() => setCategory('study')}
-                  aria-pressed={category === 'study'}
-                  disabled={stage !== 'idle'}
-                >
-                  Study
-                </button>
-                <button
-                  type="button"
-                  className={category === 'play' ? 'on' : ''}
-                  onClick={() => setCategory('play')}
-                  aria-pressed={category === 'play'}
-                  disabled={stage !== 'idle'}
-                >
-                  Play
-                </button>
-              </div>
-            </div>
+                AI draft added. Review and edit it before publishing.
+              </p>
+            )}
 
             <div className="up-fld">
-              <label htmlFor="up-label">
-                Badge <small>optional</small>
+              <label htmlFor="up-title">
+                Title <small>optional</small>
               </label>
               <input
-                id="up-label"
-                value={label}
-                onChange={(event) => setLabel(event.target.value)}
-                placeholder="e.g. PROCESS"
-                maxLength={24}
-                disabled={stage !== 'idle'}
+                id="up-title"
+                value={title}
+                onChange={(event) => {
+                  setTitle(event.target.value);
+                  setAssistQuote(null);
+                  setAssistStage('idle');
+                  setAssistError('');
+                }}
+                placeholder="A clear, specific headline"
+                maxLength={120}
+                autoFocus
+                disabled={stage !== 'idle' || assistStage === 'generating'}
               />
+            </div>
+
+            <div className="up-fld up-fld-grow">
+              <div className="up-label-row">
+                <label htmlFor="up-body">
+                  Body <small>required</small>
+                </label>
+                <span className="tabular-nums">
+                  {body.length}/{MAX_POST_BODY_LENGTH}
+                </span>
+              </div>
+              <textarea
+                id="up-body"
+                value={body}
+                onChange={(event) => {
+                  setBody(event.target.value);
+                  setAssistQuote(null);
+                  setAssistStage('idle');
+                  setAssistError('');
+                }}
+                placeholder="Add context, process, or the idea behind this work…"
+                maxLength={MAX_POST_BODY_LENGTH}
+                rows={6}
+                required
+                disabled={stage !== 'idle' || assistStage === 'generating'}
+              />
+            </div>
+
+            <div className="up-meta-grid">
+              <div className="up-fld">
+                <span className="up-label">Category</span>
+                <div className="up-seg" role="group" aria-label="Category">
+                  <button
+                    type="button"
+                    className={category === 'study' ? 'on' : ''}
+                    onClick={() => setCategory('study')}
+                    aria-pressed={category === 'study'}
+                    disabled={stage !== 'idle'}
+                  >
+                    Study
+                  </button>
+                  <button
+                    type="button"
+                    className={category === 'play' ? 'on' : ''}
+                    onClick={() => setCategory('play')}
+                    aria-pressed={category === 'play'}
+                    disabled={stage !== 'idle'}
+                  >
+                    Play
+                  </button>
+                </div>
+              </div>
+
+              <div className="up-fld">
+                <label htmlFor="up-label">
+                  Badge <small>optional</small>
+                </label>
+                <input
+                  id="up-label"
+                  value={label}
+                  onChange={(event) => setLabel(event.target.value)}
+                  placeholder="e.g. PROCESS"
+                  maxLength={24}
+                  disabled={stage !== 'idle'}
+                />
+              </div>
             </div>
           </div>
 
-          {stage !== 'idle' && (
-            <div className="up-progress" role="status">
-              <span className="up-bar">
-                <i style={{ width: `${Math.round(progress * 100)}%` }} />
-              </span>
-              <small>
-                {stage === 'uploading'
-                  ? `Uploading ${Math.round(progress * 100)}%`
-                  : 'Publishing...'}
-              </small>
-            </div>
-          )}
-
-          <div className="up-submit-area">
-            <div>
-              <strong>Ready to publish?</strong>
-              <small>
+          <footer className="up-submit-area">
+            {stage !== 'idle' && (
+              <div className="up-progress" role="status">
+                <span className="up-bar">
+                  <i style={{ width: `${Math.round(progress * 100)}%` }} />
+                </span>
+                <small>
+                  {stage === 'uploading'
+                    ? `Uploading ${Math.round(progress * 100)}%`
+                    : 'Publishing…'}
+                </small>
+              </div>
+            )}
+            <div className="up-submit-row">
+              <small className="up-submit-note">
                 As {user.display_name}
                 {selections.length === 0
                   ? ' · text-only post'
                   : ` · ${selections.length} ${selections.length === 1 ? 'asset' : 'assets'}`}
               </small>
+              <button
+                className="up-publish"
+                type="submit"
+                disabled={!body.trim() || busy}
+              >
+                {stage !== 'idle' && (
+                  <LoaderCircle className="up-spin" aria-hidden="true" />
+                )}
+                {stage === 'idle' ? 'Publish post' : 'Publishing…'}
+              </button>
             </div>
-            <button
-              className="up-publish"
-              type="submit"
-              disabled={!body.trim() || busy}
-            >
-              {stage !== 'idle' && (
-                <LoaderCircle className="button-spinner" aria-hidden="true" />
-              )}
-              {stage === 'idle' ? 'Publish post' : 'Publishing…'}
-            </button>
-          </div>
+          </footer>
         </div>
       </form>
+
+      {dragging && (
+        <div className="up-dropveil" aria-hidden="true">
+          <CloudUpload />
+          <b>Drop to attach</b>
+        </div>
+      )}
     </section>
   );
 }
