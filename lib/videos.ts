@@ -496,13 +496,21 @@ export async function createVideo({
       ? await assertOwnedCollection(collectionId, userId)
       : null;
 
+  const [collectionSlot] = collection
+    ? await sql<Array<{ position: number }>>`
+        SELECT COALESCE(MAX(collection_position), 0) + 1 AS position
+        FROM videos WHERE collection_id = ${collection}
+      `
+    : [{ position: 0 }];
+
   const [row] = await sql<Array<{ id: number }>>`
     INSERT INTO videos
       (title, description, category, label, author_id, poster_media_id, video_media_id,
-       duration, collection_id)
+       duration, collection_id, collection_position)
     VALUES (
       ${title?.trim() || null}, ${body}, ${category}, ${label},
-      ${userId}, ${posterMediaId}, ${videoMediaId}, ${duration}, ${collection}
+      ${userId}, ${posterMediaId}, ${videoMediaId}, ${duration}, ${collection},
+      ${collection ? collectionSlot.position : null}
     )
     RETURNING id
   `;

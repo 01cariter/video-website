@@ -143,6 +143,7 @@ export default function TimelinePost({
             <DeleteMenu
               itemLabel="post"
               className="t-post-menu"
+              video={video}
               onDelete={() => onDelete(video)}
             />
           )}

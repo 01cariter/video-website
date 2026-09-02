@@ -383,6 +383,7 @@ export default function MediaPreview({
                   <DeleteMenu
                     itemLabel="post"
                     className="pv-post-menu"
+                    video={video}
                     onDelete={() => onDeletePost(video)}
                   />
                 )}

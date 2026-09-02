@@ -381,6 +381,7 @@ export default function ProfileClient({
                     <DeleteMenu
                       itemLabel="post"
                       className="pf-tile-menu"
+                      video={video}
                       onDelete={() => deletePost(video)}
                     />
                   )}

@@ -65,7 +65,11 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
         </p>
       </header>
 
-      <CollectionEpisodes videos={videos} />
+      <CollectionEpisodes
+        collection={collection}
+        videos={videos}
+        isOwner={user?.id === collection.owner_id}
+      />
     </section>
   );
 }

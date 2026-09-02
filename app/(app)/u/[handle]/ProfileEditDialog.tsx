@@ -111,8 +111,8 @@ export default function ProfileEditDialog({
   return (
     <dialog
       ref={dialogRef}
-      className="pfe-modal"
-      aria-labelledby="pfe-title"
+      className="fdlg-modal"
+      aria-labelledby="fdlg-title"
       onClick={closeFromBackdrop}
       onCancel={(event) => {
         event.preventDefault();
@@ -120,17 +120,17 @@ export default function ProfileEditDialog({
       }}
     >
       <form
-        className="pfe-card"
+        className="fdlg-card"
         onSubmit={(event) => {
           event.preventDefault();
           void save();
         }}
       >
-        <header className="pfe-head">
-          <h2 id="pfe-title">Edit profile</h2>
+        <header className="fdlg-head">
+          <h2 id="fdlg-title">Edit profile</h2>
           <button
             type="button"
-            className="pfe-close"
+            className="fdlg-close"
             onClick={onClose}
             disabled={busy}
             aria-label="Close"
@@ -139,35 +139,35 @@ export default function ProfileEditDialog({
           </button>
         </header>
 
-        <div className="pfe-body">
-          <div className="pfe-avatar-row">
+        <div className="fdlg-body">
+          <div className="fdlg-avatar-row">
             <span
-              className="pfe-avatar"
+              className="fdlg-avatar"
               style={avatarStyle(profile.avatar_color, avatarUrl)}
             >
               {initials(displayName || profile.display_name)}
               <button
                 type="button"
-                className="pfe-avatar-btn"
+                className="fdlg-avatar-btn"
                 onClick={() => fileRef.current?.click()}
                 disabled={busy}
                 aria-label="Upload a new avatar"
                 title="Upload a new avatar"
               >
                 {uploading ? (
-                  <LoaderCircle className="pfe-spin" aria-hidden="true" />
+                  <LoaderCircle className="fdlg-spin" aria-hidden="true" />
                 ) : (
                   <Camera aria-hidden="true" />
                 )}
               </button>
             </span>
-            <div className="pfe-avatar-copy">
+            <div className="fdlg-avatar-copy">
               <b>Profile photo</b>
               <small>JPEG, PNG, WebP or GIF · square images look best.</small>
               {avatarMediaId ? (
                 <button
                   type="button"
-                  className="pfe-remove"
+                  className="fdlg-remove"
                   onClick={() => {
                     setAvatarMediaId(null);
                     setAvatarUrl(null);
@@ -193,15 +193,15 @@ export default function ProfileEditDialog({
             />
           </div>
 
-          <div className="pfe-fld">
-            <div className="pfe-label-row">
-              <label htmlFor="pfe-name">Display name</label>
+          <div className="fdlg-fld">
+            <div className="fdlg-label-row">
+              <label htmlFor="fdlg-name">Display name</label>
               <span className="tabular-nums">
                 {displayName.length}/{MAX_DISPLAY_NAME_LENGTH}
               </span>
             </div>
             <input
-              id="pfe-name"
+              id="fdlg-name"
               value={displayName}
               maxLength={MAX_DISPLAY_NAME_LENGTH}
               onChange={(event) => setDisplayName(event.target.value)}
@@ -212,9 +212,9 @@ export default function ProfileEditDialog({
             />
           </div>
 
-          <div className="pfe-fld">
-            <div className="pfe-label-row">
-              <label htmlFor="pfe-bio">
+          <div className="fdlg-fld">
+            <div className="fdlg-label-row">
+              <label htmlFor="fdlg-bio">
                 Bio <small>optional</small>
               </label>
               <span className="tabular-nums">
@@ -222,7 +222,7 @@ export default function ProfileEditDialog({
               </span>
             </div>
             <textarea
-              id="pfe-bio"
+              id="fdlg-bio"
               value={bio}
               rows={4}
               maxLength={MAX_BIO_LENGTH}
@@ -232,21 +232,21 @@ export default function ProfileEditDialog({
             />
           </div>
 
-          <p className="pfe-static">
+          <p className="fdlg-static">
             Handle <b>{profile.handle}</b> — permanent, so links keep working.
           </p>
 
           {error ? (
-            <p className="pfe-error" role="alert">
+            <p className="fdlg-error" role="alert">
               {error}
             </p>
           ) : null}
         </div>
 
-        <footer className="pfe-foot">
+        <footer className="fdlg-foot">
           <button
             type="button"
-            className="pfe-ghost"
+            className="fdlg-ghost"
             onClick={onClose}
             disabled={busy}
           >
@@ -254,10 +254,10 @@ export default function ProfileEditDialog({
           </button>
           <button
             type="submit"
-            className="pfe-save"
+            className="fdlg-save"
             disabled={busy || !displayName.trim()}
           >
-            {saving && <LoaderCircle className="pfe-spin" aria-hidden="true" />}
+            {saving && <LoaderCircle className="fdlg-spin" aria-hidden="true" />}
             {saving ? 'Saving…' : 'Save changes'}
           </button>
         </footer>

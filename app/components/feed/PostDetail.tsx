@@ -152,6 +152,7 @@ export default function PostDetail({
           <DeleteMenu
             itemLabel="post"
             className="pd-post-menu"
+            video={video}
             onDelete={onDeletePost}
           />
         )}

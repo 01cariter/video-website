@@ -113,6 +113,7 @@ CREATE TABLE videos (
   size            TEXT        NOT NULL DEFAULT '',     -- grid layout hint: '', 'big', 'tall'
   author_id       TEXT        NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
   collection_id   INTEGER     REFERENCES collections(id) ON DELETE SET NULL,
+  collection_position INTEGER,                          -- manual episode order
   poster_media_id INTEGER     REFERENCES media(id) ON DELETE SET NULL,  -- cover image (legacy + OG)
   video_media_id  INTEGER     REFERENCES media(id) ON DELETE SET NULL,  -- first video (legacy)
   duration        TEXT        NOT NULL DEFAULT '',     -- display string, e.g. 0:58
@@ -131,7 +132,7 @@ CREATE TABLE videos (
 
 CREATE INDEX idx_videos_category ON videos (category);
 CREATE INDEX idx_videos_author   ON videos (author_id);
-CREATE INDEX idx_videos_collection ON videos (collection_id, created_at, id);
+CREATE INDEX idx_videos_collection ON videos (collection_id, collection_position, created_at, id);
 
 -- Ordered media attached to a post (0–20). Images and videos may mix.
 CREATE TABLE video_assets (

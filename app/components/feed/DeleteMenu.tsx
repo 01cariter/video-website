@@ -1,8 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { DropdownMenu } from 'radix-ui';
-import { MoreHorizontal, Trash2 } from 'lucide-react';
+import { Check, ChevronRight, Layers, MoreHorizontal, Trash2 } from 'lucide-react';
+import {
+  MAX_COLLECTION_TITLE_LENGTH,
+  type CollectionSummary,
+  type Video,
+} from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 interface DeleteMenuProps {
@@ -10,6 +16,8 @@ interface DeleteMenuProps {
   onDelete: () => Promise<void>;
   className?: string;
   disabled?: boolean;
+  /** Supplied for a post the signed-in reader owns; adds collection controls. */
+  video?: Video;
 }
 
 export default function DeleteMenu({
@@ -17,16 +25,74 @@ export default function DeleteMenu({
   onDelete,
   className,
   disabled = false,
+  video,
 }: DeleteMenuProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [collections, setCollections] = useState<CollectionSummary[]>([]);
+  const [naming, setNaming] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+
+  // Only fetched once the menu is opened on a post — a feed of rows should not
+  // ask for the reader's collections twenty times over.
+  useEffect(() => {
+    if (!open || !video) return;
+    const controller = new AbortController();
+    void fetch('/api/collections', { signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { collections?: CollectionSummary[] } | null) =>
+        setCollections(data?.collections ?? []),
+      )
+      .catch(() => {});
+    return () => controller.abort();
+  }, [open, video]);
+
+  async function moveToCollection(
+    collectionId: number | null,
+    title?: string,
+  ) {
+    if (!video || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/videos/${video.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          collectionId,
+          newCollectionTitle: title ?? null,
+        }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(payload.error || 'The post could not be moved.');
+      }
+      setOpen(false);
+      setNaming(false);
+      setNewTitle('');
+      router.refresh();
+    } catch (moveError) {
+      setError(
+        moveError instanceof Error
+          ? moveError.message
+          : 'The post could not be moved.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function changeOpen(nextOpen: boolean) {
     setOpen(nextOpen);
     if (!nextOpen && !busy) {
       setConfirming(false);
+      setNaming(false);
+      setNewTitle('');
       setError('');
     }
   }
@@ -66,6 +132,94 @@ export default function DeleteMenu({
           sideOffset={6}
           onCloseAutoFocus={(event) => event.preventDefault()}
         >
+          {video && !confirming ? (
+            <DropdownMenu.Sub>
+              <DropdownMenu.SubTrigger className="delete-menu-item">
+                <Layers aria-hidden="true" />
+                {video.collection_title
+                  ? `In “${video.collection_title}”`
+                  : 'Add to collection'}
+                <ChevronRight className="delete-menu-chevron" aria-hidden="true" />
+              </DropdownMenu.SubTrigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.SubContent
+                  className="delete-menu-content delete-menu-sub"
+                  sideOffset={4}
+                >
+                  {video.collection_id ? (
+                    <DropdownMenu.Item
+                      className="delete-menu-item"
+                      disabled={busy}
+                      onSelect={(event) => {
+                        event.preventDefault();
+                        void moveToCollection(null);
+                      }}
+                    >
+                      Remove from collection
+                    </DropdownMenu.Item>
+                  ) : null}
+                  {collections.map((collection) => (
+                    <DropdownMenu.Item
+                      key={collection.id}
+                      className="delete-menu-item"
+                      disabled={busy || collection.id === video.collection_id}
+                      onSelect={(event) => {
+                        event.preventDefault();
+                        void moveToCollection(collection.id);
+                      }}
+                    >
+                      {collection.id === video.collection_id ? (
+                        <Check aria-hidden="true" />
+                      ) : (
+                        <Layers aria-hidden="true" />
+                      )}
+                      <span className="delete-menu-grow">{collection.title}</span>
+                      <span className="tabular-nums">{collection.posts_count}</span>
+                    </DropdownMenu.Item>
+                  ))}
+                  {naming ? (
+                    <form
+                      className="delete-menu-name"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        if (newTitle.trim()) void moveToCollection(null, newTitle);
+                      }}
+                    >
+                      <input
+                        value={newTitle}
+                        onChange={(event) => setNewTitle(event.target.value)}
+                        placeholder="Name the collection"
+                        maxLength={MAX_COLLECTION_TITLE_LENGTH}
+                        aria-label="New collection name"
+                        autoFocus
+                      />
+                      <button type="submit" disabled={busy || !newTitle.trim()}>
+                        {busy ? 'Adding…' : 'Create'}
+                      </button>
+                    </form>
+                  ) : (
+                    <DropdownMenu.Item
+                      className="delete-menu-item"
+                      disabled={busy}
+                      onSelect={(event) => {
+                        event.preventDefault();
+                        setNaming(true);
+                      }}
+                    >
+                      ＋ New collection…
+                    </DropdownMenu.Item>
+                  )}
+                  {error ? (
+                    <p className="delete-menu-error" role="alert">
+                      {error}
+                    </p>
+                  ) : null}
+                </DropdownMenu.SubContent>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Sub>
+          ) : null}
           {!confirming ? (
             <DropdownMenu.Item
               className="delete-menu-item danger"
