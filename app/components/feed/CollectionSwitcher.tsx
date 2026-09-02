@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 import type { CollectionEpisode, Video } from '@/lib/types';
+import { useT } from '../i18n-provider';
 
 interface EpisodesResponse {
   collection?: { id: number; title: string; posts_count: number };
@@ -18,6 +19,7 @@ interface EpisodesResponse {
  */
 export default function CollectionSwitcher({ video }: { video: Video }) {
   const router = useRouter();
+  const t = useT();
   const collectionId = video.collection_id;
   const [episodes, setEpisodes] = useState<CollectionEpisode[]>([]);
   const railRef = useRef<HTMLDivElement>(null);
@@ -53,7 +55,7 @@ export default function CollectionSwitcher({ video }: { video: Video }) {
     index >= 0 && index < episodes.length - 1 ? episodes[index + 1] : null;
 
   return (
-    <section className="col-switch" aria-label="Collection episodes">
+    <section className="col-switch" aria-label={t('collection.episodes')}>
       <header>
         <Link className="col-switch-title" href={`/c/${collectionId}`}>
           <Layers aria-hidden="true" />
@@ -66,7 +68,7 @@ export default function CollectionSwitcher({ video }: { video: Video }) {
           <button
             type="button"
             disabled={!previous}
-            aria-label="Previous episode"
+            aria-label={t('collection.previousEpisode')}
             onClick={() => previous && router.push(`/videos/${previous.id}`)}
           >
             <ChevronLeft aria-hidden="true" />
@@ -74,7 +76,7 @@ export default function CollectionSwitcher({ video }: { video: Video }) {
           <button
             type="button"
             disabled={!next}
-            aria-label="Next episode"
+            aria-label={t('collection.nextEpisode')}
             onClick={() => next && router.push(`/videos/${next.id}`)}
           >
             <ChevronRight aria-hidden="true" />

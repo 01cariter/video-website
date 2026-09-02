@@ -3,9 +3,11 @@
 import Link from 'next/link';
 import type { ProfileSummary } from '@/lib/types';
 import { avatarStyle, fmtLikes, initials, profileHref } from '../media';
+import { useT } from '../i18n-provider';
 
 /** One person in a list — profile followers, search results. */
 export default function PersonRow({ person }: { person: ProfileSummary }) {
+  const t = useT();
   return (
     <Link
       className="pf-person"
@@ -20,7 +22,7 @@ export default function PersonRow({ person }: { person: ProfileSummary }) {
       </span>
       <span className="pf-person-copy">
         <b>{person.display_name}</b>
-        <span>{person.handle || 'Creator'}</span>
+        <span>{person.handle || t('common.creator')}</span>
       </span>
       <span className="pf-person-meta">
         <b className="tabular-nums">{fmtLikes(person.posts_count)}</b>

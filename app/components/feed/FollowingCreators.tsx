@@ -1,18 +1,22 @@
+'use client';
+
 import Link from 'next/link';
 import { ArrowUpRight, FileText, Users } from 'lucide-react';
 import type { ProfileSummary } from '@/lib/types';
 import { avatarStyle, fmtLikes, initials, profileHref } from '../media';
+import { useT } from '../i18n-provider';
 
 export default function FollowingCreators({
   authors,
 }: {
   authors: ProfileSummary[];
 }) {
+  const t = useT();
   return (
     <section className="fg" aria-labelledby="following-creators-title">
       <header className="fg-head">
         <div>
-          <span className="fg-kicker">Your circle</span>
+          <span className="fg-kicker">{t('feed.circle')}</span>
           <h1 id="following-creators-title">Following</h1>
         </div>
         <span className="fg-count">
@@ -32,7 +36,7 @@ export default function FollowingCreators({
                 </span>
                 <span className="fg-copy">
                   <b>{author.display_name}</b>
-                  <span>{author.handle || 'Creator'}</span>
+                  <span>{author.handle || t('common.creator')}</span>
                   <small>
                     <FileText aria-hidden="true" />
                     <span className="tabular-nums">{fmtLikes(author.posts_count)}</span>
@@ -48,8 +52,8 @@ export default function FollowingCreators({
         <div className="fg-empty">
           <Users aria-hidden="true" />
           <div>
-            <b>Your circle is empty</b>
-            <p>Follow creators from the feed or their profile to find them here.</p>
+            <b>{t('feed.circleEmpty')}</b>
+            <p>{t('feed.circleLead')}</p>
           </div>
         </div>
       )}

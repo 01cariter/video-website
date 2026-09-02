@@ -25,7 +25,7 @@ import { MotionTabs } from '@/app/components/ui/motion-tabs';
 import { Slider } from '@/app/components/ui/slider';
 import {
   CreditHistoryDialog,
-  creditEntryLabel,
+  creditEntryKey,
   type CreditLedgerItem,
 } from './CreditHistoryDialog';
 import { HolographicWalletCard } from './HolographicWalletCard';
@@ -37,6 +37,8 @@ import {
   customCreditPriceCents,
 } from '@/lib/credits/packages';
 import { cn } from '@/lib/utils';
+import type { MessageKey } from '@/lib/i18n/t';
+import { useT } from '../i18n-provider';
 
 interface CreditPackage {
   id: string;
@@ -67,26 +69,26 @@ interface CreditPayload {
   };
 }
 
-const PACKAGE_NOTES: Record<string, string> = {
-  'credits-10': 'Try the workflow',
-  'credits-100': 'A small project',
-  'credits-1000': 'Regular creation',
-  'credits-5000': 'High-volume work',
-};
+const PACKAGE_NOTE_KEYS = {
+  'credits-10': 'credits.pack.credits-10',
+  'credits-100': 'credits.pack.credits-100',
+  'credits-1000': 'credits.pack.credits-1000',
+  'credits-5000': 'credits.pack.credits-5000',
+} as const satisfies Record<string, MessageKey>;
 
-const TOP_UP_TABS = [
-  { value: 'packs', label: 'Credit packs', icon: WalletCards },
-  { value: 'custom', label: 'Custom amount', icon: Coins },
-] as const;
+const TOP_UP_TAB_KEYS = [
+  { value: 'packs', key: 'credits.packs', icon: WalletCards },
+  { value: 'custom', key: 'credits.custom', icon: Coins },
+] as const satisfies ReadonlyArray<{ value: string; key: MessageKey; icon: typeof Coins }>;
 
 // Each row is priced from that kind's default model at its default settings,
 // so the figures describe what a reader gets without changing anything.
 const GENERATION_ESTIMATES = [
-  { key: 'agent', label: 'Agent', unit: 'steps', icon: Sparkles },
-  { key: 'text', label: 'Text', unit: 'generations', icon: Type },
-  { key: 'image', label: 'Image', unit: 'images', icon: ImageIcon },
-  { key: 'videoPerSecond', label: 'Video', unit: 'seconds', icon: Video },
-] as const;
+  { key: 'agent', label: 'credits.kind.agent', unit: 'credits.unit.steps', icon: Sparkles },
+  { key: 'text', label: 'credits.kind.text', unit: 'credits.unit.generations', icon: Type },
+  { key: 'image', label: 'common.image', unit: 'credits.unit.images', icon: ImageIcon },
+  { key: 'videoPerSecond', label: 'common.video', unit: 'credits.unit.seconds', icon: Video },
+] as const satisfies ReadonlyArray<{ key: string; label: MessageKey; unit: MessageKey; icon: typeof Video }>;
 
 function money(cents: number, currency = 'usd') {
   return new Intl.NumberFormat('en-US', {
@@ -111,6 +113,7 @@ function paymentError(message?: string) {
 }
 
 export default function CreditsPage() {
+  const t = useT();
   const [payload, setPayload] = useState<CreditPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [unauthorized, setUnauthorized] = useState(false);
@@ -118,9 +121,14 @@ export default function CreditsPage() {
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [selectedPackageId, setSelectedPackageId] = useState('credits-1000');
   const [topUpMode, setTopUpMode] =
-    useState<(typeof TOP_UP_TABS)[number]['value']>('packs');
+    useState<(typeof TOP_UP_TAB_KEYS)[number]['value']>('packs');
   const [customCredits, setCustomCredits] = useState(2500);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const topUpTabs = TOP_UP_TAB_KEYS.map((tab) => ({
+    value: tab.value,
+    label: t(tab.key),
+    icon: tab.icon,
+  }));
   const [checkoutSuccess] = useState(
     () =>
       typeof window !== 'undefined' &&
@@ -136,7 +144,7 @@ export default function CreditsPage() {
         return;
       }
       const next = (await response.json()) as CreditPayload & { error?: string };
-      if (!response.ok) throw new Error(next.error || 'Could not load credits.');
+      if (!response.ok) throw new Error(next.error || t('credits.loadFailed'));
       setPayload(next);
       setUnauthorized(false);
       setError('');
@@ -144,12 +152,12 @@ export default function CreditsPage() {
       setError(
         loadError instanceof Error
           ? loadError.message
-          : 'Could not load credits.',
+          : t('credits.loadFailed'),
       );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const status = new URLSearchParams(window.location.search).get('checkout');
@@ -193,7 +201,7 @@ export default function CreditsPage() {
   if (loading) {
     return (
       <div className="credits-page grid min-h-[70dvh] place-items-center text-muted-foreground">
-        <Loader2 className="size-5 animate-spin" aria-label="Loading credits" />
+        <Loader2 className="size-5 animate-spin" aria-label={t('credits.loading')} />
       </div>
     );
   }
@@ -205,7 +213,7 @@ export default function CreditsPage() {
   if (!payload) {
     return (
       <div className="credits-page grid min-h-[70dvh] place-items-center px-5 text-center text-destructive">
-        {error || 'Could not load credits.'}
+        {error || t('credits.loadFailed')}
       </div>
     );
   }
@@ -248,8 +256,7 @@ export default function CreditsPage() {
         {checkoutSuccess ? (
           <div className="mt-5 mb-5 flex items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm font-medium">
             <CheckCircle2 className="size-4" />
-            Payment received. Credits will appear as soon as confirmation
-            completes.
+            {t('credits.paymentReceived')}
           </div>
         ) : null}
         {error ? (
@@ -269,16 +276,16 @@ export default function CreditsPage() {
           <div className="flex items-start justify-between gap-5 max-sm:flex-col">
             <div>
               <span className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-                Top up
+                {t('credits.topUp')}
               </span>
               <h1 className="mt-1.5 text-2xl font-semibold tracking-[-0.03em]">
-                Add credits
+                {t('credits.add')}
               </h1>
             </div>
             <MotionTabs
               value={topUpMode}
-              items={TOP_UP_TABS}
-              ariaLabel="Top-up type"
+              items={topUpTabs}
+              ariaLabel={t('credits.topUpType')}
               onValueChange={setTopUpMode}
               className="max-sm:w-full"
             />
@@ -338,7 +345,9 @@ export default function CreditsPage() {
                             : 'text-muted-foreground',
                         )}
                       >
-                        {PACKAGE_NOTES[item.id] || `${estimatedImages} images`}
+                        {item.id in PACKAGE_NOTE_KEYS
+                          ? t(PACKAGE_NOTE_KEYS[item.id as keyof typeof PACKAGE_NOTE_KEYS])
+                          : t('credits.packImages', { count: estimatedImages })}
                       </span>
                       <span className="mt-auto flex items-end justify-between gap-3 pt-5">
                         <b className="text-lg font-semibold tabular-nums">
@@ -380,12 +389,14 @@ export default function CreditsPage() {
                 <div>
                   <span className="text-xs text-muted-foreground">
                     {topUpMode === 'packs'
-                      ? 'Selected pack'
-                      : 'Custom amount'}
+                      ? t('credits.selectedPack')
+                      : t('credits.custom')}
                   </span>
                   <p className="mt-1 text-sm font-medium tabular-nums">
-                    {selectedCredits.toLocaleString()} credits ·{' '}
-                    {money(selectedPrice, selectedCurrency)}
+                    {t('credits.amountLine', {
+                      credits: selectedCredits.toLocaleString(),
+                      price: money(selectedPrice, selectedCurrency),
+                    })}
                   </p>
                 </div>
                 <Button
@@ -415,10 +426,10 @@ export default function CreditsPage() {
           <div className="flex items-center justify-between gap-4 border-b px-5 py-4">
             <div>
               <span className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-                Activity
+                {t('credits.activity')}
               </span>
               <h2 className="mt-0.5 text-base font-semibold tracking-[-0.02em]">
-                Credit history
+                {t('credits.history')}
               </h2>
             </div>
             <Button
@@ -428,7 +439,7 @@ export default function CreditsPage() {
               onClick={() => setHistoryOpen(true)}
             >
               <History className="size-3.5" />
-              View all
+              {t('credits.viewAll')}
               <ArrowUpRight className="size-3.5" />
             </Button>
           </div>
@@ -441,7 +452,10 @@ export default function CreditsPage() {
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">
-                      {creditEntryLabel(entry.type)}
+                      {(() => {
+                        const key = creditEntryKey(entry.type);
+                        return key ? t(key) : entry.type;
+                      })()}
                     </p>
                     <time
                       className="mt-0.5 block text-xs text-muted-foreground"
@@ -467,7 +481,7 @@ export default function CreditsPage() {
             </div>
           ) : (
             <p className="px-6 py-10 text-center text-sm text-muted-foreground">
-              No credit activity yet.
+              {t('credits.noActivity')}
             </p>
           )}
         </section>
@@ -482,6 +496,7 @@ export default function CreditsPage() {
 }
 
 function CreditsGuest() {
+  const t = useT();
   return (
     <main className="credits-page relative min-h-[70dvh] overflow-hidden">
       <div className="relative mx-auto grid min-h-[70dvh] w-full max-w-[1040px] grid-cols-[minmax(0,1fr)_410px] items-center gap-14 px-8 py-14 max-lg:grid-cols-1 max-md:px-4">
@@ -493,13 +508,12 @@ function CreditsGuest() {
             Credits
           </h1>
           <p className="mt-3 max-w-[540px] text-[15px] leading-7 text-muted-foreground">
-            Sign in to view your balance, buy one-time credit packs, and review
-            Agent, image, video, and text generation activity.
+            {t('credits.guestLead')}
           </p>
           <div className="mt-7 grid max-w-[520px] gap-2.5 text-sm">
-            <GuestFeature text="One-time credit packs with no recurring charge" />
-            <GuestFeature text="Secure one-time checkout" />
-            <GuestFeature text="Automatic credit refunds for failed generations" />
+            <GuestFeature text={t('credits.guest1')} />
+            <GuestFeature text={t('credits.guest2')} />
+            <GuestFeature text={t('credits.guest3')} />
           </div>
         </div>
 
@@ -508,17 +522,17 @@ function CreditsGuest() {
             <WalletCards className="size-5" />
           </span>
           <h2 className="mt-8 text-xl font-semibold tracking-[-0.025em]">
-            Your wallet is private
+            {t('credits.walletPrivate')}
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Sign in to load your balance and purchase history.
+            {t('credits.walletPrivateLead')}
           </p>
           <Button
             asChild
             className="mt-8 h-11 w-full rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Link href="/login?next=/credits">
-              Sign in
+              {t('common.signIn')}
               <ArrowRight />
             </Link>
           </Button>
@@ -527,7 +541,7 @@ function CreditsGuest() {
             variant="outline"
             className="mt-2 h-11 w-full rounded-xl bg-transparent"
           >
-            <Link href="/register?next=/credits">Sign up</Link>
+            <Link href="/register?next=/credits">{t('common.signUp')}</Link>
           </Button>
         </section>
       </div>
@@ -654,25 +668,28 @@ function GenerationEstimate({
   credits: number;
   costs: CreditPayload['costs'];
 }) {
+  const t = useT();
   return (
     <div className="mt-6 rounded-[20px] border bg-secondary/45 p-4">
       <div className="flex items-end justify-between gap-4 px-1 max-sm:items-start">
         <div>
           <span className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-            Estimated output
+            {t('credits.estimated')}
           </span>
           <h2 className="mt-1 text-sm font-semibold">
-            What {credits.toLocaleString()} credits can make
+            {t('credits.canMake', { credits: credits.toLocaleString() })}
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            At the default models. Video is {costs.videoModelLabel} at{' '}
-            {costs.videoResolution} — a {costs.videoClipSeconds}-second clip
-            costs {costs.videoClip} credits. Other models cost more or less per
-            second.
+            {t('credits.defaultsNote', {
+              model: costs.videoModelLabel,
+              resolution: costs.videoResolution,
+              seconds: costs.videoClipSeconds,
+              clip: costs.videoClip,
+            })}
           </p>
         </div>
         <span className="text-xs text-muted-foreground max-sm:hidden">
-          Failed generations are refunded automatically.
+          {t('credits.refunded')}
         </span>
       </div>
       <div className="mt-4 grid grid-cols-4 gap-2 max-lg:grid-cols-2">
@@ -682,9 +699,9 @@ function GenerationEstimate({
             <GenerationEstimateItem
               key={item.key}
               icon={item.icon}
-              label={item.label}
+              label={t(item.label)}
               value={count}
-              unit={item.unit}
+              unit={t(item.unit)}
             />
           );
         })}

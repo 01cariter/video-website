@@ -1,7 +1,11 @@
+'use client';
+
+import { useT } from '../i18n-provider';
 export default function PostDetailSkeleton() {
+  const t = useT();
   return (
-    <div className="pd pd-skeleton" role="status" aria-label="Loading post">
-      <span className="sr-only">Loading post</span>
+    <div className="pd pd-skeleton" role="status" aria-label={t('post.loading')}>
+      <span className="sr-only">{t('post.loading')}</span>
       <header className="pd-top">
         <i className="pd-skel-circle" />
         <i className="pd-skel-line" style={{ width: 56 }} />

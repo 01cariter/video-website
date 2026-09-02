@@ -10,6 +10,7 @@ import {
   type Video,
 } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { useT } from '../i18n-provider';
 
 interface DeleteMenuProps {
   itemLabel: 'post' | 'comment';
@@ -28,6 +29,7 @@ export default function DeleteMenu({
   video,
 }: DeleteMenuProps) {
   const router = useRouter();
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -70,7 +72,7 @@ export default function DeleteMenu({
         const payload = (await response.json().catch(() => ({}))) as {
           error?: string;
         };
-        throw new Error(payload.error || 'The post could not be moved.');
+        throw new Error(payload.error || t('collection.moveFailed'));
       }
       setOpen(false);
       setNaming(false);
@@ -80,7 +82,7 @@ export default function DeleteMenu({
       setError(
         moveError instanceof Error
           ? moveError.message
-          : 'The post could not be moved.',
+          : t('collection.moveFailed'),
       );
     } finally {
       setBusy(false);
@@ -106,7 +108,9 @@ export default function DeleteMenu({
       setOpen(false);
       setConfirming(false);
     } catch {
-      setError(`Could not delete this ${itemLabel}.`);
+      setError(
+        itemLabel === 'post' ? t('post.deleteFailed') : t('comment.deleteFailed'),
+      );
     } finally {
       setBusy(false);
     }
@@ -118,7 +122,9 @@ export default function DeleteMenu({
         <button
           type="button"
           className={cn('delete-menu-trigger', className)}
-          aria-label={`${itemLabel === 'post' ? 'Post' : 'Comment'} actions`}
+          aria-label={
+            itemLabel === 'post' ? t('post.actions') : t('comment.actions')
+          }
           disabled={disabled}
         >
           <MoreHorizontal aria-hidden="true" />
@@ -137,8 +143,8 @@ export default function DeleteMenu({
               <DropdownMenu.SubTrigger className="delete-menu-item">
                 <Layers aria-hidden="true" />
                 {video.collection_title
-                  ? `In “${video.collection_title}”`
-                  : 'Add to collection'}
+                  ? t('collection.in', { title: video.collection_title })
+                  : t('collection.add')}
                 <ChevronRight className="delete-menu-chevron" aria-hidden="true" />
               </DropdownMenu.SubTrigger>
               <DropdownMenu.Portal>
@@ -155,7 +161,7 @@ export default function DeleteMenu({
                         void moveToCollection(null);
                       }}
                     >
-                      Remove from collection
+                      {t('collection.remove')}
                     </DropdownMenu.Item>
                   ) : null}
                   {collections.map((collection) => (
@@ -190,13 +196,13 @@ export default function DeleteMenu({
                       <input
                         value={newTitle}
                         onChange={(event) => setNewTitle(event.target.value)}
-                        placeholder="Name the collection"
+                        placeholder={t('collection.namePlaceholder')}
                         maxLength={MAX_COLLECTION_TITLE_LENGTH}
-                        aria-label="New collection name"
+                        aria-label={t('collection.newName')}
                         autoFocus
                       />
                       <button type="submit" disabled={busy || !newTitle.trim()}>
-                        {busy ? 'Adding…' : 'Create'}
+                        {busy ? t('collection.adding') : t('common.create')}
                       </button>
                     </form>
                   ) : (
@@ -208,7 +214,7 @@ export default function DeleteMenu({
                         setNaming(true);
                       }}
                     >
-                      ＋ New collection…
+                      {t('collection.new')}
                     </DropdownMenu.Item>
                   )}
                   {error ? (
@@ -229,7 +235,7 @@ export default function DeleteMenu({
               }}
             >
               <Trash2 aria-hidden="true" />
-              Delete {itemLabel}
+              {itemLabel === 'post' ? t('common.delete') : t('common.delete')}
             </DropdownMenu.Item>
           ) : (
             <div
@@ -237,8 +243,12 @@ export default function DeleteMenu({
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
             >
-              <b>Delete this {itemLabel}?</b>
-              <p>This cannot be undone.</p>
+              <b>
+                {itemLabel === 'post'
+                  ? t('post.deleteConfirm')
+                  : t('comment.deleteConfirm')}
+              </b>
+              <p>{t('post.deleteUndone')}</p>
               {error && <span role="alert">{error}</span>}
               <div>
                 <button
@@ -249,7 +259,7 @@ export default function DeleteMenu({
                   }}
                   disabled={busy}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="button"
@@ -257,7 +267,7 @@ export default function DeleteMenu({
                   onClick={() => void confirmDelete()}
                   disabled={busy}
                 >
-                  {busy ? 'Deleting…' : 'Delete'}
+                  {busy ? t('common.deleting') : t('common.delete')}
                 </button>
               </div>
             </div>

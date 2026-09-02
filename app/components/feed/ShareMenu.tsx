@@ -27,6 +27,7 @@ import {
   type ShareTargetId,
 } from '@/lib/share-targets';
 import { cn } from '@/lib/utils';
+import { useT } from '../i18n-provider';
 
 // Lucide dropped its brand set before X was renamed, so its "Twitter" glyph is
 // still the bird. The mark is drawn here rather than shipped wrong.
@@ -64,6 +65,7 @@ export default function ShareMenu({
   label?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
@@ -83,7 +85,7 @@ export default function ShareMenu({
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
-      setError('Your browser blocked the clipboard. Copy the link from the address bar.');
+      setError(t('share.clipboardBlocked'));
     }
   }
 
@@ -119,7 +121,7 @@ export default function ShareMenu({
       if (then) window.open(then, '_blank', 'noopener,noreferrer');
       setOpen(false);
     } catch {
-      setError('The video could not be downloaded. Try opening the post and saving it.');
+      setError(t('share.downloadFailed'));
     } finally {
       setDownloading(false);
     }
@@ -137,7 +139,7 @@ export default function ShareMenu({
         <button
           type="button"
           className={cn('share-menu-trigger', className)}
-          aria-label={label ?? 'Share'}
+          aria-label={label ?? t('post.share')}
         >
           <Share2 aria-hidden="true" />
           {label ? <span>{label}</span> : null}
@@ -159,7 +161,7 @@ export default function ShareMenu({
             }}
           >
             {copied ? <Check aria-hidden="true" /> : <Link2 aria-hidden="true" />}
-            {copied ? 'Link copied' : 'Copy link'}
+            {copied ? t('share.copied') : t('share.copy')}
           </DropdownMenu.Item>
 
           {typeof navigator !== 'undefined' && 'share' in navigator ? (
@@ -171,13 +173,13 @@ export default function ShareMenu({
               }}
             >
               <Share2 aria-hidden="true" />
-              Share on this device
+              {t('share.device')}
             </DropdownMenu.Item>
           ) : null}
 
           <DropdownMenu.Separator className="share-menu-rule" />
           <DropdownMenu.Label className="share-menu-label">
-            Post a link
+            {t('share.linkGroup')}
           </DropdownMenu.Label>
           <div className="share-menu-grid">
             {SHARE_TARGETS.map((target) => {
@@ -202,7 +204,7 @@ export default function ShareMenu({
             <>
               <DropdownMenu.Separator className="share-menu-rule" />
               <DropdownMenu.Label className="share-menu-label">
-                Needs the file
+                {t('share.fileGroup')}
               </DropdownMenu.Label>
               <DropdownMenu.Item
                 className="share-menu-item"
@@ -218,8 +220,8 @@ export default function ShareMenu({
                   <Youtube aria-hidden="true" />
                 )}
                 <span className="share-menu-copy">
-                  Upload to YouTube
-                  <small>Saves the file, then opens YouTube Studio</small>
+                  {t('share.youtube')}
+                  <small>{t('share.youtubeLead')}</small>
                 </span>
               </DropdownMenu.Item>
               <DropdownMenu.Item
@@ -236,8 +238,8 @@ export default function ShareMenu({
                   <Download aria-hidden="true" />
                 )}
                 <span className="share-menu-copy">
-                  Download video
-                  <small>For TikTok, Reels, and anywhere else</small>
+                  {t('share.download')}
+                  <small>{t('share.downloadLead')}</small>
                 </span>
               </DropdownMenu.Item>
             </>

@@ -13,6 +13,7 @@ import CollectionChip from './CollectionChip';
 import DeleteMenu from './DeleteMenu';
 import ShareMenu from './ShareMenu';
 import MediaCarousel from './MediaCarousel';
+import { useT } from '../i18n-provider';
 
 export interface TimelinePostProps {
   video: Video;
@@ -34,6 +35,7 @@ export default function TimelinePost({
   onNeedAuth,
 }: TimelinePostProps) {
   const router = useRouter();
+  const t = useT();
   const href = `/videos/${video.id}`;
   const profile = profileHref(video.author_handle);
   const { openPreview } = useMediaPreview();
@@ -116,14 +118,14 @@ export default function TimelinePost({
             className={video.liked ? 'on' : ''}
             onClick={withAuth(onLike)}
             aria-pressed={video.liked}
-            aria-label="Like"
+            aria-label={t('post.like')}
           >
             <Heart aria-hidden="true" />
             <span className="tabular-nums">
               {fmtLikes(video.likes_count)}
             </span>
           </button>
-          <Link href={href} className="t-comment" aria-label="Comments">
+          <Link href={href} className="t-comment" aria-label={t('post.comments')}>
             <MessageCircle aria-hidden="true" />
             <span className="tabular-nums">
               {fmtLikes(video.comments_count)}
@@ -134,7 +136,7 @@ export default function TimelinePost({
             className={video.saved ? 'on' : ''}
             onClick={withAuth(onSave)}
             aria-pressed={video.saved}
-            aria-label="Save"
+            aria-label={t('post.save')}
           >
             <Bookmark aria-hidden="true" />
           </button>

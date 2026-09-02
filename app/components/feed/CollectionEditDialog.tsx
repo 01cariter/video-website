@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { LoaderCircle, Trash2, X } from 'lucide-react';
+import { useT } from '../i18n-provider';
 import {
   MAX_COLLECTION_TITLE_LENGTH,
   type Collection,
@@ -19,6 +20,7 @@ export default function CollectionEditDialog({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const t = useT();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [title, setTitle] = useState(collection.title);
   const [description, setDescription] = useState(collection.description ?? '');
@@ -48,11 +50,11 @@ export default function CollectionEditDialog({
       const payload = (await response.json().catch(() => ({}))) as {
         error?: string;
       };
-      if (!response.ok) throw new Error(payload.error || 'That did not save.');
+      if (!response.ok) throw new Error(payload.error || t('collection.saveFailed'));
       return true;
     } catch (sendError) {
       setError(
-        sendError instanceof Error ? sendError.message : 'That did not save.',
+        sendError instanceof Error ? sendError.message : t('collection.saveFailed'),
       );
       setBusy(false);
       return false;
@@ -62,7 +64,7 @@ export default function CollectionEditDialog({
   async function save() {
     const name = title.replace(/\s+/g, ' ').trim();
     if (!name) {
-      setError('Give the collection a name.');
+      setError(t('collection.nameRequired'));
       return;
     }
     if (await send('PATCH', { title: name, description })) {
@@ -99,13 +101,13 @@ export default function CollectionEditDialog({
         }}
       >
         <header className="fdlg-head">
-          <h2 id="collection-edit-title">Edit collection</h2>
+          <h2 id="collection-edit-title">{t('collection.edit')}</h2>
           <button
             type="button"
             className="fdlg-close"
             onClick={onClose}
             disabled={busy}
-            aria-label="Close"
+            aria-label={t('common.close')}
           >
             <X aria-hidden="true" />
           </button>
@@ -114,7 +116,7 @@ export default function CollectionEditDialog({
         <div className="fdlg-body">
           <div className="fdlg-fld">
             <div className="fdlg-label-row">
-              <label htmlFor="collection-title">Name</label>
+              <label htmlFor="collection-title">{t('collection.name')}</label>
               <span className="tabular-nums">
                 {title.length}/{MAX_COLLECTION_TITLE_LENGTH}
               </span>
@@ -133,7 +135,7 @@ export default function CollectionEditDialog({
           <div className="fdlg-fld">
             <div className="fdlg-label-row">
               <label htmlFor="collection-description">
-                Description <small>optional</small>
+                {t('collection.description')} <small>{t('common.optional')}</small>
               </label>
               <span className="tabular-nums">
                 {description.length}/{MAX_DESCRIPTION}
@@ -145,18 +147,15 @@ export default function CollectionEditDialog({
               rows={3}
               maxLength={MAX_DESCRIPTION}
               onChange={(event) => setDescription(event.target.value)}
-              placeholder="What ties these posts together?"
+              placeholder={t('collection.descriptionPlaceholder')}
               disabled={busy}
             />
           </div>
 
           <p className="fdlg-static">
-            Deleting a collection keeps its{' '}
-            <b>
-              <span className="tabular-nums">{collection.posts_count}</span>{' '}
-              {collection.posts_count === 1 ? 'post' : 'posts'}
-            </b>{' '}
-            — only the grouping goes.
+            {t('collection.deleteNote', {
+              posts: t.plural('collection.post', collection.posts_count),
+            })}
           </p>
 
           {error ? (
@@ -169,14 +168,14 @@ export default function CollectionEditDialog({
         <footer className="fdlg-foot">
           {confirming ? (
             <>
-              <span className="fdlg-confirm">Delete this collection?</span>
+              <span className="fdlg-confirm">{t('collection.deleteConfirm')}</span>
               <button
                 type="button"
                 className="fdlg-ghost"
                 onClick={() => setConfirming(false)}
                 disabled={busy}
               >
-                Keep it
+                {t('collection.keep')}
               </button>
               <button
                 type="button"
@@ -184,7 +183,7 @@ export default function CollectionEditDialog({
                 onClick={() => void remove()}
                 disabled={busy}
               >
-                {busy ? 'Deleting…' : 'Delete'}
+                {busy ? t('common.deleting') : t('common.delete')}
               </button>
             </>
           ) : (
@@ -196,7 +195,7 @@ export default function CollectionEditDialog({
                 disabled={busy}
               >
                 <Trash2 aria-hidden="true" />
-                Delete
+                {t('common.delete')}
               </button>
               <button
                 type="button"
@@ -204,7 +203,7 @@ export default function CollectionEditDialog({
                 onClick={onClose}
                 disabled={busy}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 type="submit"
@@ -212,7 +211,7 @@ export default function CollectionEditDialog({
                 disabled={busy || !title.trim()}
               >
                 {busy && <LoaderCircle className="fdlg-spin" aria-hidden="true" />}
-                {busy ? 'Saving…' : 'Save'}
+                {busy ? t('common.saving') : t('common.save')}
               </button>
             </>
           )}

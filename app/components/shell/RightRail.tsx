@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type { SuggestedAuthor } from '@/lib/profiles';
 import { avatarStyle, initials, profileHref } from '../media';
 import SearchBox from './SearchBox';
+import { useT } from '../i18n-provider';
 
 export interface RailTopic {
   id: string;
@@ -24,13 +25,14 @@ export default function RightRail({
   suggestionsLoading = false,
   onFollow,
 }: RightRailProps) {
+  const t = useT();
   return (
     <aside className="x-right">
       <SearchBox />
 
       <div className="x-right-scroll">
         <section className="x-widget">
-          <h2>Top topics</h2>
+          <h2>{t('rail.topics')}</h2>
           <ul className="x-topics">
             {topics.map((topic) => (
               <li key={topic.id}>
@@ -41,9 +43,9 @@ export default function RightRail({
         </section>
 
         <section className="x-widget">
-          <h2>Who to follow</h2>
+          <h2>{t('rail.whoToFollow')}</h2>
           {suggestionsLoading ? (
-            <ul className="x-suggestions x-suggestions-skel" aria-busy="true" aria-label="Loading suggestions">
+            <ul className="x-suggestions x-suggestions-skel" aria-busy="true" aria-label={t('rail.loadingSuggestions')}>
               {[0, 1, 2].map((item) => (
                 <li key={item}>
                   <i className="x-skel-av" />
@@ -56,7 +58,7 @@ export default function RightRail({
               ))}
             </ul>
           ) : suggestions.length === 0 ? (
-            <p className="x-widget-empty">No suggestions right now.</p>
+            <p className="x-widget-empty">{t('rail.noSuggestions')}</p>
           ) : (
             <ul className="x-suggestions">
               {suggestions.map((author) => (
@@ -75,7 +77,7 @@ export default function RightRail({
                     className={author.following ? 'followBtn on' : 'followBtn'}
                     onClick={() => onFollow(author.user_id)}
                   >
-                    {author.following ? 'Following' : 'Follow'}
+                    {author.following ? t('post.followingState') : t('post.follow')}
                   </button>
                 </li>
               ))}
@@ -84,11 +86,11 @@ export default function RightRail({
         </section>
 
         <footer className="x-rail-footer">
-          <a href="#">About</a>
+          <a href="#">{t('rail.about')}</a>
           <span aria-hidden="true">·</span>
-          <a href="#">Terms</a>
+          <a href="#">{t('rail.terms')}</a>
           <span aria-hidden="true">·</span>
-          <a href="#">Privacy</a>
+          <a href="#">{t('rail.privacy')}</a>
           <span aria-hidden="true">·</span>
           <span>© Snackd</span>
         </footer>

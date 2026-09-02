@@ -17,12 +17,14 @@ import {
 } from '@/lib/search-shared';
 import type { SearchSuggestions } from '@/lib/search-types';
 import { avatarStyle, fmtLikes, initials, profileHref } from '../media';
+import { useT } from '../i18n-provider';
 
 const LIST_ID = 'search-suggestions';
 const DEBOUNCE_MS = 180;
 const EMPTY: SearchSuggestions = { people: [], posts: [] };
 
 function SearchField() {
+  const t = useT();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -176,8 +178,8 @@ function SearchField() {
           ref={inputRef}
           type="search"
           name="q"
-          placeholder="Search Snackd"
-          aria-label="Search posts and people"
+          placeholder={t('search.placeholder')}
+          aria-label={t('search.aria')}
           maxLength={MAX_SEARCH_QUERY_LENGTH}
           value={value}
           role="combobox"
@@ -197,7 +199,7 @@ function SearchField() {
           <button
             type="button"
             className="x-search-clear"
-            aria-label="Clear search"
+            aria-label={t('search.clear')}
             onClick={() => {
               setValue('');
               setOpen(false);
@@ -214,15 +216,15 @@ function SearchField() {
           className="x-suggest"
           id={LIST_ID}
           role="listbox"
-          aria-label="Search suggestions"
+          aria-label={t('search.suggestions')}
         >
           {pending && !shown.people.length && !shown.posts.length ? (
             <p className="x-suggest-head" role="status">
-              Searching…
+              {t('search.searching')}
             </p>
           ) : null}
           {shown.people.length > 0 && (
-            <p className="x-suggest-head">People</p>
+            <p className="x-suggest-head">{t('search.people')}</p>
           )}
           {shown.people.map((person, offset) => (
             <button
@@ -247,7 +249,7 @@ function SearchField() {
           ))}
 
           {shown.posts.length > 0 && (
-            <p className="x-suggest-head">Posts</p>
+            <p className="x-suggest-head">{t('search.posts')}</p>
           )}
           {shown.posts.map((post, offset) => (
             <button
@@ -281,7 +283,7 @@ function SearchField() {
             onClick={() => submit(value)}
           >
             <Search aria-hidden="true" />
-            Search for “{trimmed}”
+            {t('search.searchFor', { query: trimmed })}
           </button>
         </div>
       ) : null}

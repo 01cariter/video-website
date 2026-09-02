@@ -1,5 +1,6 @@
 import { LogIn } from 'lucide-react';
 import { getCurrentUser } from '@/lib/user';
+import { getTranslate } from '@/lib/i18n/server';
 import { getSavedVideos } from '@/lib/profiles';
 import SimpleTimeline from '../../components/feed/SimpleTimeline';
 
@@ -7,14 +8,14 @@ import SimpleTimeline from '../../components/feed/SimpleTimeline';
 export const dynamic = 'force-dynamic';
 
 export default async function BookmarksPage() {
-  const user = await getCurrentUser();
+  const [user, t] = await Promise.all([getCurrentUser(), getTranslate()]);
 
   if (!user) {
     return (
       <div className="t-home">
         <div className="empty">
           <LogIn aria-hidden="true" />
-          <p>Sign in to see the posts you have bookmarked.</p>
+          <p>{t('feed.bookmarksGuest')}</p>
         </div>
       </div>
     );

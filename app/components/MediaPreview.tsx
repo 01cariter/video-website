@@ -25,6 +25,7 @@ import { avatarStyle, bg, fmtDate, fmtLikes, initials, profileHref } from './med
 import CollectionChip from './feed/CollectionChip';
 import DeleteMenu from './feed/DeleteMenu';
 import ShareMenu from './feed/ShareMenu';
+import { useT } from './i18n-provider';
 
 interface MediaPreviewProps {
   video: Video;
@@ -91,6 +92,7 @@ function resolveAssets(video: Video): VideoAsset[] {
 }
 
 function PlaybackStage({ video }: PlaybackStageProps) {
+  const t = useT();
   const assets = resolveAssets(video);
   const [assetIndex, setAssetIndex] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -163,7 +165,7 @@ function PlaybackStage({ video }: PlaybackStageProps) {
             className="pv-asset-nav prev"
             disabled={assetIndex <= 0}
             onClick={() => setAssetIndex((current) => Math.max(0, current - 1))}
-            aria-label="Previous media"
+            aria-label={t('viewer.previousMedia')}
           >
             <ChevronLeft aria-hidden="true" />
           </button>
@@ -172,7 +174,7 @@ function PlaybackStage({ video }: PlaybackStageProps) {
             className="pv-asset-nav next"
             disabled={assetIndex >= assets.length - 1}
             onClick={() => setAssetIndex((current) => Math.min(assets.length - 1, current + 1))}
-            aria-label="Next media"
+            aria-label={t('viewer.nextMedia')}
           >
             <ChevronRight aria-hidden="true" />
           </button>
@@ -184,15 +186,15 @@ function PlaybackStage({ video }: PlaybackStageProps) {
 
       {isVideo && (
         <div className="pv-controls">
-          <button type="button" onClick={() => void togglePlayback()} aria-label={playing ? 'Pause' : 'Play'}>
+          <button type="button" onClick={() => void togglePlayback()} aria-label={playing ? t('viewer.pause') : t('viewer.play')}>
             {playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
           </button>
           <span>{formatTime(currentTime)}</span>
-          <button type="button" className="pv-track" onClick={seek} aria-label="Seek video">
+          <button type="button" className="pv-track" onClick={seek} aria-label={t('viewer.seek')}>
             <i style={{ width: `${progress}%` }} />
           </button>
           <span>{formatTime(duration)}</span>
-          <button type="button" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>
+          <button type="button" onClick={toggleMute} aria-label={muted ? t('viewer.unmute') : t('viewer.mute')}>
             {muted ? <VolumeX aria-hidden="true" /> : <Volume2 aria-hidden="true" />}
           </button>
         </div>
@@ -230,7 +232,7 @@ function AuthorIdentity({
     <Link
       className="pv-who"
       href={href}
-      title={`View ${video.author_name}'s profile`}
+      title={video.author_name}
       onClick={onNavigate}
     >
       {identity}
@@ -270,12 +272,13 @@ export default function MediaPreview({
   onNeedAuth,
   standalone = false,
 }: MediaPreviewProps) {
+  const t = useT();
   return (
     <div
       className={`pv-backdrop ${standalone ? 'pv-standalone' : ''}`}
       onClick={standalone ? undefined : onClose}
     >
-      <aside className="pv-utility" aria-label="Viewer controls">
+      <aside className="pv-utility" aria-label={t('viewer.controls')}>
         <button
           type="button"
           className="pv-back"
@@ -283,8 +286,8 @@ export default function MediaPreview({
             event.stopPropagation();
             onClose();
           }}
-          title="Back to feed"
-          aria-label="Back to feed"
+          title={t('viewer.backToFeed')}
+          aria-label={t('viewer.backToFeed')}
         >
           <ArrowLeft aria-hidden="true" />
           <span>Back</span>
@@ -296,7 +299,7 @@ export default function MediaPreview({
               type="button"
               disabled={index <= 0}
               onClick={() => onNavigate(-1)}
-              aria-label="Previous post"
+              aria-label={t('viewer.previousPost')}
             >
               <ChevronUp aria-hidden="true" />
             </button>
@@ -304,7 +307,7 @@ export default function MediaPreview({
               type="button"
               disabled={index >= total - 1}
               onClick={() => onNavigate(1)}
-              aria-label="Next post"
+              aria-label={t('viewer.nextPost')}
             >
               <ChevronDown aria-hidden="true" />
             </button>
@@ -326,14 +329,14 @@ export default function MediaPreview({
               <section className="pv-author">
                 <AuthorIdentity video={video} onNavigate={onClose} />
                 {user?.id === video.author_id ? (
-                  <span className="own">YOU</span>
+                  <span className="own">{t('post.you')}</span>
                 ) : (
                   <button
                     type="button"
                     className={`followBtn ${video.following ? 'on' : ''}`}
                     onClick={() => onFollow(video)}
                   >
-                    {video.following ? 'Following' : 'Follow'}
+                    {video.following ? t('post.followingState') : t('post.follow')}
                   </button>
                 )}
               </section>
@@ -341,18 +344,13 @@ export default function MediaPreview({
               <section className="pv-details">
                 <CollectionChip video={video} />
                 <div className="pv-detail-meta">
-                  <span>{video.label || (video.category === 'study' ? 'Study' : 'Entertainment')}</span>
+                  <span>{video.label || (video.category === 'study' ? t('common.study') : t('common.play'))}</span>
                   <span className="tabular-nums">{video.duration}</span>
-                  <span>
-                    <span className="tabular-nums">
-                      {fmtLikes(video.views_count)}
-                    </span>{' '}
-                    views
-                  </span>
-                  <span>Uploaded {fmtDate(video.created_at)}</span>
+                  <span>{t('post.views', { count: fmtLikes(video.views_count) })}</span>
+                  <span>{t('post.uploaded', { date: fmtDate(video.created_at) })}</span>
                 </div>
                 {video.title?.trim() ? <h2>{video.title.trim()}</h2> : <h2>{postHeadline(video)}</h2>}
-                <p>{video.description || 'No description yet.'}</p>
+                <p>{video.description || t('post.noDescription')}</p>
               </section>
 
               <section className="pv-actions">
@@ -360,7 +358,7 @@ export default function MediaPreview({
                   type="button"
                   className={video.liked ? 'on like' : ''}
                   onClick={() => onLike(video)}
-                  aria-label={video.liked ? 'Unlike' : 'Like'}
+                  aria-label={video.liked ? t('post.unlike') : t('post.like')}
                 >
                   <Heart aria-hidden="true" />
                   <span className="tabular-nums">
@@ -371,14 +369,14 @@ export default function MediaPreview({
                   type="button"
                   className={video.saved ? 'on save' : ''}
                   onClick={() => onSave(video)}
-                  aria-label={video.saved ? 'Remove from saved' : 'Save'}
+                  aria-label={video.saved ? t('post.unsave') : t('post.save')}
                 >
                   <Bookmark aria-hidden="true" />
                   <span className="tabular-nums">
                     {fmtLikes(video.saves_count)}
                   </span>
                 </button>
-                <ShareMenu video={video} label="Share" />
+                <ShareMenu video={video} label={t('post.share')} />
                 {user?.id === video.author_id && (
                   <DeleteMenu
                     itemLabel="post"
@@ -391,13 +389,13 @@ export default function MediaPreview({
 
               <section className="pv-comments">
                 <header>
-                  <b>Comments</b>
+                  <b>{t('comment.title')}</b>
                   <span className="tabular-nums">{video.comments_count}</span>
                 </header>
                 <div className="clist">
                   {commentsLoading && (
-                    <div className="comment-skeletons" role="status" aria-label="Loading comments">
-                      <span className="sr-only">Loading comments</span>
+                    <div className="comment-skeletons" role="status" aria-label={t('comment.loading')}>
+                      <span className="sr-only">{t('comment.loading')}</span>
                       {[0, 1, 2].map((item) => (
                         <div className="comment-skeleton" aria-hidden="true" key={item}>
                           <i />
@@ -412,14 +410,14 @@ export default function MediaPreview({
                   {!commentsLoading && commentsError && (
                     <div className="comments-empty">
                       <MessageCircle aria-hidden="true" />
-                      <p>Comments could not load.</p>
-                      <button type="button" onClick={onRetryComments}>Retry</button>
+                      <p>{t('comment.loadFailed')}</p>
+                      <button type="button" onClick={onRetryComments}>{t('common.retry')}</button>
                     </div>
                   )}
                   {!commentsLoading && !commentsError && comments.length === 0 && (
                     <div className="comments-empty">
                       <MessageCircle aria-hidden="true" />
-                      <p>Start the conversation.</p>
+                      <p>{t('comment.start')}</p>
                     </div>
                   )}
                   {comments.map((comment) => {
@@ -462,7 +460,7 @@ export default function MediaPreview({
                               <b className="citem-name">{comment.author_name}</b>
                             )}
                             {comment.user_id === video.author_id && (
-                              <span className="citem-badge">Author</span>
+                              <span className="citem-badge">{t('comment.author')}</span>
                             )}
                             <time
                               className="citem-time"
@@ -491,21 +489,21 @@ export default function MediaPreview({
                   <input
                     value={draft}
                     onChange={(event) => onDraftChange(event.target.value)}
-                    placeholder="Add a comment..."
+                    placeholder={t('comment.placeholder')}
                     maxLength={1000}
                   />
-                  <button type="submit" disabled={!draft.trim() || posting} aria-label="Post comment">
+                  <button type="submit" disabled={!draft.trim() || posting} aria-label={t('comment.post')}>
                     <Send aria-hidden="true" />
                   </button>
                 </form>
               ) : (
                 <div className="cform-guest">
                   <div>
-                    <b>Join the conversation</b>
-                    <p>Sign in to leave a comment.</p>
+                    <b>{t('comment.joinTitle')}</b>
+                    <p>{t('comment.joinLead')}</p>
                   </div>
                   <button type="button" onClick={onNeedAuth}>
-                    Sign in
+                    {t('common.signIn')}
                   </button>
                 </div>
               )}

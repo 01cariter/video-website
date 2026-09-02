@@ -5,13 +5,15 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { Plus, X } from 'lucide-react';
 import type { VideoCategory } from '@/lib/types';
+import type { MessageKey } from '@/lib/i18n/t';
+import { useT } from '../i18n-provider';
 
 export type HomeTabId = 'foryou' | 'following' | VideoCategory;
 
-export const CATEGORY_TAB_LABELS: Record<VideoCategory, string> = {
-  study: 'Study',
-  play: 'Entertainment',
-};
+export const CATEGORY_TAB_KEYS = {
+  study: 'common.study',
+  play: 'common.play',
+} as const satisfies Record<VideoCategory, MessageKey>;
 
 const ALL_CATEGORIES: VideoCategory[] = ['study', 'play'];
 
@@ -24,6 +26,7 @@ export interface FeedTabsProps {
 }
 
 export default function FeedTabs({ active, customTabs, onSelect, onAddTab, onRemoveTab }: FeedTabsProps) {
+  const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const titleId = useId();
@@ -53,14 +56,14 @@ export default function FeedTabs({ active, customTabs, onSelect, onAddTab, onRem
   }
 
   return (
-    <nav className="t-tabs" aria-label="Home feed tabs">
+    <nav className="t-tabs" aria-label={t('feed.tabs')}>
       <button
         type="button"
         className={active === 'foryou' ? 't-tab active' : 't-tab'}
         onClick={() => onSelect('foryou')}
         aria-current={active === 'foryou' ? 'page' : undefined}
       >
-        For You
+        {t('feed.forYou')}
       </button>
       <button
         type="button"
@@ -68,19 +71,19 @@ export default function FeedTabs({ active, customTabs, onSelect, onAddTab, onRem
         onClick={() => onSelect('following')}
         aria-current={active === 'following' ? 'page' : undefined}
       >
-        Following
+        {t('feed.following')}
       </button>
 
       {customTabs.map((category) => (
         <div className={active === category ? 't-tab custom active' : 't-tab custom'} key={category}>
           <button type="button" onClick={() => onSelect(category)} aria-current={active === category ? 'page' : undefined}>
-            {CATEGORY_TAB_LABELS[category]}
+            {t(CATEGORY_TAB_KEYS[category])}
           </button>
           <button
             type="button"
             className="t-tab-x"
             onClick={() => onRemoveTab(category)}
-            aria-label={`Remove ${CATEGORY_TAB_LABELS[category]} tab`}
+            aria-label={t('feed.removeTab', { tab: t(CATEGORY_TAB_KEYS[category]) })}
           >
             <X aria-hidden="true" />
           </button>
@@ -92,7 +95,7 @@ export default function FeedTabs({ active, customTabs, onSelect, onAddTab, onRem
           type="button"
           className="t-tab-add"
           onClick={() => setMenuOpen(true)}
-          aria-label="Customize tabs"
+          aria-label={t('feed.customize')}
           aria-haspopup="dialog"
           aria-expanded={menuOpen}
         >
@@ -114,7 +117,7 @@ export default function FeedTabs({ active, customTabs, onSelect, onAddTab, onRem
                 <button
                   type="button"
                   className="t-tab-modal-backdrop"
-                  aria-label="Close"
+                  aria-label={t('common.close')}
                   onClick={() => setMenuOpen(false)}
                 />
                 <motion.div
@@ -128,7 +131,7 @@ export default function FeedTabs({ active, customTabs, onSelect, onAddTab, onRem
                   transition={{ duration: 0.18, ease: [0.25, 0.7, 0.25, 1] }}
                 >
                   <header className="t-tab-modal-head">
-                    <h2 id={titleId}>Customize tabs</h2>
+                    <h2 id={titleId}>{t('feed.customize')}</h2>
                     <button
                       type="button"
                       className="t-tab-modal-close"
@@ -138,19 +141,19 @@ export default function FeedTabs({ active, customTabs, onSelect, onAddTab, onRem
                       <X aria-hidden="true" />
                     </button>
                   </header>
-                  <p className="t-tab-modal-lead">Choose which tabs appear on Home.</p>
+                  <p className="t-tab-modal-lead">{t('feed.customizeLead')}</p>
                   <ul className="t-tab-modal-list">
                     <li>
                       <span>
-                        <b>For You</b>
-                        <small>Pinned</small>
+                        <b>{t('feed.forYou')}</b>
+                        <small>{t('feed.pinned')}</small>
                       </span>
                       <span className="t-tab-modal-pin">On</span>
                     </li>
                     <li>
                       <span>
-                        <b>Following</b>
-                        <small>Pinned</small>
+                        <b>{t('feed.following')}</b>
+                        <small>{t('feed.pinned')}</small>
                       </span>
                       <span className="t-tab-modal-pin">On</span>
                     </li>
@@ -159,8 +162,8 @@ export default function FeedTabs({ active, customTabs, onSelect, onAddTab, onRem
                       return (
                         <li key={category}>
                           <span>
-                            <b>{CATEGORY_TAB_LABELS[category]}</b>
-                            <small>{on ? 'Showing on Home' : 'Hidden'}</small>
+                            <b>{t(CATEGORY_TAB_KEYS[category])}</b>
+                            <small>{on ? t('feed.showing') : t('feed.hidden')}</small>
                           </span>
                           <button
                             type="button"

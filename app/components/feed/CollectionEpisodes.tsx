@@ -15,6 +15,7 @@ import type { Collection, Video } from '@/lib/types';
 import { postHeadline } from '@/lib/post-text';
 import { fmtLikes, fmtRelativeTime } from '../media';
 import CollectionEditDialog from './CollectionEditDialog';
+import { useT } from '../i18n-provider';
 
 function thumbnail(video: Video) {
   return video.assets?.[0]?.url ?? video.poster_url ?? null;
@@ -49,6 +50,7 @@ export default function CollectionEpisodes({
   isOwner: boolean;
 }) {
   const router = useRouter();
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const [order, setOrder] = useState<Video[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -69,7 +71,7 @@ export default function CollectionEpisodes({
         const payload = (await response.json().catch(() => ({}))) as {
           error?: string;
         };
-        throw new Error(payload.error || 'The new order did not save.');
+        throw new Error(payload.error || t('collection.orderFailed'));
       }
       setOrder(null);
       router.refresh();
@@ -91,13 +93,13 @@ export default function CollectionEpisodes({
           <div className="col-owner">
             <button type="button" onClick={() => setEditing(true)}>
               <Pencil aria-hidden="true" />
-              Edit collection
+              {t('collection.edit')}
             </button>
           </div>
         ) : null}
         <div className="empty">
           <Play aria-hidden="true" />
-          <p>Nothing has been added to this collection yet.</p>
+          <p>{t('collection.empty')}</p>
         </div>
         {editing ? (
           <CollectionEditDialog
@@ -115,7 +117,7 @@ export default function CollectionEpisodes({
         <div className="col-owner">
           {order ? (
             <>
-              <span className="col-owner-note">Reordering</span>
+              <span className="col-owner-note">{t('collection.reordering')}</span>
               <button
                 type="button"
                 onClick={() => {
@@ -124,7 +126,7 @@ export default function CollectionEpisodes({
                 }}
                 disabled={busy}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
@@ -132,14 +134,14 @@ export default function CollectionEpisodes({
                 onClick={() => void saveOrder()}
                 disabled={busy}
               >
-                {busy ? 'Saving…' : 'Save order'}
+                {busy ? t('common.saving') : t('collection.saveOrder')}
               </button>
             </>
           ) : (
             <>
               <button type="button" onClick={() => setEditing(true)}>
                 <Pencil aria-hidden="true" />
-                Edit collection
+                {t('collection.edit')}
               </button>
               <button
                 type="button"
@@ -147,7 +149,7 @@ export default function CollectionEpisodes({
                 disabled={videos.length < 2}
               >
                 <ListOrdered aria-hidden="true" />
-                Reorder
+                {t('collection.reorder')}
               </button>
             </>
           )}
@@ -197,7 +199,7 @@ export default function CollectionEpisodes({
                   <span className="col-move">
                     <button
                       type="button"
-                      aria-label={`Move ${postHeadline(video)} up`}
+                      aria-label={t('collection.moveUp', { title: postHeadline(video) })}
                       disabled={busy || index === 0}
                       onClick={() => setOrder(moved(list, index, -1))}
                     >
@@ -205,7 +207,7 @@ export default function CollectionEpisodes({
                     </button>
                     <button
                       type="button"
-                      aria-label={`Move ${postHeadline(video)} down`}
+                      aria-label={t('collection.moveDown', { title: postHeadline(video) })}
                       disabled={busy || index === list.length - 1}
                       onClick={() => setOrder(moved(list, index, 1))}
                     >

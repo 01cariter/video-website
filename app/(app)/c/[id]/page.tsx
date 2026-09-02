@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { Layers } from 'lucide-react';
 import { getCollection, getCollectionVideos } from '@/lib/collections';
 import { getCurrentUser } from '@/lib/user';
+import { getTranslate } from '@/lib/i18n/server';
 import { profileHref } from '@/app/components/media';
 import CollectionEpisodes from '@/app/components/feed/CollectionEpisodes';
 
@@ -37,7 +38,7 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
   const collection = await readCollection((await params).id);
   if (!collection) notFound();
 
-  const user = await getCurrentUser();
+  const [user, t] = await Promise.all([getCurrentUser(), getTranslate()]);
   const videos = await getCollectionVideos({
     collectionId: collection.id,
     viewerId: user?.id ?? null,
@@ -49,7 +50,7 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
       <header className="col-head">
         <span className="col-eyebrow">
           <Layers aria-hidden="true" />
-          Collection
+          {t('collection.label')}
         </span>
         <h1>{collection.title}</h1>
         {collection.description ? <p>{collection.description}</p> : null}
@@ -60,8 +61,7 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
             <span>{collection.owner_name}</span>
           )}
           <span aria-hidden="true">·</span>
-          <span className="tabular-nums">{collection.posts_count}</span>{' '}
-          {collection.posts_count === 1 ? 'episode' : 'episodes'}
+          {t.plural('collection.episode', collection.posts_count)}
         </p>
       </header>
 

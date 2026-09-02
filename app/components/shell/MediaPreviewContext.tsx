@@ -16,6 +16,7 @@ import ActionNotice from '../feed/ActionNotice';
 import { requestSocialAction } from '../feed/social-action';
 import MediaPreview from '../MediaPreview';
 import { POST_DELETED_EVENT } from './compose-events';
+import { useT } from '../i18n-provider';
 
 interface OpenPreviewOptions {
   video: Video;
@@ -53,6 +54,7 @@ interface CommentResponse {
 
 export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPreviewProviderProps) {
   const [playlist, setPlaylist] = useState<Video[]>([]);
+  const t = useT();
   const playlistRef = useRef<Video[]>([]);
   const [index, setIndex] = useState(0);
   const [direction, setDirection] = useState(0);
@@ -216,7 +218,7 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
       });
     } catch {
       patchVideo(target.id, { liked: target.liked, likes_count: target.likes_count });
-      setActionError('Could not update this like. Try again.');
+      setActionError(t('post.likeFailed'));
     } finally {
       pending.current.delete(`like-${target.id}`);
     }
@@ -247,7 +249,7 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
       });
     } catch {
       patchVideo(target.id, { saved: target.saved, saves_count: target.saves_count });
-      setActionError('Could not update this bookmark. Try again.');
+      setActionError(t('post.saveFailed'));
     } finally {
       pending.current.delete(`save-${target.id}`);
     }
@@ -304,7 +306,7 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
             : item,
         ),
       );
-      setActionError('Could not update this follow. Try again.');
+      setActionError(t('post.followFailed'));
     } finally {
       pending.current.delete(`follow-${target.author_id}`);
     }
@@ -330,7 +332,7 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
       patchVideo(video.id, { comments_count: data.comments_count });
       setDraft('');
     } catch {
-      setActionError('Could not post this comment. Try again.');
+      setActionError(t('comment.postFailed'));
     } finally {
       setPosting(false);
     }

@@ -1,12 +1,16 @@
+'use client';
+
+import { useT } from '../i18n-provider';
 /** Profile identity, stats, and media grid while `/u/[handle]` loads. */
 export default function ProfileSkeleton() {
+  const t = useT();
   return (
     <div
       className="pf pf-shell pf-skeleton"
       role="status"
-      aria-label="Loading profile"
+      aria-label={t('profile.loading')}
     >
-      <span className="sr-only">Loading profile</span>
+      <span className="sr-only">{t('profile.loading')}</span>
       <header className="pf-topbar">
         <i className="pd-skel-circle" />
         <div className="pf-topbar-title">

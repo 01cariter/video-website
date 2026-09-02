@@ -5,6 +5,7 @@ import { Search } from 'lucide-react';
 import type { AppUser, Video } from '@/lib/types';
 import FeedSkeleton from './FeedSkeleton';
 import TimelinePost from './TimelinePost';
+import { useT } from '../i18n-provider';
 
 export interface TimelineFeedProps {
   videos: Video[];
@@ -29,7 +30,7 @@ export default function TimelineFeed({
   loadingMore,
   error,
   nextCursor,
-  emptyMessage = 'Nothing here yet.',
+  emptyMessage,
   onLoadMore,
   onRetry,
   onLike,
@@ -38,6 +39,7 @@ export default function TimelineFeed({
   onNeedAuth,
 }: TimelineFeedProps) {
   const loadMoreTarget = useRef<HTMLDivElement>(null);
+  const t = useT();
 
   useEffect(() => {
     const target = loadMoreTarget.current;
@@ -74,15 +76,15 @@ export default function TimelineFeed({
       {videos.length === 0 && !error && (
         <div className="empty">
           <Search aria-hidden="true" />
-          <p>{emptyMessage}</p>
+          <p>{emptyMessage ?? t('feed.empty')}</p>
         </div>
       )}
 
       {error && (
         <div className="feed-error" role="alert">
-          <p>The feed could not load.</p>
+          <p>{t('feed.error')}</p>
           <button type="button" onClick={onRetry}>
-            Retry
+            {t('common.retry')}
           </button>
         </div>
       )}

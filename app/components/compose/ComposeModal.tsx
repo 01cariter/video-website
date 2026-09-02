@@ -7,6 +7,7 @@ import { X } from 'lucide-react';
 import MediaUploader from '../MediaUploader';
 import type { AppUser, Video } from '@/lib/types';
 import type { ComposeDraft } from './types';
+import { useT } from '../i18n-provider';
 
 interface ComposeModalProps {
   user: AppUser;
@@ -26,6 +27,7 @@ export default function ComposeModal({
   onPublished,
 }: ComposeModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const t = useT();
   const prefersReducedMotion = Boolean(useReducedMotion());
   const [busy, setBusy] = useState(false);
 
@@ -68,20 +70,20 @@ export default function ComposeModal({
             <div className="solo-header-copy">
               <span className="mark" aria-hidden="true" />
               <div>
-                <h1 id="compose-modal-title">Create post</h1>
-                <p>Share work from your canvas or add media from your device.</p>
+                <h1 id="compose-modal-title">{t('compose.title')}</h1>
+                <p>{t('compose.lead')}</p>
               </div>
             </div>
             <div className="solo-actions">
               {busy ? (
                 <span className="solo-status" role="status">
-                  Finishing…
+                  {t('compose.finishing')}
                 </span>
               ) : initialDraft ? (
                 <span className="solo-status">
                   {initialDraft.assets?.length
-                    ? `${initialDraft.assets.length} selected`
-                    : 'Canvas draft'}
+                    ? t('compose.selected', { count: initialDraft.assets.length })
+                    : t('compose.canvasDraft')}
                 </span>
               ) : null}
               <button
@@ -89,8 +91,8 @@ export default function ComposeModal({
                 className="solo-close disabled:cursor-not-allowed disabled:opacity-40"
                 onClick={onClose}
                 disabled={busy}
-                aria-label={busy ? 'Wait for the current action to finish' : 'Close'}
-                title={busy ? 'Wait for the current action to finish' : 'Close'}
+                aria-label={busy ? t('compose.waitForAction') : t('common.close')}
+                title={busy ? t('compose.waitForAction') : t('common.close')}
               >
                 <X aria-hidden="true" />
               </button>

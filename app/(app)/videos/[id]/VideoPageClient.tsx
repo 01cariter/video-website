@@ -12,6 +12,7 @@ import PostDetail from '@/app/components/feed/PostDetail';
 import PostDetailSkeleton from '@/app/components/feed/PostDetailSkeleton';
 import { requestSocialAction } from '@/app/components/feed/social-action';
 import { POST_DELETED_EVENT } from '@/app/components/shell/compose-events';
+import { useT } from '@/app/components/i18n-provider';
 
 interface VideoPageClientProps {
   user: AppUser | null;
@@ -36,6 +37,7 @@ interface CommentResponse {
 export default function VideoPageClient({ user, videoId }: VideoPageClientProps) {
   const router = useRouter();
   const [video, setVideo] = useState<Video | null>(null);
+  const t = useT();
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(true);
   const [commentsError, setCommentsError] = useState(false);
@@ -137,7 +139,7 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
       );
     } catch {
       setVideo(previous);
-      setActionError('Could not update this like. Try again.');
+      setActionError(t('post.likeFailed'));
     } finally {
       pending.current.delete('like');
     }
@@ -176,7 +178,7 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
       );
     } catch {
       setVideo(previous);
-      setActionError('Could not update this bookmark. Try again.');
+      setActionError(t('post.saveFailed'));
     } finally {
       pending.current.delete('save');
     }
@@ -215,7 +217,7 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
       );
     } catch {
       setVideo(previous);
-      setActionError('Could not update this follow. Try again.');
+      setActionError(t('post.followFailed'));
     } finally {
       pending.current.delete('follow');
     }
@@ -243,7 +245,7 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
         setDraft('');
       }
     } catch {
-      setActionError('Could not post this comment. Try again.');
+      setActionError(t('comment.postFailed'));
     } finally {
       setPosting(false);
     }
@@ -299,9 +301,9 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
     if (missing) {
       return (
         <div className="x-empty">
-          <h1>Post not found</h1>
-          <p>This post may have been removed.</p>
-          <Link href="/">Home</Link>
+          <h1>{t('post.notFound')}</h1>
+          <p>{t('post.removed')}</p>
+          <Link href="/">{t('nav.home')}</Link>
         </div>
       );
     }

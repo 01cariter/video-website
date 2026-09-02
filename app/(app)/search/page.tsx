@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { getCurrentUser } from '@/lib/user';
+import { getTranslate } from '@/lib/i18n/server';
 import { normalizeSearchQuery, searchProfiles, searchVideos } from '@/lib/search';
 import {
   SEARCH_TABS,
@@ -30,6 +31,7 @@ export async function generateMetadata({
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const resolved = await searchParams;
+  const t = await getTranslate();
   const query = normalizeSearchQuery(resolved.q);
   const tab = readSearchTab(resolved.t);
   const user = await getCurrentUser();
@@ -53,15 +55,15 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     return (
       <section className="t-home">
         <header className="sr-head">
-          <h1>Search</h1>
-          <p>Find posts and creators across Snackd.</p>
+          <h1>{t('search.title')}</h1>
+          <p>{t('search.lead')}</p>
           <div className="sr-head-search">
             <SearchBox />
           </div>
         </header>
         <div className="empty">
           <Search aria-hidden="true" />
-          <p>Type a word, a title, or an @handle to get started.</p>
+          <p>{t('search.prompt')}</p>
         </div>
       </section>
     );
@@ -71,14 +73,14 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     <section className="t-home">
       <header className="sr-head">
         <h1>
-          Results for <span>{query}</span>
+          {t('search.resultsFor')} <span>{query}</span>
         </h1>
         <div className="sr-head-search">
           <SearchBox />
         </div>
       </header>
 
-      <nav className="t-tabs sr-tabs" aria-label="Result type">
+      <nav className="t-tabs sr-tabs" aria-label={t('search.resultType')}>
         {SEARCH_TABS.map((option) => {
           const active = option.value === tab;
           return (
@@ -89,15 +91,15 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               aria-current={active ? 'page' : undefined}
               replace
             >
-              {option.label}
+              {t(`search.tab.${option.value}`)}
             </Link>
           );
         })}
       </nav>
 
       {tab !== 'posts' && people.length > 0 && (
-        <section className="sr-people" aria-label="People">
-          {tab === 'top' && <h2>People</h2>}
+        <section className="sr-people" aria-label={t('search.people')}>
+          {tab === 'top' && <h2>{t('search.people')}</h2>}
           <div className="pf-people" role="list">
             {people.map((person) => (
               <PersonRow key={person.user_id} person={person} />
@@ -105,7 +107,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           </div>
           {tab === 'top' && allPeople.length > people.length && (
             <Link className="sr-more" href={searchTabHref(query, 'people')}>
-              See all {allPeople.length} people
+              {t('search.seeAllPeople', { count: allPeople.length })}
             </Link>
           )}
         </section>
@@ -115,13 +117,13 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         people.length === 0 && (
           <div className="empty">
             <Search aria-hidden="true" />
-            <p>No people match “{query}”.</p>
+            <p>{t('search.noPeople', { query })}</p>
           </div>
         )
       ) : (
         <>
           {tab === 'top' && people.length > 0 && videos.length > 0 && (
-            <h2 className="sr-section-head">Posts</h2>
+            <h2 className="sr-section-head">{t('search.posts')}</h2>
           )}
           <SimpleTimeline
             key={`${query}:${tab}`}
@@ -131,8 +133,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             nextPath={nextPath}
             emptyLabel={
               people.length > 0
-                ? `No posts match “${query}” — only people.`
-                : `Nothing matches “${query}” yet.`
+                ? t('search.noPosts', { query })
+                : t('search.nothing', { query })
             }
           />
         </>

@@ -1,17 +1,18 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/user';
+import { getTranslate } from '@/lib/i18n/server';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ProfilePage() {
-  const user = await getCurrentUser();
+  const [user, t] = await Promise.all([getCurrentUser(), getTranslate()]);
   if (!user) {
     return (
       <section className="x-empty">
-        <h1>Profile</h1>
-        <p>Sign in to view your profile.</p>
-        <Link href="/login?next=/profile">Sign in</Link>
+        <h1>{t('profile.title')}</h1>
+        <p>{t('profile.signInPrompt')}</p>
+        <Link href="/login?next=/profile">{t('common.signIn')}</Link>
       </section>
     );
   }
@@ -19,9 +20,9 @@ export default async function ProfilePage() {
   if (!user.handle) {
     return (
       <section className="x-empty">
-        <h1>Finish your account</h1>
-        <p>Choose a handle to open your profile.</p>
-        <Link href="/auth/complete">Continue</Link>
+        <h1>{t('profile.finishTitle')}</h1>
+        <p>{t('profile.finishLead')}</p>
+        <Link href="/auth/complete">{t('common.continue')}</Link>
       </section>
     );
   }

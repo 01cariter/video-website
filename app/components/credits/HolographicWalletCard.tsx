@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import { Radio, Sparkles, WalletCards } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useT } from '../i18n-provider';
 
 const ShaderBackground = dynamic(
   () =>
@@ -26,6 +27,7 @@ export function HolographicWalletCard({
   lifetimeSpent: number;
   className?: string;
 }) {
+  const t = useT();
   return (
     <div className={cn('credit-wallet-stage', className)}>
       <section
@@ -54,17 +56,17 @@ export function HolographicWalletCard({
               <span className="grid size-9 place-items-center rounded-xl border border-white/14 bg-black/15 backdrop-blur-md">
                 <WalletCards className="size-4" />
               </span>
-              Snackd creator wallet
+              {t('credits.wallet')}
             </span>
             <span className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] text-white/60 uppercase">
               <Radio className="size-3.5" />
-              Live balance
+              {t('credits.liveBalance')}
             </span>
           </div>
 
           <div className="credit-wallet-balance">
             <span className="text-[11px] font-medium tracking-[0.14em] text-white/52 uppercase">
-              Available balance
+              {t('credits.balance')}
             </span>
             <div className="mt-3 flex items-end justify-center gap-3">
               <strong className="text-[clamp(4.5rem,10vw,7.5rem)] leading-[0.8] font-semibold tracking-[-0.08em] text-white tabular-nums">

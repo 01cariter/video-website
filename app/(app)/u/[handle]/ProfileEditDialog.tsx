@@ -7,6 +7,7 @@ import { uploadStudioMedia } from '@/lib/studio/media-upload';
 import { MAX_BIO_LENGTH, MAX_DISPLAY_NAME_LENGTH } from '@/lib/profiles-shared';
 import { avatarStyle, initials } from '@/app/components/media';
 import type { Profile } from '@/lib/types';
+import { useT } from '@/app/components/i18n-provider';
 
 export interface ProfileEdits {
   display_name: string;
@@ -25,6 +26,7 @@ export default function ProfileEditDialog({
   onSaved: (edits: ProfileEdits) => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const t = useT();
   const fileRef = useRef<HTMLInputElement>(null);
   const [displayName, setDisplayName] = useState(profile.display_name);
   const [bio, setBio] = useState(profile.bio ?? '');
@@ -49,7 +51,7 @@ export default function ProfileEditDialog({
     try {
       const uploaded = await uploadStudioMedia(file);
       if (uploaded.kind !== 'image') {
-        throw new Error('Choose an image for your avatar.');
+        throw new Error(t('profile.avatarNotImage'));
       }
       setAvatarUrl(uploaded.url);
       setAvatarMediaId(uploaded.id);
@@ -57,7 +59,7 @@ export default function ProfileEditDialog({
       setError(
         uploadError instanceof Error
           ? uploadError.message
-          : 'That image could not be uploaded.',
+          : t('profile.avatarFailed'),
       );
     } finally {
       setUploading(false);
@@ -67,7 +69,7 @@ export default function ProfileEditDialog({
   async function save() {
     const name = displayName.replace(/\s+/g, ' ').trim();
     if (!name) {
-      setError('Your display name cannot be empty.');
+      setError(t('profile.nameEmpty'));
       return;
     }
     setSaving(true);
@@ -86,7 +88,7 @@ export default function ProfileEditDialog({
         error?: string;
       };
       if (!response.ok) {
-        throw new Error(payload.error || 'Your profile could not be saved.');
+        throw new Error(payload.error || t('profile.saveFailed'));
       }
       onSaved({
         display_name: name,
@@ -98,7 +100,7 @@ export default function ProfileEditDialog({
       setError(
         saveError instanceof Error
           ? saveError.message
-          : 'Your profile could not be saved.',
+          : t('profile.saveFailed'),
       );
       setSaving(false);
     }
@@ -127,13 +129,13 @@ export default function ProfileEditDialog({
         }}
       >
         <header className="fdlg-head">
-          <h2 id="fdlg-title">Edit profile</h2>
+          <h2 id="fdlg-title">{t('profile.edit')}</h2>
           <button
             type="button"
             className="fdlg-close"
             onClick={onClose}
             disabled={busy}
-            aria-label="Close"
+            aria-label={t('common.close')}
           >
             <X aria-hidden="true" />
           </button>
@@ -151,8 +153,8 @@ export default function ProfileEditDialog({
                 className="fdlg-avatar-btn"
                 onClick={() => fileRef.current?.click()}
                 disabled={busy}
-                aria-label="Upload a new avatar"
-                title="Upload a new avatar"
+                aria-label={t('profile.photoUpload')}
+                title={t('profile.photoUpload')}
               >
                 {uploading ? (
                   <LoaderCircle className="fdlg-spin" aria-hidden="true" />
@@ -162,8 +164,8 @@ export default function ProfileEditDialog({
               </button>
             </span>
             <div className="fdlg-avatar-copy">
-              <b>Profile photo</b>
-              <small>JPEG, PNG, WebP or GIF · square images look best.</small>
+              <b>{t('profile.photo')}</b>
+              <small>{t('profile.photoLead')}</small>
               {avatarMediaId ? (
                 <button
                   type="button"
@@ -175,7 +177,7 @@ export default function ProfileEditDialog({
                   disabled={busy}
                 >
                   <Trash2 aria-hidden="true" />
-                  Remove photo
+                  {t('profile.photoRemove')}
                 </button>
               ) : null}
             </div>
@@ -195,7 +197,7 @@ export default function ProfileEditDialog({
 
           <div className="fdlg-fld">
             <div className="fdlg-label-row">
-              <label htmlFor="fdlg-name">Display name</label>
+              <label htmlFor="fdlg-name">{t('profile.displayName')}</label>
               <span className="tabular-nums">
                 {displayName.length}/{MAX_DISPLAY_NAME_LENGTH}
               </span>
@@ -205,7 +207,7 @@ export default function ProfileEditDialog({
               value={displayName}
               maxLength={MAX_DISPLAY_NAME_LENGTH}
               onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="How your name appears on posts"
+              placeholder={t('profile.displayNamePlaceholder')}
               disabled={busy}
               required
               autoFocus
@@ -215,7 +217,7 @@ export default function ProfileEditDialog({
           <div className="fdlg-fld">
             <div className="fdlg-label-row">
               <label htmlFor="fdlg-bio">
-                Bio <small>optional</small>
+                {t('profile.bio')} <small>{t('common.optional')}</small>
               </label>
               <span className="tabular-nums">
                 {bio.length}/{MAX_BIO_LENGTH}
@@ -227,13 +229,13 @@ export default function ProfileEditDialog({
               rows={4}
               maxLength={MAX_BIO_LENGTH}
               onChange={(event) => setBio(event.target.value)}
-              placeholder="Tell people what you create."
+              placeholder={t('profile.bioPlaceholder')}
               disabled={busy}
             />
           </div>
 
           <p className="fdlg-static">
-            Handle <b>{profile.handle}</b> — permanent, so links keep working.
+            {t('profile.handleNote', { handle: profile.handle ?? '' })}
           </p>
 
           {error ? (
@@ -250,7 +252,7 @@ export default function ProfileEditDialog({
             onClick={onClose}
             disabled={busy}
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             type="submit"
@@ -258,7 +260,7 @@ export default function ProfileEditDialog({
             disabled={busy || !displayName.trim()}
           >
             {saving && <LoaderCircle className="fdlg-spin" aria-hidden="true" />}
-            {saving ? 'Saving…' : 'Save changes'}
+            {saving ? t('common.saving') : t('profile.saveChanges')}
           </button>
         </footer>
       </form>

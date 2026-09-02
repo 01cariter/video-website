@@ -8,6 +8,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
+import { useT } from '../i18n-provider';
+import type { MessageKey } from '@/lib/i18n/t';
 import {
   Dialog,
   DialogContent,
@@ -34,18 +36,19 @@ interface CreditLedgerPage {
 
 const PAGE_SIZE = 8;
 
-const ENTRY_LABELS: Record<string, string> = {
-  welcome: 'Welcome credits',
-  top_up: 'Credit purchase',
-  ai_agent: 'Agent request',
-  ai_text: 'Text generation',
-  ai_image: 'Image generation',
-  ai_video: 'Video generation',
-  ai_refund: 'Generation refund',
+const ENTRY_KEYS: Record<string, MessageKey> = {
+  welcome: 'credits.entry.welcome',
+  top_up: 'credits.entry.purchase',
+  ai_agent: 'credits.entry.agent',
+  ai_text: 'credits.entry.text',
+  ai_image: 'credits.entry.image',
+  ai_video: 'credits.entry.video',
+  ai_refund: 'credits.entry.refund',
 };
 
-export function creditEntryLabel(type: string) {
-  return ENTRY_LABELS[type] || type;
+/** Falls back to the raw ledger type, which is never shown for a known kind. */
+export function creditEntryKey(type: string): MessageKey | null {
+  return ENTRY_KEYS[type] ?? null;
 }
 
 export function CreditHistoryDialog({
@@ -55,6 +58,7 @@ export function CreditHistoryDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   const [page, setPage] = useState(1);
   const [data, setData] = useState<CreditLedgerPage | null>(null);
   const [loading, setLoading] = useState(false);
@@ -72,19 +76,19 @@ export function CreditHistoryDialog({
         error?: string;
       };
       if (!response.ok) {
-        throw new Error(result.error || 'Could not load credit history.');
+        throw new Error(result.error || t('credits.historyFailed'));
       }
       setData(result);
     } catch (loadError) {
       setError(
         loadError instanceof Error
           ? loadError.message
-          : 'Could not load credit history.',
+          : t('credits.historyFailed'),
       );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!open) return;
@@ -111,17 +115,17 @@ export function CreditHistoryDialog({
             Activity
           </span>
           <DialogTitle className="text-xl tracking-[-0.025em]">
-            Credit history
+            {t('credits.history')}
           </DialogTitle>
           <DialogDescription>
-            Purchases, generation charges, and automatic refunds.
+            {t('credits.historyLead')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="min-h-[420px] overflow-y-auto">
           {loading && !data ? (
             <div className="grid min-h-[420px] place-items-center text-muted-foreground">
-              <Loader2 className="size-5 animate-spin" aria-label="Loading history" />
+              <Loader2 className="size-5 animate-spin" aria-label={t('credits.historyLoading')} />
             </div>
           ) : error ? (
             <div className="grid min-h-[420px] place-items-center px-6 text-center">
@@ -133,7 +137,7 @@ export function CreditHistoryDialog({
                   className="mt-4 rounded-xl"
                   onClick={() => void loadPage(page)}
                 >
-                  Try again
+                  {t('common.tryAgain')}
                 </Button>
               </div>
             </div>
@@ -145,7 +149,7 @@ export function CreditHistoryDialog({
             </div>
           ) : (
             <div className="grid min-h-[420px] place-items-center text-sm text-muted-foreground">
-              No credit activity yet.
+              {t('credits.noActivity')}
             </div>
           )}
         </div>
@@ -160,7 +164,7 @@ export function CreditHistoryDialog({
               variant="outline"
               size="icon-sm"
               className="rounded-xl bg-background"
-              aria-label="Previous page"
+              aria-label={t('credits.previousPage')}
               disabled={loading || page <= 1}
               onClick={() => setPage((current) => Math.max(1, current - 1))}
             >
@@ -174,7 +178,7 @@ export function CreditHistoryDialog({
               variant="outline"
               size="icon-sm"
               className="rounded-xl bg-background"
-              aria-label="Next page"
+              aria-label={t('credits.nextPage')}
               disabled={loading || !data || page >= data.totalPages}
               onClick={() =>
                 setPage((current) =>
@@ -192,11 +196,13 @@ export function CreditHistoryDialog({
 }
 
 function HistoryRow({ entry }: { entry: CreditLedgerItem }) {
+  const t = useT();
+  const key = creditEntryKey(entry.type);
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_92px_116px] items-center gap-5 px-6 py-4 max-sm:grid-cols-[minmax(0,1fr)_72px]">
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">
-          {creditEntryLabel(entry.type)}
+          {key ? t(key) : entry.type}
         </p>
         <time
           className="mt-0.5 block text-xs text-muted-foreground"

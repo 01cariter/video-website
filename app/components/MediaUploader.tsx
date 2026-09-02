@@ -45,6 +45,7 @@ import {
 } from '@/lib/types';
 import type { CollectionSummary } from '@/lib/types';
 import type { ComposeAssetDraft, ComposeDraft } from './compose/types';
+import { useT } from './i18n-provider';
 
 interface MediaUploaderProps {
   user: AppUser;
@@ -113,6 +114,7 @@ export default function MediaUploader({
   onPublished,
   onBusyChange,
 }: MediaUploaderProps) {
+  const t = useT();
   const supabase = useMemo(() => createClient(), []);
   const inputRef = useRef<HTMLInputElement>(null);
   const selectionsRef = useRef<Selection[]>([]);
@@ -305,7 +307,7 @@ export default function MediaUploader({
 
       const room = MAX_POST_ASSETS - selectionsRef.current.length;
       if (room <= 0) {
-        setError(`You can attach up to ${MAX_POST_ASSETS} files.`);
+        setError(t('compose.tooMany', { max: MAX_POST_ASSETS }));
         return;
       }
 
@@ -315,15 +317,11 @@ export default function MediaUploader({
         for (const file of incoming.slice(0, room)) {
           const mime = file.type || '';
           if (!ALLOWED_MEDIA_MIME_TYPES.has(mime)) {
-            setError(
-              'Choose JPEG, PNG, WebP, GIF, AVIF, MP4, WebM or MOV files.',
-            );
+            setError(t('compose.badType'));
             continue;
           }
           if (file.size <= 0 || file.size > MAX_DIRECT_UPLOAD_BYTES) {
-            setError(
-              `Files must be between 1 byte and ${formatBytes(MAX_DIRECT_UPLOAD_BYTES)}.`,
-            );
+            setError(t('compose.badSize', { size: formatBytes(MAX_DIRECT_UPLOAD_BYTES) }));
             continue;
           }
           const objectUrl = URL.createObjectURL(file);
@@ -346,7 +344,7 @@ export default function MediaUploader({
             setError(
               readError instanceof Error
                 ? readError.message
-                : 'That file could not be read.',
+                : t('compose.unreadable'),
             );
           }
         }
@@ -361,7 +359,7 @@ export default function MediaUploader({
         if (inputRef.current) inputRef.current.value = '';
       }
     },
-    [busy],
+    [busy, t],
   );
 
   function onPick(event: ChangeEvent<HTMLInputElement>) {
@@ -436,11 +434,11 @@ export default function MediaUploader({
     event.preventDefault();
     if (busy) return;
     if (!body.trim()) {
-      setError('Write something before posting.');
+      setError(t('compose.needBody'));
       return;
     }
     if (collectionId === 'new' && !newCollectionTitle.trim()) {
-      setError('Name the new collection, or choose an existing one.');
+      setError(t('compose.needCollectionName'));
       return;
     }
 
@@ -454,7 +452,7 @@ export default function MediaUploader({
     try {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
-      if (!token) throw new Error('Your session expired. Sign in again.');
+      if (!token) throw new Error(t('compose.sessionExpired'));
 
       let mediaIds: number[] = [];
       let posterMediaId: number | null = null;
@@ -632,14 +630,14 @@ export default function MediaUploader({
       };
       if (!response.ok) {
         throw new Error(
-          payload.detail || payload.error || 'The post could not be published.',
+          payload.detail || payload.error || t('compose.publishFailed'),
         );
       }
 
       onPublished(payload.video);
     } catch (publishError) {
       setError(
-        publishError instanceof Error ? publishError.message : 'Upload failed.',
+        publishError instanceof Error ? publishError.message : t('compose.uploadFailed'),
       );
       setStage('idle');
       setProgress(0);
@@ -716,7 +714,7 @@ export default function MediaUploader({
                   />
                 )}
                 {activeIndex === 0 && (
-                  <span className="up-hero-cover">Cover</span>
+                  <span className="up-hero-cover">{t('compose.cover')}</span>
                 )}
                 <figcaption className="up-hero-meta">
                   <span>
@@ -725,7 +723,7 @@ export default function MediaUploader({
                     ) : (
                       <ImageIcon aria-hidden="true" />
                     )}
-                    {active.probe.kind === 'video' ? 'Video' : 'Image'}
+                    {active.probe.kind === 'video' ? t('common.video') : t('common.image')}
                   </span>
                   {active.probe.width && active.probe.height ? (
                     <span className="tabular-nums">
@@ -743,7 +741,7 @@ export default function MediaUploader({
                 </figcaption>
               </figure>
 
-              <div className="up-rail" role="list" aria-label="Attached media">
+              <div className="up-rail" role="list" aria-label={t('compose.attached')}>
                 {selections.map((item, index) => {
                   const isVideo = item.probe.kind === 'video';
                   return (
@@ -756,7 +754,7 @@ export default function MediaUploader({
                         type="button"
                         className="up-chip-open"
                         onClick={() => setActiveKey(item.key)}
-                        aria-label={`Preview item ${index + 1}`}
+                        aria-label={t('compose.previewItem', { index: index + 1 })}
                         aria-current={item.key === active.key}
                       >
                         {isVideo ? (
@@ -790,8 +788,8 @@ export default function MediaUploader({
                           type="button"
                           onClick={() => move(item.key, -1)}
                           disabled={busy || index === 0}
-                          aria-label="Move earlier"
-                          title="Move earlier"
+                          aria-label={t('compose.moveEarlier')}
+                          title={t('compose.moveEarlier')}
                         >
                           <ChevronLeft aria-hidden="true" />
                         </button>
@@ -799,8 +797,8 @@ export default function MediaUploader({
                           type="button"
                           onClick={() => move(item.key, 1)}
                           disabled={busy || index === selections.length - 1}
-                          aria-label="Move later"
-                          title="Move later"
+                          aria-label={t('compose.moveLater')}
+                          title={t('compose.moveLater')}
                         >
                           <ChevronRight aria-hidden="true" />
                         </button>
@@ -809,8 +807,8 @@ export default function MediaUploader({
                           className="up-chip-remove"
                           onClick={() => removeAt(item.key)}
                           disabled={busy}
-                          aria-label="Remove"
-                          title="Remove"
+                          aria-label={t('compose.remove')}
+                          title={t('compose.remove')}
                         >
                           <X aria-hidden="true" />
                         </button>
@@ -824,7 +822,7 @@ export default function MediaUploader({
                     className="up-chip-add"
                     onClick={browse}
                     disabled={busy}
-                    title="Add more media"
+                    title={t('compose.addMore')}
                   >
                     <Plus aria-hidden="true" />
                     <span className="tabular-nums">
@@ -837,7 +835,7 @@ export default function MediaUploader({
               {reading && (
                 <p className="up-note" role="status">
                   <LoaderCircle className="up-spin" aria-hidden="true" />
-                  Preparing selected canvas media…
+                  {t('compose.preparing')}
                 </p>
               )}
             </>
@@ -855,11 +853,12 @@ export default function MediaUploader({
                   <CloudUpload aria-hidden="true" />
                 )}
               </span>
-              <b>{reading ? 'Reading files…' : 'Drop photos or video here'}</b>
+              <b>{reading ? t('compose.reading') : t('compose.drop')}</b>
               <small>
-                Click to browse, or paste from the clipboard · up to{' '}
-                {MAX_POST_ASSETS} files · {formatBytes(MAX_DIRECT_UPLOAD_BYTES)}{' '}
-                each
+                {t('compose.dropLead', {
+                  max: MAX_POST_ASSETS,
+                  size: formatBytes(MAX_DIRECT_UPLOAD_BYTES),
+                })}
               </small>
             </button>
           )}
@@ -877,7 +876,7 @@ export default function MediaUploader({
         <div className="up-form">
           <div className="up-form-scroll">
             <div className="up-form-head">
-              <h2>Post details</h2>
+              <h2>{t('compose.details')}</h2>
               <button
                 type="button"
                 className="up-ai"
@@ -885,10 +884,10 @@ export default function MediaUploader({
                 disabled={!assistQuote || !assistHasSource || busy}
                 title={
                   !assistHasSource
-                    ? 'Add a title or a few source notes first'
+                    ? t('compose.aiNeedsSource')
                     : assistQuote
-                      ? `Uses ${assistQuote.credits} credits`
-                      : 'Checking the current AI fill price'
+                      ? t('compose.aiPriceHint', { credits: assistQuote.credits })
+                      : t('compose.aiCheckingHint')
                 }
               >
                 {assistStage === 'generating' ? (
@@ -899,14 +898,20 @@ export default function MediaUploader({
                   <Sparkles aria-hidden="true" />
                 )}
                 {assistStage === 'generating'
-                  ? 'Drafting…'
+                  ? t('compose.aiDrafting')
                   : !assistHasSource
-                    ? 'AI fill'
+                    ? t('compose.aiFill')
                     : assistQuote
-                      ? `${title.trim() || body.trim() ? 'Refine' : 'Fill'} with AI · ${assistQuote.credits}`
+                      ? t('compose.aiFillPriced', {
+                          action:
+                            title.trim() || body.trim()
+                              ? t('compose.aiRefine')
+                              : t('compose.aiFillAction'),
+                          credits: assistQuote.credits,
+                        })
                       : assistStage === 'quoting'
-                        ? 'Checking price…'
-                        : 'AI fill'}
+                        ? t('compose.aiChecking')
+                        : t('compose.aiFill')}
               </button>
             </div>
 
@@ -925,13 +930,13 @@ export default function MediaUploader({
             {assistStage === 'done' && !assistError && (
               <p className="up-flash" role="status">
                 <Check aria-hidden="true" />
-                AI draft added. Review and edit it before publishing.
+                {t('compose.aiDone')}
               </p>
             )}
 
             <div className="up-fld">
               <label htmlFor="up-title">
-                Title <small>optional</small>
+                {t('compose.titleField')} <small>{t('common.optional')}</small>
               </label>
               <input
                 id="up-title"
@@ -942,7 +947,7 @@ export default function MediaUploader({
                   setAssistStage('idle');
                   setAssistError('');
                 }}
-                placeholder="A clear, specific headline"
+                placeholder={t('compose.titlePlaceholder')}
                 maxLength={120}
                 autoFocus
                 disabled={stage !== 'idle' || assistStage === 'generating'}
@@ -952,7 +957,7 @@ export default function MediaUploader({
             <div className="up-fld up-fld-grow">
               <div className="up-label-row">
                 <label htmlFor="up-body">
-                  Body <small>required</small>
+                  {t('compose.body')} <small>{t('common.required')}</small>
                 </label>
                 <span className="tabular-nums">
                   {body.length}/{MAX_POST_BODY_LENGTH}
@@ -967,7 +972,7 @@ export default function MediaUploader({
                   setAssistStage('idle');
                   setAssistError('');
                 }}
-                placeholder="Add context, process, or the idea behind this work…"
+                placeholder={t('compose.bodyPlaceholder')}
                 maxLength={MAX_POST_BODY_LENGTH}
                 rows={6}
                 required
@@ -977,7 +982,7 @@ export default function MediaUploader({
 
             <div className="up-fld">
               <label htmlFor="up-collection">
-                Collection <small>optional</small>
+                {t('compose.collection')} <small>{t('common.optional')}</small>
               </label>
               <select
                 id="up-collection"
@@ -986,31 +991,31 @@ export default function MediaUploader({
                 onChange={(event) => setCollectionId(event.target.value)}
                 disabled={stage !== 'idle'}
               >
-                <option value="">No collection</option>
+                <option value="">{t('collection.none')}</option>
                 {collections.map((collection) => (
                   <option key={collection.id} value={String(collection.id)}>
                     {collection.title} · {collection.posts_count}
                   </option>
                 ))}
-                <option value="new">＋ New collection…</option>
+                <option value="new">{t('collection.new')}</option>
               </select>
               {collectionId === 'new' ? (
                 <input
                   className="up-collection-name"
                   value={newCollectionTitle}
                   onChange={(event) => setNewCollectionTitle(event.target.value)}
-                  placeholder="Name the collection"
+                  placeholder={t('collection.namePlaceholder')}
                   maxLength={MAX_COLLECTION_TITLE_LENGTH}
                   disabled={stage !== 'idle'}
-                  aria-label="New collection name"
+                  aria-label={t('collection.newName')}
                 />
               ) : null}
             </div>
 
             <div className="up-meta-grid">
               <div className="up-fld">
-                <span className="up-label">Category</span>
-                <div className="up-seg" role="group" aria-label="Category">
+                <span className="up-label">{t('compose.category')}</span>
+                <div className="up-seg" role="group" aria-label={t('compose.category')}>
                   <button
                     type="button"
                     className={category === 'study' ? 'on' : ''}
@@ -1018,7 +1023,7 @@ export default function MediaUploader({
                     aria-pressed={category === 'study'}
                     disabled={stage !== 'idle'}
                   >
-                    Study
+                    {t('common.study')}
                   </button>
                   <button
                     type="button"
@@ -1027,20 +1032,20 @@ export default function MediaUploader({
                     aria-pressed={category === 'play'}
                     disabled={stage !== 'idle'}
                   >
-                    Play
+                    {t('common.play')}
                   </button>
                 </div>
               </div>
 
               <div className="up-fld">
                 <label htmlFor="up-label">
-                  Badge <small>optional</small>
+                  {t('compose.badge')} <small>{t('common.optional')}</small>
                 </label>
                 <input
                   id="up-label"
                   value={label}
                   onChange={(event) => setLabel(event.target.value)}
-                  placeholder="e.g. PROCESS"
+                  placeholder={t('compose.badgePlaceholder')}
                   maxLength={24}
                   disabled={stage !== 'idle'}
                 />
@@ -1056,17 +1061,17 @@ export default function MediaUploader({
                 </span>
                 <small>
                   {stage === 'uploading'
-                    ? `Uploading ${Math.round(progress * 100)}%`
-                    : 'Publishing…'}
+                    ? t('compose.uploading', { percent: Math.round(progress * 100) })
+                    : t('compose.publishing')}
                 </small>
               </div>
             )}
             <div className="up-submit-row">
               <small className="up-submit-note">
-                As {user.display_name}
+                {t('compose.asAuthor', { name: user.display_name })} ·{' '}
                 {selections.length === 0
-                  ? ' · text-only post'
-                  : ` · ${selections.length} ${selections.length === 1 ? 'asset' : 'assets'}`}
+                  ? t('compose.textOnly')
+                  : t.plural('compose.assetCount', selections.length)}
               </small>
               <button
                 className="up-publish"
@@ -1076,7 +1081,7 @@ export default function MediaUploader({
                 {stage !== 'idle' && (
                   <LoaderCircle className="up-spin" aria-hidden="true" />
                 )}
-                {stage === 'idle' ? 'Publish post' : 'Publishing…'}
+                {stage === 'idle' ? t('compose.publish') : t('compose.publishing')}
               </button>
             </div>
           </footer>
@@ -1086,7 +1091,7 @@ export default function MediaUploader({
       {dragging && (
         <div className="up-dropveil" aria-hidden="true">
           <CloudUpload />
-          <b>Drop to attach</b>
+          <b>{t('compose.dropOverlay')}</b>
         </div>
       )}
     </section>

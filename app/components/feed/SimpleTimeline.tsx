@@ -9,6 +9,7 @@ import ActionNotice from './ActionNotice';
 import FollowingCreators from './FollowingCreators';
 import { requestSocialAction } from './social-action';
 import TimelineFeed from './TimelineFeed';
+import { useT } from '../i18n-provider';
 
 export type SimpleTimelineSource = 'following' | 'bookmarks' | 'search';
 
@@ -29,19 +30,6 @@ const NEXT_PATH: Record<SimpleTimelineSource, string> = {
   search: '/search',
 };
 
-function defaultEmptyMessage(
-  source: SimpleTimelineSource,
-  user: AppUser | null,
-  followingCount: number,
-): string {
-  if (source === 'search') return 'No posts match this search.';
-  if (source === 'bookmarks') return 'You have not bookmarked anything yet.';
-  return user
-    ? followingCount > 0
-      ? 'The people you follow have not posted yet.'
-      : 'Follow creators to see their posts here.'
-    : 'Sign in to see posts from people you follow.';
-}
 
 function followingQuery(cursor: string | null): string {
   const search = new URLSearchParams({ limit: '12', mode: 'following' });
@@ -59,6 +47,7 @@ export default function SimpleTimeline({
   emptyLabel,
 }: SimpleTimelineProps) {
   const [videos, setVideos] = useState(initialVideos);
+  const t = useT();
   const [nextCursor, setNextCursor] = useState(source === 'following' ? initialNextCursor : null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -109,12 +98,12 @@ export default function SimpleTimeline({
         }
       } catch {
         patchVideo(video.id, { liked: video.liked, likes_count: video.likes_count });
-        setActionError('Could not update this like. Try again.');
+        setActionError(t('post.likeFailed'));
       } finally {
         pending.current.delete(key);
       }
     },
-    [needAuth, patchVideo],
+    [needAuth, patchVideo, t],
   );
 
   const save = useCallback(
@@ -172,12 +161,12 @@ export default function SimpleTimeline({
         }
       } catch {
         restore();
-        setActionError('Could not update this bookmark. Try again.');
+        setActionError(t('post.saveFailed'));
       } finally {
         pending.current.delete(key);
       }
     },
-    [needAuth, patchVideo, source, videos],
+    [needAuth, patchVideo, source, t, videos],
   );
 
 
@@ -265,15 +254,26 @@ export default function SimpleTimeline({
   }, [fetchBookmarks, fetchFollowingPage, loadMore, source, videos.length]);
 
   const emptyMessage =
-    emptyLabel ?? defaultEmptyMessage(source, user, initialAuthors.length);
+    emptyLabel ??
+    (source === 'search'
+      ? t('feed.searchEmpty')
+      : source === 'bookmarks'
+        ? user
+          ? t('feed.bookmarksEmpty')
+          : t('feed.bookmarksGuest')
+        : user
+          ? initialAuthors.length > 0
+            ? t('feed.followingEmpty')
+            : t('feed.followPrompt')
+          : t('feed.followingGuest'));
 
   return (
     <div className="t-home">
       {source === 'following' && <FollowingCreators authors={initialAuthors} />}
       {source === 'following' && initialAuthors.length > 0 && (
         <header className="fg-feed-head">
-          <span>Latest posts</span>
-          <small>From people in your circle</small>
+          <span>{t('feed.latest')}</span>
+          <small>{t('feed.latestLead')}</small>
         </header>
       )}
       <TimelineFeed

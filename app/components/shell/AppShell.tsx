@@ -7,12 +7,14 @@ import { AnimatePresence } from 'motion/react';
 import { createClient } from '@/lib/supabase/client';
 import type { AppUser, Video } from '@/lib/types';
 import type { SuggestedAuthor } from '@/lib/profiles';
+import type { MessageKey } from '@/lib/i18n/t';
+import { useT } from '../i18n-provider';
 import AuthModal from '../AuthModal';
 import ComposeModal from '../compose/ComposeModal';
 import { OPEN_COMPOSE_EVENT, PUBLISHED_EVENT } from './compose-events';
 import { MediaPreviewProvider } from './MediaPreviewContext';
 import LeftNav from './LeftNav';
-import RightRail, { type RailTopic } from './RightRail';
+import RightRail from './RightRail';
 import MobileTabBar from './MobileTabBar';
 
 export interface AppShellProps {
@@ -20,12 +22,13 @@ export interface AppShellProps {
   children: ReactNode;
 }
 
-const TOPICS: RailTopic[] = [
-  { id: 'study', label: 'Study', href: '/?tab=study' },
-  { id: 'play', label: 'Entertainment', href: '/?tab=play' },
-];
+const TOPIC_KEYS = [
+  { id: 'study', key: 'common.study', href: '/?tab=study' },
+  { id: 'play', key: 'common.play', href: '/?tab=play' },
+] as const satisfies ReadonlyArray<{ id: string; key: MessageKey; href: string }>;
 
 export default function AppShell({ user, children }: AppShellProps) {
+  const t = useT();
   const router = useRouter();
   const pathname = usePathname();
   const supabase = useMemo(() => createClient(), []);
@@ -111,7 +114,11 @@ export default function AppShell({ user, children }: AppShellProps) {
           </main>
           {!isWideWorkspace && (
             <RightRail
-              topics={TOPICS}
+              topics={TOPIC_KEYS.map((topic) => ({
+                id: topic.id,
+                label: t(topic.key),
+                href: topic.href,
+              }))}
               suggestions={suggestionList}
               suggestionsLoading={suggestionsLoading}
               onFollow={(authorId) => void follow(authorId)}

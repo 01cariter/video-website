@@ -1,8 +1,12 @@
+'use client';
+
+import { useT } from '../i18n-provider';
 /** Shared timeline post placeholders. */
 export default function FeedSkeleton({ rows = 4 }: { rows?: number }) {
+  const t = useT();
   return (
-    <div className="t-feed" role="status" aria-label="Loading posts">
-      <span className="sr-only">Loading posts</span>
+    <div className="t-feed" role="status" aria-label={t('feed.loadingPosts')}>
+      <span className="sr-only">{t('feed.loadingPosts')}</span>
       {Array.from({ length: rows }, (_, index) => (
         <div className="t-skeleton" key={index}>
           <i className="t-skeleton-av" />

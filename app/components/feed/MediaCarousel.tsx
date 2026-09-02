@@ -5,6 +5,7 @@ import type { MouseEvent } from 'react';
 import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import type { Video, VideoAsset } from '@/lib/types';
 import { bg, placeholderColor } from '../media';
+import { useT } from '../i18n-provider';
 
 interface MediaCarouselProps {
   video: Video;
@@ -61,6 +62,7 @@ export default function MediaCarousel({
   showPlayHint = true,
 }: MediaCarouselProps) {
   const assets = video.assets ?? [];
+  const t = useT();
   const [index, setIndex] = useState(0);
   const [toneByCover, setToneByCover] = useState<Record<string, string>>({});
 
@@ -93,8 +95,8 @@ export default function MediaCarousel({
         }}
         aria-label={
           assets.length > 1
-            ? `Preview media ${safeIndex + 1} of ${assets.length}`
-            : 'Preview media'
+            ? t('compose.previewItem', { index: safeIndex + 1 })
+            : t('viewer.previewMedia')
         }
         onClick={() => onOpen?.(safeIndex)}
       >
@@ -130,7 +132,7 @@ export default function MediaCarousel({
             className="mc-nav prev"
             onClick={(event) => go(-1, event)}
             disabled={safeIndex === 0}
-            aria-label="Previous media"
+            aria-label={t('viewer.previousMedia')}
           >
             <ChevronLeft aria-hidden="true" />
           </button>
@@ -139,7 +141,7 @@ export default function MediaCarousel({
             className="mc-nav next"
             onClick={(event) => go(1, event)}
             disabled={safeIndex === assets.length - 1}
-            aria-label="Next media"
+            aria-label={t('viewer.nextMedia')}
           >
             <ChevronRight aria-hidden="true" />
           </button>

@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, LoaderCircle, X } from 'lucide-react';
 import type { Provider } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
+import { useT } from './i18n-provider';
 
 interface AuthPanelProps {
   mode?: 'login' | 'register';
@@ -42,6 +43,7 @@ export default function AuthPanel({
   onModeChange,
   onAuthenticated,
 }: AuthPanelProps) {
+  const t = useT();
   const isLogin = mode === 'login';
   const isModal = presentation === 'modal';
   const router = useRouter();
@@ -50,7 +52,7 @@ export default function AuthPanel({
   const rawNext = nextPath || params.get('next') || '/';
   const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/';
   const initialError = params.get('error');
-  const [error, setError] = useState(initialError ? 'Sign-in failed. Please try again.' : '');
+  const [error, setError] = useState(initialError ? t('auth.signInFailed') : '');
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<AuthForm>({ name: '', email: '', password: '' });
 
@@ -84,7 +86,7 @@ export default function AuthPanel({
         setLoading(false);
       }
     } catch {
-      setError('Something went wrong starting social sign-in.');
+      setError(t('auth.socialFailed'));
       setLoading(false);
     }
   }
@@ -107,16 +109,16 @@ export default function AuthPanel({
           });
 
       if (authError) {
-        setError(authError.message || (isLogin ? 'Invalid email or password.' : 'Could not create account.'));
+        setError(authError.message || (isLogin ? t('auth.badCredentials') : t('auth.signUpFailed')));
         return;
       }
       if (!isLogin && data.user && !data.session) {
-        setError('Check your email to finish creating your account.');
+        setError(t('auth.checkEmail'));
         return;
       }
       goNext();
     } catch {
-      setError('Something went wrong. Please try again.');
+      setError(t('auth.genericFailed'));
     } finally {
       setLoading(false);
     }
@@ -125,7 +127,7 @@ export default function AuthPanel({
   const panel = (
     <section className={`auth-card ${isModal ? 'auth-card-modal' : ''}`}>
       {isModal && onClose && (
-        <button type="button" className="auth-close" onClick={onClose} aria-label="Close" autoFocus>
+        <button type="button" className="auth-close" onClick={onClose} aria-label={t('common.close')} autoFocus>
           <X aria-hidden="true" />
         </button>
       )}
@@ -140,8 +142,8 @@ export default function AuthPanel({
           <span>Snackd</span>
         </Link>
       )}
-      <h1>{isLogin ? 'Welcome back' : 'Sign up'}</h1>
-      <p className="lead">{isLogin ? 'Sign in to continue.' : 'Create an account to continue.'}</p>
+      <h1>{isLogin ? t('auth.welcomeBack') : t('auth.createAccount')}</h1>
+      <p className="lead">{isLogin ? t('auth.signInLead') : t('auth.signUpLead')}</p>
 
       {error && <div className="err" role="alert">{error}</div>}
 
@@ -152,7 +154,7 @@ export default function AuthPanel({
         disabled={loading}
       >
         <GoogleIcon />
-        <span>Continue with Google</span>
+        <span>{t('auth.google')}</span>
       </button>
 
       <div className="divider"><span>or</span></div>
@@ -160,58 +162,58 @@ export default function AuthPanel({
       <form onSubmit={submitEmail}>
         {!isLogin && (
           <div className="fld">
-            <label htmlFor="name">Display name</label>
-            <input id="name" type="text" value={form.name} onChange={setField('name')} placeholder="Alex" />
+            <label htmlFor="name">{t('auth.displayName')}</label>
+            <input id="name" type="text" value={form.name} onChange={setField('name')} placeholder={t('auth.namePlaceholder')} />
           </div>
         )}
         <div className="fld">
-          <label htmlFor="email">Email</label>
+          <label htmlFor="email">{t('auth.email')}</label>
           <input
             id="email"
             type="email"
             autoComplete="email"
             value={form.email}
             onChange={setField('email')}
-            placeholder="you@example.com"
+            placeholder={t('auth.emailPlaceholder')}
             required
           />
         </div>
         <div className="fld">
-          <label htmlFor="password">Password</label>
+          <label htmlFor="password">{t('auth.password')}</label>
           <input
             id="password"
             type="password"
             autoComplete={isLogin ? 'current-password' : 'new-password'}
             value={form.password}
             onChange={setField('password')}
-            placeholder={isLogin ? 'Enter your password' : 'At least 8 characters'}
+            placeholder={isLogin ? t('auth.passwordPlaceholder') : t('auth.passwordHint')}
             minLength={isLogin ? undefined : 8}
             required
           />
         </div>
         <button className="submit" type="submit" disabled={loading}>
           {loading && <LoaderCircle className="button-spinner" aria-hidden="true" />}
-          {loading ? 'Please wait...' : isLogin ? 'Sign in' : 'Sign up'}
+          {loading ? t('auth.pleaseWait') : isLogin ? t('common.signIn') : t('common.signUp')}
         </button>
       </form>
 
       <p className="alt">
         {isLogin ? (
           <>
-            New here?{' '}
+            {t('auth.noAccount')}{' '}
             {isModal ? (
-              <button type="button" onClick={() => onModeChange?.('register')}>Create an account</button>
+              <button type="button" onClick={() => onModeChange?.('register')}>{t('auth.createAccount')}</button>
             ) : (
-              <Link href={`/register?next=${encodeURIComponent(next)}`}>Create an account</Link>
+              <Link href={`/register?next=${encodeURIComponent(next)}`}>{t('auth.createAccount')}</Link>
             )}
           </>
         ) : (
           <>
-            Already have an account?{' '}
+            {t('auth.haveAccount')}{' '}
             {isModal ? (
-              <button type="button" onClick={() => onModeChange?.('login')}>Sign in</button>
+              <button type="button" onClick={() => onModeChange?.('login')}>{t('common.signIn')}</button>
             ) : (
-              <Link href={`/login?next=${encodeURIComponent(next)}`}>Sign in</Link>
+              <Link href={`/login?next=${encodeURIComponent(next)}`}>{t('common.signIn')}</Link>
             )}
           </>
         )}
@@ -219,7 +221,7 @@ export default function AuthPanel({
       {!isModal && (
         <Link className="home-link" href="/">
           <ArrowLeft aria-hidden="true" />
-          Back to feed
+          {t('auth.backToFeed')}
         </Link>
       )}
     </section>

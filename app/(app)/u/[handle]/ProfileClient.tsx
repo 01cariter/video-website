@@ -35,6 +35,7 @@ import {
   POST_DELETED_EVENT,
 } from '@/app/components/shell/compose-events';
 import ProfileEditDialog, { type ProfileEdits } from './ProfileEditDialog';
+import { useT } from '@/app/components/i18n-provider';
 
 interface ProfileClientProps {
   user: AppUser | null;
@@ -69,6 +70,7 @@ export default function ProfileClient({
   isOwner,
 }: ProfileClientProps) {
   const router = useRouter();
+  const t = useT();
   const { openPreview } = useMediaPreview();
   const [view, setView] = useState<ProfileView>('posts');
   const [profilePosts, setProfilePosts] = useState(posts);
@@ -186,12 +188,12 @@ export default function ProfileClient({
           type="button"
           className="pd-back"
           onClick={() => router.back()}
-          aria-label="Back"
+          aria-label={t('common.back')}
         >
           <ArrowLeft aria-hidden="true" />
         </button>
         <div className="pf-topbar-title">
-          <b>{isOwner ? 'Profile' : shownProfile.display_name}</b>
+          <b>{isOwner ? t('profile.title') : shownProfile.display_name}</b>
         </div>
       </header>
 
@@ -220,7 +222,7 @@ export default function ProfileClient({
                       onClick={() => setEditing(true)}
                     >
                       <Pencil aria-hidden="true" />
-                      Edit profile
+                      {t('profile.edit')}
                     </button>
                     <button
                       type="button"
@@ -229,7 +231,7 @@ export default function ProfileClient({
                         window.dispatchEvent(new Event(OPEN_COMPOSE_EVENT))
                       }
                     >
-                      New post
+                      {t('profile.newPost')}
                     </button>
                   </>
                 ) : (
@@ -239,7 +241,7 @@ export default function ProfileClient({
                     onClick={() => void toggleFollow()}
                     disabled={pending}
                   >
-                    {following ? 'Following' : 'Follow'}
+                    {following ? t('post.followingState') : t('post.follow')}
                   </button>
                 )}
               </div>
@@ -250,18 +252,18 @@ export default function ProfileClient({
             ) : (
               <p className="pf-bio pf-bio-muted">
                 {isOwner
-                  ? 'Add a short bio to tell people what you create.'
-                  : 'This creator has not added a bio yet.'}
+                  ? t('profile.bioPromptOwner')
+                  : t('profile.bioPromptOther')}
               </p>
             )}
 
             <div className="pf-level">
               <div className="pf-level-top">
                 <span>
-                  <b>Level {progress.level}</b>
-                  {progress.into} / {progress.needed} XP
+                  <b>{t('profile.level', { level: progress.level })}</b>
+                  {t('profile.levelXp', { into: progress.into, needed: progress.needed })}
                 </span>
-                <span>{progress.remaining} to next level</span>
+                <span>{t('profile.levelRemaining', { count: progress.remaining })}</span>
               </div>
               <span
                 className="pf-level-bar"
@@ -269,7 +271,7 @@ export default function ProfileClient({
                 aria-valuenow={progress.into}
                 aria-valuemin={0}
                 aria-valuemax={progress.needed}
-                aria-label={`Progress to level ${progress.level + 1}`}
+                aria-label={t('profile.levelProgress', { level: progress.level + 1 })}
               >
                 <i style={{ width: `${Math.round(progress.fraction * 100)}%` }} />
               </span>
@@ -278,14 +280,14 @@ export default function ProfileClient({
         </div>
       </section>
 
-      <nav className="pf-stats" aria-label="Profile views">
+      <nav className="pf-stats" aria-label={t('profile.views')}>
         <button
           type="button"
           className={view === 'posts' ? 'on' : ''}
           onClick={() => setView('posts')}
           aria-pressed={view === 'posts'}
         >
-          <span>Posts</span>
+          <span>{t('profile.posts')}</span>
           <b>{fmtLikes(postsCount)}</b>
         </button>
         <button
@@ -294,7 +296,7 @@ export default function ProfileClient({
           onClick={() => setView('followers')}
           aria-pressed={view === 'followers'}
         >
-          <span>Followers</span>
+          <span>{t('profile.followers')}</span>
           <b>{fmtLikes(followersCount)}</b>
         </button>
         <button
@@ -303,7 +305,7 @@ export default function ProfileClient({
           onClick={() => setView('likes')}
           aria-pressed={view === 'likes'}
         >
-          <span>Likes</span>
+          <span>{t('profile.likes')}</span>
           <b>{fmtLikes(totalLikes)}</b>
         </button>
         {isOwner && (
@@ -313,7 +315,7 @@ export default function ProfileClient({
             onClick={() => setView('saved')}
             aria-pressed={view === 'saved'}
           >
-            <span>Saved</span>
+            <span>{t('profile.saved')}</span>
             <b>{fmtLikes(profileSaved.length)}</b>
           </button>
         )}
@@ -330,7 +332,7 @@ export default function ProfileClient({
           ) : (
             <ProfileEmpty
               icon={<Users aria-hidden="true" />}
-              message="No followers yet."
+              message={t('profile.noFollowers')}
             />
           )
         ) : list.length > 0 ? (
@@ -402,12 +404,12 @@ export default function ProfileClient({
             }
             message={
               view === 'saved'
-                ? 'Nothing saved yet.'
+                ? t('profile.noSaved')
                 : view === 'likes'
-                  ? 'No posts have collected likes yet.'
+                  ? t('profile.noLikes')
                   : isOwner
-                    ? 'You have not posted anything yet.'
-                    : `${shownProfile.display_name} has not posted yet.`
+                    ? t('profile.noPostsOwner')
+                    : t('profile.noPostsOther', { name: shownProfile.display_name })
             }
             action={
               isOwner && view === 'posts'
@@ -442,13 +444,14 @@ function ProfileEmpty({
   message: string;
   action?: () => void;
 }) {
+  const t = useT();
   return (
     <div className="empty pf-empty">
       {icon}
       <p>{message}</p>
       {action && (
         <button type="button" onClick={action}>
-          Create your first post
+          {t('profile.firstPost')}
         </button>
       )}
     </div>

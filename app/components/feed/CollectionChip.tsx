@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Layers } from 'lucide-react';
 import type { Video } from '@/lib/types';
+import { useT } from '../i18n-provider';
 
 /**
  * Shown wherever a post appears outside its own detail page — the feed, the

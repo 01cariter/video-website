@@ -19,6 +19,7 @@ import { patchCachedVideo, prependCachedVideo } from './feed-cache';
 import FeedTabs, { type HomeTabId } from './FeedTabs';
 import { requestSocialAction } from './social-action';
 import TimelineFeed from './TimelineFeed';
+import { useT } from '../i18n-provider';
 
 interface HomeTimelineProps {
   user: AppUser | null;
@@ -55,6 +56,7 @@ export default function HomeTimeline(props: HomeTimelineProps) {
 
 function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab }: HomeTimelineInnerProps) {
   const [tab, setTab] = useState<HomeTabId>(initialTab);
+  const t = useT();
   // Custom category tabs are per-browser (localStorage). Reading them via
   // `useSyncExternalStore` keeps the server's tabless render and the
   // client's stored tabs consistent without a `setState` in an effect.
@@ -176,12 +178,12 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
         }
       } catch {
         patchVideo(video.id, { liked: video.liked, likes_count: video.likes_count });
-        setActionError('Could not update this like. Try again.');
+        setActionError(t('post.likeFailed'));
       } finally {
         pending.current.delete(key);
       }
     },
-    [needAuth, patchVideo],
+    [needAuth, patchVideo, t],
   );
 
   const save = useCallback(
@@ -207,12 +209,12 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
         }
       } catch {
         patchVideo(video.id, { saved: video.saved, saves_count: video.saves_count });
-        setActionError('Could not update this bookmark. Try again.');
+        setActionError(t('post.saveFailed'));
       } finally {
         pending.current.delete(key);
       }
     },
-    [needAuth, patchVideo],
+    [needAuth, patchVideo, t],
   );
 
 
@@ -301,9 +303,9 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
   const emptyMessage =
     tab === 'following'
       ? user
-        ? 'Follow creators to see their posts here.'
-        : 'Sign in and follow creators to see their posts here.'
-      : 'Nothing here yet.';
+        ? t('feed.followPrompt')
+        : t('feed.followPromptGuest')
+      : t('feed.empty');
 
   return (
     <div className="t-home">

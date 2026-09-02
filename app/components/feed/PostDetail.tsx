@@ -11,6 +11,7 @@ import CollectionSwitcher from './CollectionSwitcher';
 import DeleteMenu from './DeleteMenu';
 import ShareMenu from './ShareMenu';
 import MediaCarousel from './MediaCarousel';
+import { useT } from '../i18n-provider';
 
 interface PostDetailProps {
   video: Video;
@@ -50,6 +51,7 @@ export default function PostDetail({
   onNeedAuth,
 }: PostDetailProps) {
   const router = useRouter();
+  const t = useT();
   const profile = profileHref(video.author_handle);
   const isOwner = user?.id === video.author_id;
   const { openPreview } = useMediaPreview();
@@ -57,10 +59,10 @@ export default function PostDetail({
   return (
     <article className="pd">
       <header className="pd-top">
-        <button type="button" className="pd-back" onClick={() => router.back()} aria-label="Back">
+        <button type="button" className="pd-back" onClick={() => router.back()} aria-label={t('common.back')}>
           <ArrowLeft aria-hidden="true" />
         </button>
-        <h1>Post</h1>
+        <h1>{t('nav.post')}</h1>
         <div className="pd-top-author">
           <Link
             className="pd-top-av"
@@ -80,7 +82,7 @@ export default function PostDetail({
               className={`pd-follow ${video.following ? 'on' : ''}`}
               onClick={() => (user ? onFollow() : onNeedAuth())}
             >
-              {video.following ? 'Following' : 'Follow'}
+              {video.following ? t('post.followingState') : t('post.follow')}
             </button>
           )}
         </div>
@@ -98,21 +100,16 @@ export default function PostDetail({
         <CollectionSwitcher video={video} />
 
         {video.title?.trim() ? <h2>{video.title.trim()}</h2> : null}
-        <p>{video.description || 'No description yet.'}</p>
+        <p>{video.description || t('post.noDescription')}</p>
 
         <div className="pd-meta">
-          <span>{video.label || (video.category === 'study' ? 'Study' : 'Entertainment')}</span>
+          <span>{video.label || (video.category === 'study' ? t('common.study') : t('common.play'))}</span>
           {video.duration ? (
             <span className="tabular-nums">{video.duration}</span>
           ) : null}
-          <span>
-            <span className="tabular-nums">
-              {fmtLikes(video.views_count)}
-            </span>{' '}
-            views
-          </span>
+          <span>{t('post.views', { count: fmtLikes(video.views_count) })}</span>
           <time dateTime={video.created_at}>{fmtRelativeTime(video.created_at)}</time>
-          <span className="pd-meta-muted">Uploaded {fmtDate(video.created_at)}</span>
+          <span className="pd-meta-muted">{t('post.uploaded', { date: fmtDate(video.created_at) })}</span>
         </div>
       </div>
 
@@ -122,7 +119,7 @@ export default function PostDetail({
           className={video.liked ? 'on' : ''}
           onClick={() => (user ? onLike() : onNeedAuth())}
           aria-pressed={video.liked}
-          aria-label="Like"
+          aria-label={t('post.like')}
         >
           <Heart aria-hidden="true" />
           <span className="tabular-nums">
@@ -140,14 +137,14 @@ export default function PostDetail({
           className={video.saved ? 'on' : ''}
           onClick={() => (user ? onSave() : onNeedAuth())}
           aria-pressed={video.saved}
-          aria-label="Save"
+          aria-label={t('post.save')}
         >
           <Bookmark aria-hidden="true" />
           <span className="tabular-nums">
             {fmtLikes(video.saves_count)}
           </span>
         </button>
-        <ShareMenu video={video} label="Share" />
+        <ShareMenu video={video} label={t('post.share')} />
         {isOwner && (
           <DeleteMenu
             itemLabel="post"
@@ -159,44 +156,44 @@ export default function PostDetail({
       </div>
 
       <section className="pd-comments" aria-label="Comments">
-        <h3>Comments</h3>
+        <h3>{t('comment.title')}</h3>
         {user ? (
           <form className="pd-compose" onSubmit={onComment}>
             <input
               type="text"
               value={draft}
               onChange={(event) => onDraftChange(event.target.value)}
-              placeholder="Post your reply"
+              placeholder={t('comment.replyPlaceholder')}
               maxLength={500}
               disabled={posting}
             />
             <button type="submit" disabled={posting || !draft.trim()}>
-              Reply
+              {t('comment.reply')}
             </button>
           </form>
         ) : (
           <div className="pd-guest">
             <div className="pd-guest-copy">
-              <b>Join the conversation</b>
-              <p>Sign in to reply and follow creators.</p>
+              <b>{t('comment.joinTitle')}</b>
+              <p>{t('comment.joinLeadReply')}</p>
             </div>
             <button type="button" className="pd-guest-cta" onClick={onNeedAuth}>
-              Sign in
+              {t('common.signIn')}
             </button>
           </div>
         )}
 
-        {commentsLoading && <p className="pd-muted">Loading comments…</p>}
+        {commentsLoading && <p className="pd-muted">{t('comment.loading')}</p>}
         {commentsError && (
           <p className="pd-muted">
-            Comments could not load.{' '}
+            {t('comment.loadFailed')}{' '}
             <button type="button" onClick={onRetryComments}>
-              Retry
+              {t('common.retry')}
             </button>
           </p>
         )}
         {!commentsLoading && !commentsError && comments.length === 0 && (
-          <p className="pd-muted">No comments yet.</p>
+          <p className="pd-muted">{t('comment.none')}</p>
         )}
         <ul className="pd-comment-list">
           {comments.map((comment) => (
