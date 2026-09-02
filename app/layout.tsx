@@ -6,6 +6,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { TooltipProvider } from '@/app/components/ui/tooltip';
+import RouteProgress from '@/app/components/shell/RouteProgress';
 
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ||
@@ -36,6 +37,7 @@ export default function RootLayout({
       </head>
       <body>
         <TooltipProvider>
+          <RouteProgress />
           {children}
           {modal}
         </TooltipProvider>
