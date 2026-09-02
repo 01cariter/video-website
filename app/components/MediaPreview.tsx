@@ -201,7 +201,13 @@ function PlaybackStage({ video }: PlaybackStageProps) {
   );
 }
 
-function AuthorIdentity({ video }: { video: Video }) {
+function AuthorIdentity({
+  video,
+  onNavigate,
+}: {
+  video: Video;
+  onNavigate: () => void;
+}) {
   const identity = (
     <>
       <span className="av" style={avatarStyle(video.author_color, video.author_avatar)}>
@@ -221,7 +227,12 @@ function AuthorIdentity({ video }: { video: Video }) {
   const href = profileHref(video.author_handle);
   if (!href) return <span className="pv-who">{identity}</span>;
   return (
-    <Link className="pv-who" href={href} title={`View ${video.author_name}'s profile`}>
+    <Link
+      className="pv-who"
+      href={href}
+      title={`View ${video.author_name}'s profile`}
+      onClick={onNavigate}
+    >
       {identity}
     </Link>
   );
@@ -315,7 +326,7 @@ export default function MediaPreview({
 
             <aside className="pv-panel">
               <section className="pv-author">
-                <AuthorIdentity video={video} />
+                <AuthorIdentity video={video} onNavigate={onClose} />
                 {user?.id === video.author_id ? (
                   <span className="own">YOU</span>
                 ) : (
@@ -414,24 +425,67 @@ export default function MediaPreview({
                       <p>Start the conversation.</p>
                     </div>
                   )}
-                  {comments.map((comment) => (
-                    <article className="citem" key={comment.id}>
-                      <span className="cav" style={{ background: comment.author_color }}>
+                  {comments.map((comment) => {
+                    const authorHref = profileHref(comment.author_handle);
+                    const avatar = (
+                      <span
+                        className="cav"
+                        style={avatarStyle(comment.author_color, comment.author_avatar)}
+                        aria-hidden="true"
+                      >
                         {initials(comment.author_name)}
                       </span>
-                      <div className="cbody">
-                        <b>{comment.author_name} <small>{timeAgo(comment.created_at)}</small></b>
-                        <p>{comment.body}</p>
-                      </div>
-                      {user?.id === comment.user_id && (
-                        <DeleteMenu
-                          itemLabel="comment"
-                          className="citem-menu"
-                          onDelete={() => onDeleteComment(comment)}
-                        />
-                      )}
-                    </article>
-                  ))}
+                    );
+                    return (
+                      <article className="citem" key={comment.id}>
+                        {authorHref ? (
+                          <Link
+                            href={authorHref}
+                            className="citem-av"
+                            onClick={onClose}
+                            tabIndex={-1}
+                            aria-hidden="true"
+                          >
+                            {avatar}
+                          </Link>
+                        ) : (
+                          avatar
+                        )}
+                        <div className="cbody">
+                          <div className="citem-head">
+                            {authorHref ? (
+                              <Link
+                                href={authorHref}
+                                className="citem-name"
+                                onClick={onClose}
+                              >
+                                {comment.author_name}
+                              </Link>
+                            ) : (
+                              <b className="citem-name">{comment.author_name}</b>
+                            )}
+                            {comment.user_id === video.author_id && (
+                              <span className="citem-badge">Author</span>
+                            )}
+                            <time
+                              className="citem-time"
+                              dateTime={comment.created_at}
+                            >
+                              {timeAgo(comment.created_at)}
+                            </time>
+                          </div>
+                          <p>{comment.body}</p>
+                        </div>
+                        {user?.id === comment.user_id && (
+                          <DeleteMenu
+                            itemLabel="comment"
+                            className="citem-menu"
+                            onDelete={() => onDeleteComment(comment)}
+                          />
+                        )}
+                      </article>
+                    );
+                  })}
                 </div>
               </section>
 
