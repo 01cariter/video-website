@@ -33,6 +33,7 @@ import {
   type CatalogField,
   type StudioModelOption,
 } from '@/lib/studio/model-catalog';
+import { derivesAspectFromReference } from '@/lib/studio/video-generation';
 import {
   estimateStudioCredits,
   type StudioBillableModelId,
@@ -725,16 +726,37 @@ export default function NodeInspector({
                   </PopoverDescription>
                 </PopoverHeader>
                 <div className="grid max-h-[440px] gap-5 overflow-y-auto bg-[var(--param-canvas)] px-5 py-4.5">
-                  {spec.fields.map((field) => (
-                    <div key={field.key}>
-                      <SettingControl
-                        field={field}
-                        current={values[field.key]}
-                        onFieldChange={onFieldChange}
-                        onAspectChange={onAspectChange}
-                      />
-                    </div>
-                  ))}
+                  {spec.fields.map((field) => {
+                    if (
+                      field.type === 'aspect' &&
+                      references.length > 0 &&
+                      derivesAspectFromReference(selectedModel.id)
+                    ) {
+                      return (
+                        <p
+                          key={field.key}
+                          className="rounded-[10px] bg-[var(--param-bg)] px-3 py-2.5 text-[10.5px] leading-4 text-[var(--param-muted)]"
+                        >
+                          <span className="font-semibold text-[var(--param-ink)]">
+                            Ratio follows your reference image.
+                          </span>{' '}
+                          {selectedModel.label} reads it from the first frame, so
+                          the clip is priced for the widest ratio it accepts — the
+                          quote covers whatever you attach.
+                        </p>
+                      );
+                    }
+                    return (
+                      <div key={field.key}>
+                        <SettingControl
+                          field={field}
+                          current={values[field.key]}
+                          onFieldChange={onFieldChange}
+                          onAspectChange={onAspectChange}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </PopoverContent>
             </Popover>

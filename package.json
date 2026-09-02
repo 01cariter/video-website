@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run test && npm run lint && npm run typecheck",
     "audit:studio-models": "node --env-file-if-exists=.env.local --import tsx scripts/audit-studio-models.ts",
+    "audit:pricing": "node --import tsx scripts/price-audit.ts",
     "db:setup": "tsx db/setup.ts",
     "db:seed": "tsx db/seed.ts",
     "db:migrate:check": "node scripts/supabase-migrate.mjs --dry-run",

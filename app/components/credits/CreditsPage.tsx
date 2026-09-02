@@ -59,9 +59,11 @@ interface CreditPayload {
     agent: number;
     text: number;
     image: number;
-    video480PerSecond: number;
-    video720PerSecond: number;
-    videoAudioPerSecond: number;
+    videoPerSecond: number;
+    videoClip: number;
+    videoClipSeconds: number;
+    videoModelLabel: string;
+    videoResolution: string;
   };
 }
 
@@ -77,37 +79,13 @@ const TOP_UP_TABS = [
   { value: 'custom', label: 'Custom amount', icon: Coins },
 ] as const;
 
+// Each row is priced from that kind's default model at its default settings,
+// so the figures describe what a reader gets without changing anything.
 const GENERATION_ESTIMATES = [
-  {
-    key: 'agent',
-    label: 'Agent',
-    unit: 'requests',
-    icon: Sparkles,
-  },
-  {
-    key: 'text',
-    label: 'Text',
-    unit: 'generations',
-    icon: Type,
-  },
-  {
-    key: 'image',
-    label: 'Image',
-    unit: 'images',
-    icon: ImageIcon,
-  },
-  {
-    key: 'video480PerSecond',
-    label: 'Video 480p',
-    unit: 'seconds',
-    icon: Video,
-  },
-  {
-    key: 'video720PerSecond',
-    label: 'Video 720p',
-    unit: 'seconds',
-    icon: Video,
-  },
+  { key: 'agent', label: 'Agent', unit: 'steps', icon: Sparkles },
+  { key: 'text', label: 'Text', unit: 'generations', icon: Type },
+  { key: 'image', label: 'Image', unit: 'images', icon: ImageIcon },
+  { key: 'videoPerSecond', label: 'Video', unit: 'seconds', icon: Video },
 ] as const;
 
 function money(cents: number, currency = 'usd') {
@@ -241,7 +219,8 @@ export default function CreditsPage() {
   const selectedPackage =
     fixedPackages.find((item) => item.id === selectedPackageId) ??
     fixedPackages[0];
-  const customPrice = customCreditPriceCents(customCredits);
+  // Priced off the live packs so the slider can never quote above a pack.
+  const customPrice = customCreditPriceCents(customCredits, fixedPackages);
   const selectedCredits =
     topUpMode === 'packs' ? (selectedPackage?.credits ?? 0) : customCredits;
   const selectedPrice =
@@ -685,12 +664,18 @@ function GenerationEstimate({
           <h2 className="mt-1 text-sm font-semibold">
             What {credits.toLocaleString()} credits can make
           </h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            At the default models. Video is {costs.videoModelLabel} at{' '}
+            {costs.videoResolution} — a {costs.videoClipSeconds}-second clip
+            costs {costs.videoClip} credits. Other models cost more or less per
+            second.
+          </p>
         </div>
         <span className="text-xs text-muted-foreground max-sm:hidden">
           Failed generations are refunded automatically.
         </span>
       </div>
-      <div className="mt-4 grid grid-cols-5 gap-2 max-lg:grid-cols-3 max-sm:grid-cols-2">
+      <div className="mt-4 grid grid-cols-4 gap-2 max-lg:grid-cols-2">
         {GENERATION_ESTIMATES.map((item) => {
           const count = Math.floor(credits / costs[item.key]);
           return (

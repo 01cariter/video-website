@@ -3,6 +3,7 @@ import { getPublicSiteUrl, getStripe } from '@/lib/billing/stripe';
 import {
   ensureCreditAccount,
   getCreditPackage,
+  getCreditPackages,
 } from '@/lib/credits/server';
 import {
   CUSTOM_CREDIT_PACKAGE_ID,
@@ -49,9 +50,16 @@ export async function POST(request: Request) {
     creditPackage.id === CUSTOM_CREDIT_PACKAGE_ID
       ? customCredits
       : creditPackage.credits;
+  // Custom amounts are priced off the live pack ladder, so the checkout total
+  // always matches what the slider showed.
   const orderPriceCents =
     creditPackage.id === CUSTOM_CREDIT_PACKAGE_ID
-      ? customCreditPriceCents(customCredits)
+      ? customCreditPriceCents(
+          customCredits,
+          (await getCreditPackages()).filter(
+            (item) => item.id !== CUSTOM_CREDIT_PACKAGE_ID,
+          ),
+        )
       : creditPackage.price_cents;
 
   let orderId: string | null = null;

@@ -247,8 +247,10 @@ export function publicCreditCosts() {
     agent: CREDIT_COSTS.agent,
     text: CREDIT_COSTS.text,
     image: CREDIT_COSTS.image,
-    video480PerSecond: CREDIT_COSTS.video480PerSecond,
-    video720PerSecond: CREDIT_COSTS.video720PerSecond,
-    videoAudioPerSecond: CREDIT_COSTS.videoAudioPerSecond,
+    videoPerSecond: CREDIT_COSTS.videoPerSecond,
+    videoClip: CREDIT_COSTS.videoClip,
+    videoClipSeconds: CREDIT_COSTS.videoClipSeconds,
+    videoModelLabel: CREDIT_COSTS.videoModelLabel,
+    videoResolution: CREDIT_COSTS.videoResolution,
   };
 }

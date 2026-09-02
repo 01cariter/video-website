@@ -255,6 +255,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Models that take their output ratio from the first frame and reject an
+ * explicit numeric ratio for that operation. Attaching a reference therefore
+ * switches them to `adaptive`, which is billed at the widest ratio the model
+ * accepts — nothing can measure a remote image before credits are authorised,
+ * and undercharging a video is expensive. That costs about 40% more than the
+ * numeric ratio, so the interface has to say so where the ratio is chosen.
+ */
+export function derivesAspectFromReference(modelId: unknown) {
+  return modelId === 'bytedance/seedance-2.5';
+}
+
 export function isStudioVideoModelId(
   value: unknown,
 ): value is StudioVideoModelId {
@@ -445,11 +457,8 @@ export function normalizeStudioVideoRequest(input: {
       'Adaptive aspect ratio requires a reference image.',
     );
   }
-  // Seedance 2.5 derives the output ratio from first-frame media and rejects
-  // an explicit numeric ratio for that operation. Preserve the visible
-  // numeric default for text-to-video, but send adaptive for image-to-video.
   const normalizedAspect: StudioVideoAspect =
-    modelId === 'bytedance/seedance-2.5' && hasReferenceImage
+    derivesAspectFromReference(modelId) && hasReferenceImage
       ? 'adaptive'
       : (aspect as StudioVideoAspect);
 
