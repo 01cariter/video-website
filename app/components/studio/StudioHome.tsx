@@ -608,11 +608,6 @@ export default function StudioHome({
             void createFromPrompt();
           }}
         >
-          <div className="flex items-center justify-end px-3 pt-1.5">
-            <span className="text-[11px] text-muted-foreground max-sm:hidden">
-              Enter to create · Shift + Enter for a new line
-            </span>
-          </div>
           <Textarea
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
@@ -622,7 +617,7 @@ export default function StudioHome({
                 void createFromPrompt();
               }
             }}
-            placeholder="Describe what you want to research, plan, or create…"
+            placeholder="Describe what you want to research, plan, or create… Enter to create, Shift + Enter for a new line"
             rows={3}
             className="min-h-[112px] resize-none border-0 bg-transparent px-3 py-4 text-[19px] leading-8 shadow-none placeholder:text-muted-foreground/65 focus-visible:ring-0"
           />

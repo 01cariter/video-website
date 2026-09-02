@@ -855,15 +855,17 @@ body:has(.x-app.wide-workspace){
   overflow-wrap:anywhere;text-wrap:pretty}
 .pf-bio-muted{color:var(--muted)}
 .pf-primary{display:inline-flex;align-items:center;justify-content:center;padding:7px 12px;border:0;
-  border-radius:10px;background:var(--orange-fill);color:var(--on-fill);font-size:11.5px;
+  border-radius:var(--radius-pill);background:var(--orange-fill);color:var(--on-fill);font-size:11.5px;
   font-weight:700;cursor:pointer;transition:background .16s var(--ease-out),transform .16s}
 .pf-primary:hover:not(:disabled){background:var(--orange-fill-hover);transform:translateY(-1px)}
 .pf-primary:disabled{opacity:.6;cursor:default}
 .pf-primary.on{background:var(--field);box-shadow:inset 0 0 0 1px var(--line);color:var(--ink)}
 .pf-actions{display:flex;flex:0 0 auto;align-items:center;gap:8px}
-.pf-secondary{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 12px;
+/* 1px less padding than .pf-primary: the border makes up the difference, so
+   the two sit at the same height. */
+.pf-secondary{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:6px 11px;
   border:1px solid var(--line);border-radius:var(--radius-pill);background:var(--field);color:var(--ink);
-  font-size:12.5px;font-weight:650;cursor:pointer;transition:.16s var(--ease-out)}
+  font-size:11.5px;font-weight:700;cursor:pointer;transition:.16s var(--ease-out)}
 .pf-secondary:hover{border-color:var(--orange);color:var(--orange-d);transform:translateY(-1px)}
 .pf-secondary:active{transform:translateY(0) scale(.98)}
 .pf-secondary svg{width:14px;height:14px;stroke-width:1.9}
@@ -1102,7 +1104,7 @@ body:has(.x-app.wide-workspace){
   .pf-id h1{font-size:23px}
   .pf-bio{margin-top:8px;font-size:12.5px}
   .pf-primary{padding:6px 10px;font-size:11px}
-  .pf-secondary{padding:6px 10px;font-size:11px}
+  .pf-secondary{padding:5px 9px;font-size:11px}
   .pf-level{max-width:none;margin-top:12px}
   .pf-level-top span:last-child{display:none}
   .pf-stats{padding:0}
