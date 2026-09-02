@@ -1,7 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, useReducedMotion } from 'motion/react';
 import {
@@ -17,6 +23,7 @@ import {
   Plus,
   SlidersHorizontal,
   Sparkles,
+  Square,
   Trash2,
   Upload,
   Wand2,
@@ -102,8 +109,8 @@ import {
 } from './canvas/NodeInspector';
 
 const MODES = [
-  { value: 'agent', label: 'Plan with Agent', icon: Sparkles },
   { value: 'design', label: 'Freeform', icon: Wand2 },
+  { value: 'agent', label: 'Plan with Agent', icon: Sparkles },
 ] as const;
 
 const GENERATIVE_KINDS = ['image', 'video', 'text'] as const;
@@ -312,7 +319,7 @@ export default function StudioHome({
   const fileRef = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState('');
   const [mode, setMode] =
-    useState<(typeof MODES)[number]['value']>('agent');
+    useState<(typeof MODES)[number]['value']>('design');
   const [freeformKind, setFreeformKind] =
     useState<StudioGenerativeKind>('image');
   const [freeformConfigs, setFreeformConfigs] = useState(() =>
@@ -321,6 +328,14 @@ export default function StudioHome({
   const [modelOpen, setModelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [listening, setListening] = useState(false);
+  const [voiceError, setVoiceError] = useState('');
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  // Read after hydration so the server and the client agree on first paint.
+  const voiceSupported = useSyncExternalStore(
+    () => () => {},
+    () => Boolean(window.SpeechRecognition || window.webkitSpeechRecognition),
+    () => false,
+  );
   const [uploadingReference, setUploadingReference] = useState(false);
   const [referenceUploadError, setReferenceUploadError] = useState('');
   const [projects, setProjects] = useState<StudioProject[]>([]);
@@ -356,6 +371,8 @@ export default function StudioHome({
     const timer = window.setTimeout(() => void refreshProjects(), 0);
     return () => window.clearTimeout(timer);
   }, [refreshProjects]);
+
+  useEffect(() => () => recognitionRef.current?.abort(), []);
 
   const selectedFreeformModel = resolveStudioModel(
     freeformKind,
@@ -490,23 +507,64 @@ export default function StudioHome({
     }
   }
 
-  function startVoice() {
+  // Browser-native dictation: no dependency, no server round-trip.
+  function toggleVoice() {
+    const active = recognitionRef.current;
+    if (active) {
+      active.stop();
+      return;
+    }
     const SpeechRecognition =
-      typeof window !== 'undefined'
-        ? window.SpeechRecognition || window.webkitSpeechRecognition
-        : undefined;
+      window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
+
     const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-    recognition.onstart = () => setListening(true);
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const said = event.results[0]?.[0]?.transcript || '';
-      if (said) setPrompt((current) => (current ? `${current} ${said}` : said));
+    recognition.lang = navigator.language || 'en-US';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    // Everything typed before dictation started stays put; each final chunk is
+    // appended to it, and the in-flight guess is previewed after it.
+    let committed = prompt.trim();
+    recognition.onstart = () => {
+      setListening(true);
+      setVoiceError('');
     };
-    recognition.start();
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      setListening(false);
+    };
+    recognition.onerror = (event) => {
+      recognitionRef.current = null;
+      setListening(false);
+      setVoiceError(
+        event.error === 'not-allowed' || event.error === 'service-not-allowed'
+          ? 'Microphone access is blocked. Allow it in your browser settings.'
+          : event.error === 'no-speech'
+            ? 'No speech detected. Try again.'
+            : 'Dictation stopped unexpectedly.',
+      );
+    };
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let settled = '';
+      let interim = '';
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const said = result[0]?.transcript || '';
+        if (result.isFinal) settled += said;
+        else interim += said;
+      }
+      if (settled.trim()) committed = `${committed} ${settled.trim()}`.trim();
+      const preview = interim.trim();
+      setPrompt(preview ? `${committed} ${preview}`.trim() : committed);
+    };
+
+    try {
+      recognition.start();
+      recognitionRef.current = recognition;
+    } catch {
+      setVoiceError('Dictation could not start.');
+    }
   }
 
   return (
@@ -550,12 +608,8 @@ export default function StudioHome({
             void createFromPrompt();
           }}
         >
-          <div className="flex items-center justify-between gap-3 px-3 pb-1 pt-2">
-            <span className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-              <span className="size-1.5 rounded-full bg-primary" />
-              New canvas
-            </span>
-            <span className="text-xs text-muted-foreground max-sm:hidden">
+          <div className="flex items-center justify-end px-3 pt-1.5">
+            <span className="text-[11px] text-muted-foreground max-sm:hidden">
               Enter to create · Shift + Enter for a new line
             </span>
           </div>
@@ -631,6 +685,7 @@ export default function StudioHome({
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               <motion.div
+                hidden={!voiceSupported}
                 animate={listening ? { scale: [1, 1.08, 1] } : { scale: 1 }}
                 transition={
                   listening
@@ -644,12 +699,15 @@ export default function StudioHome({
                   size="icon"
                   className={cn(
                     'rounded-xl max-sm:hidden',
-                    listening && 'bg-secondary text-foreground',
+                    listening &&
+                      'bg-primary/12 text-primary hover:bg-primary/16',
                   )}
-                  aria-label="Voice input"
-                  onClick={startVoice}
+                  aria-label={listening ? 'Stop dictation' : 'Dictate a prompt'}
+                  aria-pressed={listening}
+                  title={listening ? 'Stop dictation' : 'Dictate a prompt'}
+                  onClick={toggleVoice}
                 >
-                  <Mic />
+                  {listening ? <Square className="fill-current" /> : <Mic />}
                 </Button>
               </motion.div>
               <Button
@@ -664,12 +722,12 @@ export default function StudioHome({
               </Button>
             </div>
           </div>
-          {referenceUploadError ? (
+          {referenceUploadError || voiceError ? (
             <p
               role="alert"
               className="px-3 pb-1 pt-2 text-xs font-medium text-destructive"
             >
-              {referenceUploadError}
+              {referenceUploadError || voiceError}
             </p>
           ) : null}
           <input
@@ -1004,23 +1062,34 @@ declare global {
     webkitSpeechRecognition?: new () => SpeechRecognition;
   }
 
+  interface SpeechRecognitionResult {
+    readonly length: number;
+    readonly isFinal: boolean;
+    [index: number]: { transcript: string };
+  }
+
   interface SpeechRecognitionEvent extends Event {
+    resultIndex: number;
     results: {
-      [index: number]: {
-        [index: number]: {
-          transcript: string;
-        };
-      };
+      readonly length: number;
+      [index: number]: SpeechRecognitionResult;
     };
+  }
+
+  interface SpeechRecognitionErrorEvent extends Event {
+    error: string;
   }
 
   interface SpeechRecognition extends EventTarget {
     lang: string;
+    continuous: boolean;
     interimResults: boolean;
     onstart: (() => void) | null;
     onend: (() => void) | null;
-    onerror: (() => void) | null;
+    onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
     onresult: ((event: SpeechRecognitionEvent) => void) | null;
     start(): void;
+    stop(): void;
+    abort(): void;
   }
 }
