@@ -2,10 +2,13 @@
 
 import {
   memo,
+  useCallback,
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import {
@@ -35,6 +38,16 @@ import {
   studioTween,
 } from '@/lib/studio/motion';
 import { cn } from '@/lib/utils';
+import {
+  AGENT_PANEL_DEFAULT_WIDTH,
+  AGENT_PANEL_MAX_WIDTH,
+  AGENT_PANEL_MIN_WIDTH,
+  clampAgentPanelWidth,
+  getAgentPanelWidthServerSnapshot,
+  getAgentPanelWidthSnapshot,
+  setAgentPanelWidth,
+  subscribeAgentPanelWidth,
+} from '@/lib/studio/agent-panel-width';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import {
@@ -101,6 +114,111 @@ interface AgentPanelProps {
     text: string;
     attachments: StudioAgentAttachment[];
   } | null;
+}
+
+const WIDTH_STEP = 24;
+
+/**
+ * Drag the panel's leading edge to resize it. The panel is a flex sibling of
+ * the canvas, so the canvas reflows on its own and its ResizeObserver picks the
+ * new size up — nothing here has to tell it.
+ */
+function ResizeHandle() {
+  const width = useSyncExternalStore(
+    subscribeAgentPanelWidth,
+    getAgentPanelWidthSnapshot,
+    getAgentPanelWidthServerSnapshot,
+  );
+  const [dragging, setDragging] = useState(false);
+
+  const onPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    // The panel is pinned to the right edge, so its width is whatever sits
+    // between the pointer and that edge.
+    const right = handle.parentElement?.getBoundingClientRect().right ?? 0;
+    handle.setPointerCapture(event.pointerId);
+    setDragging(true);
+
+    // Written straight to the custom property while dragging: the canvas
+    // reflows off the DOM width at browser speed, and React re-renders once on
+    // release rather than on every pointer move over a live canvas.
+    const panel = handle.parentElement;
+    let latest = clampAgentPanelWidth(right - event.clientX, window.innerWidth);
+    const move = (moveEvent: PointerEvent) => {
+      latest = clampAgentPanelWidth(right - moveEvent.clientX, window.innerWidth);
+      panel?.style.setProperty('--agent-panel-width', `${latest}px`);
+    };
+    const stop = () => {
+      setDragging(false);
+      setAgentPanelWidth(latest);
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', stop);
+      handle.removeEventListener('pointercancel', stop);
+      if (handle.hasPointerCapture(event.pointerId)) {
+        handle.releasePointerCapture(event.pointerId);
+      }
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', stop);
+    handle.addEventListener('pointercancel', stop);
+  }, []);
+
+  // Dragging over the canvas would otherwise select text and flip the cursor
+  // back on every element the pointer crosses.
+  useEffect(() => {
+    if (!dragging) return;
+    const body = document.body;
+    const previousCursor = body.style.cursor;
+    const previousSelect = body.style.userSelect;
+    body.style.cursor = 'col-resize';
+    body.style.userSelect = 'none';
+    return () => {
+      body.style.cursor = previousCursor;
+      body.style.userSelect = previousSelect;
+    };
+  }, [dragging]);
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the Agent panel"
+      aria-valuenow={width}
+      aria-valuemin={AGENT_PANEL_MIN_WIDTH}
+      aria-valuemax={AGENT_PANEL_MAX_WIDTH}
+      tabIndex={0}
+      className={cn(
+        'group absolute inset-y-0 -left-1 z-20 hidden w-2 cursor-col-resize touch-none md:block',
+        'focus-visible:outline-none',
+      )}
+      onPointerDown={onPointerDown}
+      onDoubleClick={() => setAgentPanelWidth(AGENT_PANEL_DEFAULT_WIDTH)}
+      onKeyDown={(event) => {
+        if (event.key === 'ArrowLeft') {
+          event.preventDefault();
+          setAgentPanelWidth(width + WIDTH_STEP);
+        } else if (event.key === 'ArrowRight') {
+          event.preventDefault();
+          setAgentPanelWidth(width - WIDTH_STEP);
+        } else if (event.key === 'Home') {
+          event.preventDefault();
+          setAgentPanelWidth(AGENT_PANEL_DEFAULT_WIDTH);
+        }
+      }}
+      title="Drag to resize · double-click to reset"
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          'pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-primary opacity-0 transition-opacity',
+          'group-hover:opacity-70 group-focus-visible:opacity-100',
+          dragging && 'opacity-100',
+        )}
+      />
+    </div>
+  );
 }
 
 const SKILL_LIST_ID = 'studio-agent-skill-list';
@@ -322,6 +440,11 @@ function AgentPanel({
   const [activeCanvasIndex, setActiveCanvasIndex] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLFormElement>(null);
+  const panelWidth = useSyncExternalStore(
+    subscribeAgentPanelWidth,
+    getAgentPanelWidthSnapshot,
+    getAgentPanelWidthServerSnapshot,
+  );
   const shouldAutoScroll = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const reduceMotion = Boolean(useReducedMotion());
@@ -565,13 +688,17 @@ function AgentPanel({
   return (
     <motion.aside
       key="agent-panel"
-      className="absolute inset-0 z-40 flex w-full flex-col overflow-hidden bg-card md:relative md:inset-auto md:z-10 md:w-[360px] md:shrink-0 md:border-l md:border-border"
+      className="absolute inset-0 z-40 flex w-full flex-col overflow-hidden bg-card md:relative md:inset-auto md:z-10 md:shrink-0 md:border-l md:border-border"
+      // Only applies from md up, where the panel is a column beside the canvas
+      // rather than a full-screen overlay.
+      style={{ ['--agent-panel-width' as string]: `${panelWidth}px` }}
       aria-label="Agent panel"
       initial={reduceMotion ? false : { opacity: 0, x: 18 }}
       animate={{ opacity: 1, x: 0 }}
       exit={reduceMotion ? undefined : { opacity: 0, x: 14 }}
       transition={studioTween}
     >
+      <ResizeHandle />
       <header className="flex h-10 shrink-0 items-center justify-between border-b border-border px-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="grid size-6 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">

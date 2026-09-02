@@ -194,6 +194,14 @@
 .studio-parameter-popover [data-slot="switch-thumb"]{
   background:var(--param-bg)!important;
 }
+/* The Agent panel is a full-screen overlay on small screens and a resizable
+   column beside the canvas from md up. */
+@media(min-width:768px){
+  /* The cap also holds when the window is resized under a panel that was
+     already dragged wide, without any JS having to re-clamp. */
+  aside[aria-label="Agent panel"]{width:var(--agent-panel-width,360px);max-width:50vw}
+}
+
 .studio-canvas-surface{
   background-color:var(--studio-canvas,#f4f5f2);
   background-image:radial-gradient(circle,var(--studio-dot) 1px,transparent 1px);
