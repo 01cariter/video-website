@@ -4,6 +4,8 @@ import {
   MAX_SEARCH_QUERY_LENGTH,
   likePattern,
   normalizeSearchQuery,
+  readSearchTab,
+  searchTabHref,
 } from './search-shared';
 
 describe('search query normalisation', () => {
@@ -37,5 +39,23 @@ describe('search LIKE patterns', () => {
     assert.equal(likePattern('100%'), '%100\\%%');
     assert.equal(likePattern('a_b'), '%a\\_b%');
     assert.equal(likePattern('back\\slash'), '%back\\\\slash%');
+  });
+});
+
+describe('search result tabs', () => {
+  it('falls back to the combined view', () => {
+    assert.equal(readSearchTab(undefined), 'top');
+    assert.equal(readSearchTab('everything'), 'top');
+    assert.equal(readSearchTab('posts'), 'posts');
+    assert.equal(readSearchTab('people'), 'people');
+  });
+
+  it('keeps the default tab out of the URL and escapes the query', () => {
+    assert.equal(searchTabHref('dark mode', 'top'), '/search?q=dark+mode');
+    assert.equal(
+      searchTabHref('dark mode', 'people'),
+      '/search?q=dark+mode&t=people',
+    );
+    assert.equal(searchTabHref('a&b', 'posts'), '/search?q=a%26b&t=posts');
   });
 });

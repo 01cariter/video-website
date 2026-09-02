@@ -631,6 +631,36 @@ body:has(.x-app.wide-workspace){
   overflow-wrap:anywhere}
 .sr-head h1 span{color:var(--orange-d)}
 .sr-head p{margin-top:5px;color:var(--muted);font-size:var(--text-sm);font-weight:600}
+/* Typeahead under the search field */
+.x-search-wrap{position:relative;flex:0 0 auto}
+.x-suggest{position:absolute;top:calc(100% + 6px);right:0;left:0;z-index:40;overflow:hidden;padding:5px;
+  border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--panel);box-shadow:var(--shadow);
+  animation:menu-in .13s var(--ease-out)}
+.x-suggest-head{padding:7px 9px 4px;color:var(--muted);font-size:9.5px;font-weight:760;letter-spacing:.1em;
+  text-transform:uppercase}
+.x-suggest-row,.x-suggest-all{display:flex;width:100%;align-items:center;gap:9px;padding:7px 9px;border:0;
+  border-radius:var(--radius-sm);background:transparent;color:var(--ink);text-align:left;cursor:pointer;
+  transition:background .12s}
+.x-suggest-row.on,.x-suggest-all.on{background:var(--hover)}
+.x-suggest-row .av{width:30px;height:30px;flex:0 0 auto;font-size:12.5px}
+.x-suggest-icon{display:grid;place-items:center;width:30px;height:30px;flex:0 0 auto;border-radius:var(--radius-sm);
+  background:var(--hover);color:var(--muted)}
+.x-suggest-icon svg{width:14px;height:14px}
+.x-suggest-copy{display:flex;min-width:0;flex:1;flex-direction:column}
+.x-suggest-copy b,.x-suggest-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.x-suggest-copy b{font-size:13px;font-weight:650}
+.x-suggest-copy small{color:var(--muted);font-size:11.5px;font-weight:550}
+.x-suggest-meta{flex:0 0 auto;color:var(--muted);font-size:11px;font-weight:650}
+.x-suggest-all{margin-top:3px;border-top:1px solid var(--line);border-radius:0 0 var(--radius-sm) var(--radius-sm);
+  padding-top:10px;color:var(--orange-d);font-size:12.5px;font-weight:700}
+.x-suggest-all svg{width:14px;height:14px;flex:0 0 auto}
+
+/* Result tabs and "see all" */
+.sr-tabs{border-bottom:1px solid color-mix(in srgb,var(--line) 82%,transparent)}
+.sr-tabs .t-tab{display:flex;align-items:center;justify-content:center;flex:1 0 0}
+.sr-more{display:block;padding:11px 0 4px;color:var(--orange-d);font-size:var(--text-sm);font-weight:700}
+.sr-more:hover{text-decoration:underline;text-underline-offset:3px}
+
 /* The right rail carries the only search field on desktop; below its
    breakpoint the results page has to provide one. */
 .sr-head-search{display:none}

@@ -21,3 +21,25 @@ export function normalizeSearchQuery(value: string | null | undefined): string {
 export function likePattern(query: string): string {
   return `%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
 }
+
+export const SEARCH_TABS = [
+  { value: 'top', label: 'Top' },
+  { value: 'posts', label: 'Posts' },
+  { value: 'people', label: 'People' },
+] as const;
+
+export type SearchTab = (typeof SEARCH_TABS)[number]['value'];
+
+/** Anything unrecognised falls back to the combined view. */
+export function readSearchTab(value: string | undefined | null): SearchTab {
+  return SEARCH_TABS.some((tab) => tab.value === value)
+    ? (value as SearchTab)
+    : 'top';
+}
+
+/** `top` is the default, so it stays out of the URL. */
+export function searchTabHref(query: string, tab: SearchTab): string {
+  const params = new URLSearchParams({ q: query });
+  if (tab !== 'top') params.set('t', tab);
+  return `/search?${params.toString()}`;
+}

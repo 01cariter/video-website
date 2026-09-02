@@ -3,10 +3,20 @@ import 'server-only';
 import { sql } from './db';
 import { VIDEO_COLUMNS, VIDEO_SOURCE } from './profiles';
 import { likePattern, normalizeSearchQuery } from './search-shared';
+import type {
+  SearchPostSuggestion,
+  SearchSuggestionPerson,
+  SearchSuggestions,
+} from './search-types';
 import type { ProfileSummary, Video } from './types';
 import { attachVideoAssets } from './videos';
 
 export { likePattern, normalizeSearchQuery, MAX_SEARCH_QUERY_LENGTH } from './search-shared';
+export type {
+  SearchPostSuggestion,
+  SearchSuggestionPerson,
+  SearchSuggestions,
+} from './search-types';
 
 export async function searchVideos({
   query,
@@ -80,4 +90,67 @@ export async function searchProfiles({
       p.user_id
     LIMIT ${Math.min(Math.max(Math.trunc(limit), 1), 40)}
   `;
+}
+
+/**
+ * Typeahead runs on every debounced keystroke, so it deliberately skips the
+ * full feed projection and the asset join that `searchVideos` needs — a
+ * headline and an author is all the dropdown renders.
+ */
+export async function suggestSearch({
+  query,
+  peopleLimit = 3,
+  postLimit = 5,
+}: {
+  query: string;
+  peopleLimit?: number;
+  postLimit?: number;
+}): Promise<SearchSuggestions> {
+  const term = normalizeSearchQuery(query);
+  if (!term) return { people: [], posts: [] };
+  const pattern = likePattern(term);
+
+  const [people, posts] = await Promise.all([
+    sql<SearchSuggestionPerson[]>`
+      SELECT
+        p.user_id,
+        p.handle,
+        COALESCE(p.display_name, 'Creator') AS display_name,
+        p.avatar_color,
+        am.url AS avatar_url,
+        p.followers_count
+      FROM profiles p
+      LEFT JOIN media am ON am.id = p.avatar_media_id
+      WHERE p.handle ILIKE ${pattern} ESCAPE '\\'
+         OR p.display_name ILIKE ${pattern} ESCAPE '\\'
+      ORDER BY
+        CASE WHEN p.handle ILIKE ${pattern} ESCAPE '\\' THEN 0 ELSE 1 END,
+        p.followers_count DESC,
+        p.user_id
+      LIMIT ${Math.min(Math.max(Math.trunc(peopleLimit), 1), 8)}
+    `,
+    sql<SearchPostSuggestion[]>`
+      SELECT
+        v.id,
+        COALESCE(
+          NULLIF(TRIM(v.title), ''),
+          NULLIF(LEFT(TRIM(v.description), 80), ''),
+          'Post'
+        ) AS headline,
+        COALESCE(p.display_name, 'Creator') AS author_name,
+        p.handle AS author_handle
+      FROM videos v
+      JOIN profiles p ON p.user_id = v.author_id
+      WHERE v.title ILIKE ${pattern} ESCAPE '\\'
+         OR v.description ILIKE ${pattern} ESCAPE '\\'
+      ORDER BY
+        CASE WHEN v.title ILIKE ${pattern} ESCAPE '\\' THEN 0 ELSE 1 END,
+        v.likes_count DESC,
+        v.created_at DESC,
+        v.id DESC
+      LIMIT ${Math.min(Math.max(Math.trunc(postLimit), 1), 10)}
+    `,
+  ]);
+
+  return { people, posts };
 }
