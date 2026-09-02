@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { sql } from './db';
+import { MAX_BIO_LENGTH, MAX_DISPLAY_NAME_LENGTH } from './profiles-shared';
 import { levelFromXp } from './levels';
 import type { Profile, ProfileSummary, Video } from './types';
 import { attachVideoAssets } from './videos';
@@ -13,6 +14,7 @@ const VIDEO_COLUMNS = `
   p.handle AS author_handle,
   COALESCE(p.display_name, 'Creator') AS author_name,
   p.avatar_color AS author_color,
+  am.url AS author_avatar,
   p.bio AS author_bio,
   p.followers_count AS author_followers,
   pm.url AS poster_url, pm.width AS poster_w, pm.height AS poster_h,
@@ -33,6 +35,7 @@ const VIDEO_SOURCE = `
   JOIN profiles p ON p.user_id = v.author_id
   LEFT JOIN media pm ON pm.id = v.poster_media_id
   LEFT JOIN media vm ON vm.id = v.video_media_id
+  LEFT JOIN media am ON am.id = p.avatar_media_id
 `;
 
 // Handles are stored with the leading '@'; URLs carry the bare name.
@@ -49,6 +52,48 @@ function pageSize(limit: number) {
   return Math.min(Math.max(Math.trunc(limit), 1), 120);
 }
 
+export { MAX_BIO_LENGTH, MAX_DISPLAY_NAME_LENGTH };
+
+export interface ProfileEdit {
+  display_name: string;
+  bio: string | null;
+  avatar_media_id: number | null;
+}
+
+
+// The direct Postgres connection bypasses RLS, so ownership of the chosen
+// avatar is re-checked here rather than trusted from the browser.
+export async function updateProfile({
+  userId,
+  displayName,
+  bio,
+  avatarMediaId,
+}: {
+  userId: string;
+  displayName: string;
+  bio: string | null;
+  avatarMediaId: number | null;
+}): Promise<ProfileEdit> {
+  if (avatarMediaId !== null) {
+    const [owned] = await sql<Array<{ id: number }>>`
+      SELECT id FROM media
+      WHERE id = ${avatarMediaId} AND owner_id = ${userId} AND kind = 'image'
+    `;
+    if (!owned) throw new Error('That avatar image is not available.');
+  }
+
+  const [row] = await sql<ProfileEdit[]>`
+    UPDATE profiles
+    SET display_name = ${displayName},
+        bio = ${bio},
+        avatar_media_id = ${avatarMediaId}
+    WHERE user_id = ${userId}
+    RETURNING display_name, bio, avatar_media_id
+  `;
+  if (!row) throw new Error('Profile not found.');
+  return row;
+}
+
 export async function getProfileByHandle({
   handle,
   viewerId = null,
@@ -60,6 +105,8 @@ export async function getProfileByHandle({
       COALESCE(p.display_name, 'Creator') AS display_name,
       p.bio,
       p.avatar_color,
+      am.url AS avatar_url,
+      p.avatar_media_id,
       (SELECT COUNT(*) FROM follows f WHERE f.author_id = p.user_id)::integer AS followers_count,
       (SELECT COUNT(*) FROM videos v WHERE v.author_id = p.user_id)::integer AS posts_count,
       (SELECT COALESCE(SUM(v.likes_count), 0) FROM videos v WHERE v.author_id = p.user_id)::integer
@@ -73,6 +120,7 @@ export async function getProfileByHandle({
         WHERE f.author_id = p.user_id AND f.follower_id = ${viewerId}::text
       ) END AS following
     FROM profiles p
+    LEFT JOIN media am ON am.id = p.avatar_media_id
     WHERE p.handle = ${normalizeHandle(handle)}
   `;
   if (!row) return null;
@@ -124,6 +172,7 @@ export async function getProfileFollowers({
       COALESCE(p.display_name, 'Creator') AS display_name,
       p.bio,
       p.avatar_color,
+      am.url AS avatar_url,
       (SELECT COUNT(*) FROM follows own_followers WHERE own_followers.author_id = p.user_id)::integer
         AS followers_count,
       (SELECT COUNT(*) FROM videos own_posts WHERE own_posts.author_id = p.user_id)::integer
@@ -135,6 +184,7 @@ export async function getProfileFollowers({
       ) END AS following
     FROM follows profile_follow
     JOIN profiles p ON p.user_id = profile_follow.follower_id
+    LEFT JOIN media am ON am.id = p.avatar_media_id
     WHERE profile_follow.author_id = ${authorId}
     ORDER BY profile_follow.created_at DESC, p.user_id
     LIMIT ${pageSize(limit)}
@@ -155,6 +205,7 @@ export async function getFollowingAuthors({
       COALESCE(p.display_name, 'Creator') AS display_name,
       p.bio,
       p.avatar_color,
+      am.url AS avatar_url,
       (SELECT COUNT(*) FROM follows own_followers WHERE own_followers.author_id = p.user_id)::integer
         AS followers_count,
       (SELECT COUNT(*) FROM videos own_posts WHERE own_posts.author_id = p.user_id)::integer
@@ -162,6 +213,7 @@ export async function getFollowingAuthors({
       true AS following
     FROM follows viewer_follow
     JOIN profiles p ON p.user_id = viewer_follow.author_id
+    LEFT JOIN media am ON am.id = p.avatar_media_id
     WHERE viewer_follow.follower_id = ${userId}
     ORDER BY viewer_follow.created_at DESC, p.user_id
     LIMIT ${pageSize(limit)}
@@ -173,6 +225,7 @@ export interface SuggestedAuthor {
   handle: string | null;
   display_name: string;
   avatar_color: string;
+  avatar_url: string | null;
   followers_count: number;
   following: boolean;
 }
@@ -190,9 +243,11 @@ export async function getSuggestedAuthors({
       p.handle,
       COALESCE(p.display_name, 'Creator') AS display_name,
       p.avatar_color,
+      am.url AS avatar_url,
       p.followers_count,
       false AS following
     FROM profiles p
+    LEFT JOIN media am ON am.id = p.avatar_media_id
     WHERE (${viewerId}::text IS NULL OR p.user_id <> ${viewerId}::text)
       AND (${viewerId}::text IS NULL OR NOT EXISTS (
         SELECT 1 FROM follows f

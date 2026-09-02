@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Bookmark, Heart, MessageCircle, Share2 } from 'lucide-react';
 import type { AppUser, Comment, Video } from '@/lib/types';
-import { fmtDate, fmtLikes, fmtRelativeTime, initials, profileHref } from '../media';
+import { avatarStyle, fmtDate, fmtLikes, fmtRelativeTime, initials, profileHref } from '../media';
 import { useMediaPreview } from '../shell/MediaPreviewContext';
 import DeleteMenu from './DeleteMenu';
 import MediaCarousel from './MediaCarousel';
@@ -67,7 +67,7 @@ export default function PostDetail({
           <Link
             className="pd-top-av"
             href={profile || `/videos/${video.id}`}
-            style={{ background: video.author_color }}
+            style={avatarStyle(video.author_color, video.author_avatar)}
             aria-label={video.author_name}
           >
             {initials(video.author_name)}
@@ -203,7 +203,7 @@ export default function PostDetail({
         <ul className="pd-comment-list">
           {comments.map((comment) => (
             <li key={comment.id}>
-              <span className="t-av" style={{ background: comment.author_color }}>
+              <span className="t-av" style={avatarStyle(comment.author_color, comment.author_avatar)}>
                 {initials(comment.author_name)}
               </span>
               <div className="pd-comment-body">

@@ -108,6 +108,17 @@ export function cardSize(video: Video, index: number) {
   return '';
 }
 
+// Avatars render as a colored initial until the account uploads an image;
+// painting the image as the same span's background keeps every call site a
+// one-line change instead of a new element.
+export function avatarStyle(color: string, url?: string | null) {
+  if (!url) return { background: color };
+  return {
+    background: `${color} url("${url}") center / cover no-repeat`,
+    color: 'transparent',
+  };
+}
+
 export function initials(name: string | null | undefined) {
   return (name || '?').trim().charAt(0).toUpperCase();
 }

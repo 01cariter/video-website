@@ -46,6 +46,7 @@ export interface Video {
   author_handle: string | null;
   author_name: string;
   author_color: string;
+  author_avatar: string | null;
   author_bio: string | null;
   author_followers: number;
   poster_url: string | null;
@@ -71,6 +72,8 @@ export interface Profile {
   display_name: string;
   bio: string | null;
   avatar_color: string;
+  avatar_url: string | null;
+  avatar_media_id: number | null;
   xp: number;
   level: number;
   followers_count: number;
@@ -85,6 +88,7 @@ export interface ProfileSummary {
   display_name: string;
   bio: string | null;
   avatar_color: string;
+  avatar_url: string | null;
   followers_count: number;
   posts_count: number;
   following: boolean;
@@ -98,6 +102,7 @@ export interface Comment {
   author_name: string;
   author_handle: string | null;
   author_color: string;
+  author_avatar: string | null;
 }
 
 export interface Media {

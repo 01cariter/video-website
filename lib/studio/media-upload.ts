@@ -17,6 +17,7 @@ interface MediaResponse {
 }
 
 export interface StudioMediaUpload {
+  id: number;
   kind: MediaKind;
   mime: string;
   url: string;
@@ -110,6 +111,7 @@ export async function uploadStudioMedia(
       );
     }
     return {
+      id: payload.media.id,
       kind: kindFromMime(mime),
       mime,
       url: payload.media.url,

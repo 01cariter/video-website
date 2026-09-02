@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Search } from 'lucide-react';
 import type { SuggestedAuthor } from '@/lib/profiles';
-import { initials, profileHref } from '../media';
+import { avatarStyle, initials, profileHref } from '../media';
 
 export interface RailTopic {
   id: string;
@@ -74,7 +74,7 @@ export default function RightRail({
               {suggestions.map((author) => (
                 <li key={author.user_id}>
                   <Link className="x-suggestion-who" href={profileHref(author.handle) || '#'}>
-                    <span className="av" style={{ background: author.avatar_color }}>
+                    <span className="av" style={avatarStyle(author.avatar_color, author.avatar_url)}>
                       {initials(author.display_name)}
                     </span>
                     <span className="txt">

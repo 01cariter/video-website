@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Bookmark, Clapperboard, Coins, Home, LogOut, Moon, Plus, Sun, User, Users } from 'lucide-react';
 import type { AppUser } from '@/lib/types';
 import { getThemeServerSnapshot, getThemeSnapshot, setTheme, subscribeTheme } from '@/lib/theme';
-import { initials, profileHref } from '../media';
+import { avatarStyle, initials, profileHref } from '../media';
 import { isNavActive } from './nav-active';
 
 interface LeftNavProps {
@@ -68,7 +68,7 @@ export default function LeftNav({ user, onCompose, onSignIn, onSignUp, onLogout 
       {user ? (
         <div className="x-account">
           <Link className="x-account-link" href={profileHref(user.handle) || '/profile'} title="Your profile">
-            <span className="av" style={{ background: user.avatar_color }}>
+            <span className="av" style={avatarStyle(user.avatar_color, user.avatar_url)}>
               {initials(user.display_name)}
             </span>
             <span className="txt">

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ArrowUpRight, FileText, Users } from 'lucide-react';
 import type { ProfileSummary } from '@/lib/types';
-import { fmtLikes, initials, profileHref } from '../media';
+import { avatarStyle, fmtLikes, initials, profileHref } from '../media';
 
 export default function FollowingCreators({
   authors,
@@ -27,7 +27,7 @@ export default function FollowingCreators({
             const href = profileHref(author.handle) || '/following';
             return (
               <Link className="fg-card" href={href} key={author.user_id} role="listitem">
-                <span className="fg-avatar" style={{ background: author.avatar_color }}>
+                <span className="fg-avatar" style={avatarStyle(author.avatar_color, author.avatar_url)}>
                   {initials(author.display_name)}
                 </span>
                 <span className="fg-copy">

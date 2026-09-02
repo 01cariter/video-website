@@ -7,7 +7,7 @@ import { Bookmark, Heart, MessageCircle, Share2 } from 'lucide-react';
 import { useEffect } from 'react';
 import type { AppUser, Video } from '@/lib/types';
 import { postHeadline } from '@/lib/post-text';
-import { fmtLikes, fmtRelativeTime, initials, profileHref } from '../media';
+import { avatarStyle, fmtLikes, fmtRelativeTime, initials, profileHref } from '../media';
 import { useMediaPreview } from '../shell/MediaPreviewContext';
 import DeleteMenu from './DeleteMenu';
 import MediaCarousel from './MediaCarousel';
@@ -70,7 +70,7 @@ export default function TimelinePost({
       <Link
         className="t-av"
         href={profile || href}
-        style={{ background: video.author_color }}
+        style={avatarStyle(video.author_color, video.author_avatar)}
         aria-label={video.author_name}
         onClick={(event) => event.stopPropagation()}
       >

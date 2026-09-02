@@ -11,7 +11,10 @@ const AVATAR_COLORS = ['#3f7d92', '#cf4f2a', '#4a7a6a', '#52708f', '#b06a3a', '#
 
 interface ProfileRow extends Record<string, unknown> {
   handle: string | null;
+  display_name: string | null;
+  bio: string | null;
   avatar_color: string;
+  avatar_url: string | null;
   followers_count: number;
 }
 
@@ -52,9 +55,11 @@ export const getCurrentUser = cache(async (): Promise<AppUser | null> => {
 
   // Fast path: no XP SUM over all posts on every route change.
   const [existing] = await sql<ProfileRow[]>`
-    SELECT handle, avatar_color, followers_count
-    FROM profiles
-    WHERE user_id = ${authUser.id}
+    SELECT p.handle, p.display_name, p.bio, p.avatar_color, p.followers_count,
+      am.url AS avatar_url
+    FROM profiles p
+    LEFT JOIN media am ON am.id = p.avatar_media_id
+    WHERE p.user_id = ${authUser.id}
   `;
 
   let profile = existing;
@@ -63,7 +68,8 @@ export const getCurrentUser = cache(async (): Promise<AppUser | null> => {
       INSERT INTO profiles (user_id, display_name, handle, avatar_color)
       VALUES (${authUser.id}, ${displayName}, ${handle}, ${randomColor()})
       ON CONFLICT (user_id) DO UPDATE SET display_name = EXCLUDED.display_name
-      RETURNING handle, avatar_color, followers_count
+      RETURNING handle, display_name, bio, avatar_color, followers_count,
+        NULL::text AS avatar_url
     `;
     profile = created;
   }
@@ -72,10 +78,12 @@ export const getCurrentUser = cache(async (): Promise<AppUser | null> => {
 
   return {
     id: authUser.id,
-    display_name: displayName,
+    // The profile row is what the edit form writes, so it wins over the
+    // provider's metadata once the account has been personalised.
+    display_name: profile.display_name?.trim() || displayName,
     handle: profile.handle,
     email: authUser.email ?? null,
-    avatar_url: avatarUrlFor(authUser),
+    avatar_url: profile.avatar_url || avatarUrlFor(authUser),
     avatar_color: profile.avatar_color,
     // XP/level are profile-page concerns; shell does not need a live SUM.
     xp: 0,

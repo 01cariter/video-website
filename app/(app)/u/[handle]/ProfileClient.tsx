@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Bookmark,
   Heart,
+  Pencil,
   Play,
   Sparkles,
   Users,
@@ -20,13 +21,19 @@ import type {
 } from '@/lib/types';
 import { levelProgress } from '@/lib/levels';
 import { postHeadline } from '@/lib/post-text';
-import { fmtLikes, initials, profileHref } from '@/app/components/media';
+import {
+  avatarStyle,
+  fmtLikes,
+  initials,
+  profileHref,
+} from '@/app/components/media';
 import DeleteMenu from '@/app/components/feed/DeleteMenu';
 import { useMediaPreview } from '@/app/components/shell/MediaPreviewContext';
 import {
   OPEN_COMPOSE_EVENT,
   POST_DELETED_EVENT,
 } from '@/app/components/shell/compose-events';
+import ProfileEditDialog, { type ProfileEdits } from './ProfileEditDialog';
 
 interface ProfileClientProps {
   user: AppUser | null;
@@ -68,6 +75,15 @@ export default function ProfileClient({
   const [following, setFollowing] = useState(profile.following);
   const [followersCount, setFollowersCount] = useState(profile.followers_count);
   const [pending, setPending] = useState(false);
+  const [editing, setEditing] = useState(false);
+  // Applied locally so the hero updates before the server component refetches.
+  const [details, setDetails] = useState<ProfileEdits>({
+    display_name: profile.display_name,
+    bio: profile.bio,
+    avatar_url: profile.avatar_url,
+    avatar_media_id: profile.avatar_media_id,
+  });
+  const shownProfile = { ...profile, ...details };
 
   useEffect(() => {
     function handleDeleted(event: Event) {
@@ -174,34 +190,47 @@ export default function ProfileClient({
           <ArrowLeft aria-hidden="true" />
         </button>
         <div className="pf-topbar-title">
-          <b>{isOwner ? 'Profile' : profile.display_name}</b>
+          <b>{isOwner ? 'Profile' : shownProfile.display_name}</b>
         </div>
       </header>
 
       <section className="pf-hero">
         <div className="pf-identity">
-          <span className="pf-av" style={{ background: profile.avatar_color }}>
-            {initials(profile.display_name)}
+          <span
+            className="pf-av"
+            style={avatarStyle(profile.avatar_color, shownProfile.avatar_url)}
+          >
+            {initials(shownProfile.display_name)}
           </span>
 
           <div className="pf-id">
             <div className="pf-name-row">
               <div className="pf-name">
-                <h1>{profile.display_name}</h1>
+                <h1>{shownProfile.display_name}</h1>
                 <p className="pf-handle">{profile.handle}</p>
               </div>
 
               <div className="pf-actions">
                 {isOwner ? (
-                  <button
-                    type="button"
-                    className="pf-primary"
-                    onClick={() =>
-                      window.dispatchEvent(new Event(OPEN_COMPOSE_EVENT))
-                    }
-                  >
-                    New post
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="pf-secondary"
+                      onClick={() => setEditing(true)}
+                    >
+                      <Pencil aria-hidden="true" />
+                      Edit profile
+                    </button>
+                    <button
+                      type="button"
+                      className="pf-primary"
+                      onClick={() =>
+                        window.dispatchEvent(new Event(OPEN_COMPOSE_EVENT))
+                      }
+                    >
+                      New post
+                    </button>
+                  </>
                 ) : (
                   <button
                     type="button"
@@ -215,8 +244,8 @@ export default function ProfileClient({
               </div>
             </div>
 
-            {profile.bio ? (
-              <p className="pf-bio">{profile.bio}</p>
+            {shownProfile.bio ? (
+              <p className="pf-bio">{shownProfile.bio}</p>
             ) : (
               <p className="pf-bio pf-bio-muted">
                 {isOwner
@@ -304,7 +333,7 @@ export default function ProfileClient({
                   >
                     <span
                       className="pf-person-av"
-                      style={{ background: follower.avatar_color }}
+                      style={avatarStyle(follower.avatar_color, follower.avatar_url)}
                     >
                       {initials(follower.display_name)}
                     </span>
@@ -401,7 +430,7 @@ export default function ProfileClient({
                   ? 'No posts have collected likes yet.'
                   : isOwner
                     ? 'You have not posted anything yet.'
-                    : `${profile.display_name} has not posted yet.`
+                    : `${shownProfile.display_name} has not posted yet.`
             }
             action={
               isOwner && view === 'posts'
@@ -411,6 +440,18 @@ export default function ProfileClient({
           />
         )}
       </section>
+
+      {editing && (
+        <ProfileEditDialog
+          profile={shownProfile}
+          onClose={() => setEditing(false)}
+          onSaved={(edits) => {
+            setDetails(edits);
+            setEditing(false);
+            router.refresh();
+          }}
+        />
+      )}
     </section>
   );
 }

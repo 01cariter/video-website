@@ -55,6 +55,7 @@ interface CommentAuthorRow extends Record<string, unknown> {
   author_name: string;
   author_handle: string | null;
   author_color: string;
+  author_avatar: string | null;
 }
 
 export async function getFeed({ category = null, userId = null }: FeedOptions = {}): Promise<Video[]> {
@@ -203,6 +204,7 @@ function rankedVideoSelect() {
     p.handle AS author_handle,
     COALESCE(p.display_name, 'Creator') AS author_name,
     p.avatar_color AS author_color,
+    am.url AS author_avatar,
     p.bio AS author_bio,
     p.followers_count AS author_followers,
     pm.url AS poster_url, pm.width AS poster_w, pm.height AS poster_h,
@@ -242,6 +244,7 @@ async function queryPublicFeedPage({
       JOIN profiles p ON p.user_id = v.author_id
       LEFT JOIN media pm ON pm.id = v.poster_media_id
       LEFT JOIN media vm ON vm.id = v.video_media_id
+      LEFT JOIN media am ON am.id = p.avatar_media_id
       WHERE ${category}::text IS NULL OR v.category = ${category}::text
     )
     SELECT *
@@ -285,6 +288,7 @@ async function queryFollowingFeedPage({
       JOIN profiles p ON p.user_id = v.author_id
       LEFT JOIN media pm ON pm.id = v.poster_media_id
       LEFT JOIN media vm ON vm.id = v.video_media_id
+      LEFT JOIN media am ON am.id = p.avatar_media_id
       WHERE EXISTS (
         SELECT 1 FROM follows f
         WHERE f.author_id = v.author_id AND f.follower_id = ${userId}
@@ -367,6 +371,7 @@ export const getVideoById = cache(async function getVideoById({
       p.handle AS author_handle,
       COALESCE(p.display_name, 'Creator') AS author_name,
       p.avatar_color AS author_color,
+      am.url AS author_avatar,
       p.bio AS author_bio,
       p.followers_count AS author_followers,
       pm.url AS poster_url, pm.width AS poster_w, pm.height AS poster_h,
@@ -384,6 +389,7 @@ export const getVideoById = cache(async function getVideoById({
     JOIN profiles p ON p.user_id = v.author_id
     LEFT JOIN media pm ON pm.id = v.poster_media_id
     LEFT JOIN media vm ON vm.id = v.video_media_id
+    LEFT JOIN media am ON am.id = p.avatar_media_id
     WHERE v.id = ${id}
   `;
   if (!row) return null;
@@ -662,9 +668,11 @@ export async function getComments(videoId: number): Promise<Comment[]> {
       c.id, c.body, c.created_at, c.user_id,
       COALESCE(p.display_name, 'You') AS author_name,
       p.handle AS author_handle,
-      p.avatar_color AS author_color
+      p.avatar_color AS author_color,
+      am.url AS author_avatar
     FROM comments c
     LEFT JOIN profiles p ON p.user_id = c.user_id
+    LEFT JOIN media am ON am.id = p.avatar_media_id
     WHERE c.video_id = ${videoId}
     ORDER BY c.created_at DESC
     LIMIT 200
@@ -697,8 +705,11 @@ export async function addComment({
   `;
   const row = { ...inserted, comments_count: Number(counted?.comments_count ?? 0) };
   const [author] = await sql<CommentAuthorRow[]>`
-    SELECT COALESCE(display_name, 'You') AS author_name, handle AS author_handle, avatar_color AS author_color
-    FROM profiles WHERE user_id = ${userId}
+    SELECT COALESCE(p.display_name, 'You') AS author_name, p.handle AS author_handle,
+      p.avatar_color AS author_color, am.url AS author_avatar
+    FROM profiles p
+    LEFT JOIN media am ON am.id = p.avatar_media_id
+    WHERE p.user_id = ${userId}
   `;
   if (!row || !author) return null;
 

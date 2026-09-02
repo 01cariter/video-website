@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import type { AppUser, Comment, Video, VideoAsset } from '@/lib/types';
 import { postHeadline } from '@/lib/post-text';
-import { bg, fmtDate, fmtLikes, initials, profileHref } from './media';
+import { avatarStyle, bg, fmtDate, fmtLikes, initials, profileHref } from './media';
 import DeleteMenu from './feed/DeleteMenu';
 
 interface MediaPreviewProps {
@@ -204,7 +204,7 @@ function PlaybackStage({ video }: PlaybackStageProps) {
 function AuthorIdentity({ video }: { video: Video }) {
   const identity = (
     <>
-      <span className="av" style={{ background: video.author_color }}>
+      <span className="av" style={avatarStyle(video.author_color, video.author_avatar)}>
         {initials(video.author_name)}
       </span>
       <span className="who">
