@@ -820,6 +820,37 @@ body:has(.x-app.wide-workspace){
 .t-actions .on{color:var(--orange-d)}
 .t-actions .on svg{fill:currentColor}
 .t-actions .t-post-menu,.pd-actions .pd-post-menu{margin-left:auto}
+/* Share menu — the trigger sits in the same action rows as .t-actions
+   buttons, so it inherits their shape rather than redefining it. */
+.share-menu-trigger{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:0;border-radius:var(--radius-sm);
+  background:transparent;color:var(--muted);font-size:var(--text-sm);font-weight:600;cursor:pointer;transition:.15s var(--ease-out)}
+.share-menu-trigger:hover{background:var(--play-bg);color:var(--orange-d)}
+.share-menu-trigger:active{transform:scale(.96)}
+.share-menu-trigger[data-state="open"]{background:var(--play-bg);color:var(--orange-d)}
+.share-menu-trigger svg{width:16px;height:16px;stroke-width:1.7}
+.share-menu-content{z-index:140;width:274px;overflow:hidden;padding:6px;border:1px solid color-mix(in srgb,var(--line) 88%,transparent);
+  border-radius:var(--radius-md);background:var(--panel);box-shadow:var(--shadow);animation:menu-in .13s var(--ease-out)}
+.share-menu-item{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:8px;outline:0;
+  color:var(--ink);font-size:var(--text-sm);font-weight:600;cursor:pointer}
+.share-menu-item[data-highlighted]{background:var(--hover)}
+.share-menu-item[data-disabled]{opacity:.55;cursor:default}
+.share-menu-item svg{flex:0 0 auto;width:16px;height:16px;stroke-width:1.8}
+.share-menu-copy{display:flex;min-width:0;flex-direction:column}
+.share-menu-copy small{color:var(--muted);font-size:11px;font-weight:550;line-height:1.35}
+.share-menu-rule{height:1px;margin:5px 4px;background:color-mix(in srgb,var(--line) 82%,transparent)}
+.share-menu-label{padding:3px 10px 5px;color:var(--muted);font-size:9.5px;font-weight:760;letter-spacing:.1em;
+  text-transform:uppercase}
+.share-menu-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px}
+.share-menu-tile{display:flex;flex-direction:column;align-items:center;gap:5px;padding:9px 4px;border-radius:9px;outline:0;
+  color:var(--ink);cursor:pointer;text-align:center}
+.share-menu-tile[data-highlighted]{background:var(--hover)}
+.share-menu-tile svg{width:17px;height:17px;stroke-width:1.7;color:var(--muted)}
+.share-menu-tile[data-highlighted] svg{color:var(--orange-d)}
+.share-menu-tile span{overflow:hidden;max-width:100%;font-size:10.5px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+.share-menu-error{margin:6px 4px 2px;padding:8px 10px;border-radius:8px;background:var(--play-bg);color:var(--orange-d);
+  font-size:11.5px;font-weight:600;line-height:1.45}
+.share-menu-spin{animation:spin .8s linear infinite}
+
 .delete-menu-trigger{display:grid!important;width:34px;height:34px;flex:0 0 auto;place-items:center;padding:0!important;border:0;
   border-radius:var(--radius-sm);background:transparent;color:var(--muted);cursor:pointer;transition:background .15s,color .15s}
 .delete-menu-trigger:hover{background:var(--hover);color:var(--ink)}

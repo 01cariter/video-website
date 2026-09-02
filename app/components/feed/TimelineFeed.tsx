@@ -18,7 +18,6 @@ export interface TimelineFeedProps {
   onRetry: () => void;
   onLike: (video: Video) => void;
   onSave: (video: Video) => void;
-  onShare: (video: Video) => void;
   onDelete?: (video: Video) => Promise<void>;
   onNeedAuth: () => void;
 }
@@ -35,7 +34,6 @@ export default function TimelineFeed({
   onRetry,
   onLike,
   onSave,
-  onShare,
   onDelete,
   onNeedAuth,
 }: TimelineFeedProps) {
@@ -68,7 +66,6 @@ export default function TimelineFeed({
           playlist={videos}
           onLike={onLike}
           onSave={onSave}
-          onShare={onShare}
           onDelete={onDelete}
           onNeedAuth={onNeedAuth}
         />

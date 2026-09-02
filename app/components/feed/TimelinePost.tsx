@@ -3,13 +3,14 @@
 import type { KeyboardEvent, MouseEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Bookmark, Heart, MessageCircle, Share2 } from 'lucide-react';
+import { Bookmark, Heart, MessageCircle } from 'lucide-react';
 import { useEffect } from 'react';
 import type { AppUser, Video } from '@/lib/types';
 import { postHeadline } from '@/lib/post-text';
 import { avatarStyle, fmtLikes, fmtRelativeTime, initials, profileHref } from '../media';
 import { useMediaPreview } from '../shell/MediaPreviewContext';
 import DeleteMenu from './DeleteMenu';
+import ShareMenu from './ShareMenu';
 import MediaCarousel from './MediaCarousel';
 
 export interface TimelinePostProps {
@@ -18,7 +19,6 @@ export interface TimelinePostProps {
   playlist?: Video[];
   onLike: (video: Video) => void;
   onSave: (video: Video) => void;
-  onShare: (video: Video) => void;
   onDelete?: (video: Video) => Promise<void>;
   onNeedAuth: () => void;
 }
@@ -29,7 +29,6 @@ export default function TimelinePost({
   playlist,
   onLike,
   onSave,
-  onShare,
   onDelete,
   onNeedAuth,
 }: TimelinePostProps) {
@@ -136,9 +135,7 @@ export default function TimelinePost({
           >
             <Bookmark aria-hidden="true" />
           </button>
-          <button type="button" onClick={() => onShare(video)} aria-label={`Share ${headline}`}>
-            <Share2 aria-hidden="true" />
-          </button>
+          <ShareMenu video={video} />
           {user?.id === video.author_id && onDelete && (
             <DeleteMenu
               itemLabel="post"

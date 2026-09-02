@@ -215,22 +215,6 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
     [needAuth, patchVideo],
   );
 
-  async function share(video: Video) {
-    const url = `${window.location.origin}/videos/${video.id}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: video.title || video.description || 'Snackd',
-          text: video.description || undefined,
-          url,
-        });
-      } else {
-        await navigator.clipboard.writeText(url);
-      }
-    } catch {
-      // Native share sheets reject when the user cancels — nothing to do.
-    }
-  }
 
   async function deletePost(video: Video) {
     const response = await fetch(`/api/videos/${video.id}`, { method: 'DELETE' });
@@ -343,7 +327,6 @@ function HomeTimelineInner({ user, initialVideos, initialNextCursor, initialTab 
         onRetry={() => void (videos.length ? loadMore() : changeTab(tab))}
         onLike={(video) => void like(video)}
         onSave={(video) => void save(video)}
-        onShare={(video) => void share(video)}
         onDelete={deletePost}
         onNeedAuth={needAuth}
       />

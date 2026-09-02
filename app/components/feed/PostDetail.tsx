@@ -8,6 +8,7 @@ import type { AppUser, Comment, Video } from '@/lib/types';
 import { avatarStyle, fmtDate, fmtLikes, fmtRelativeTime, initials, profileHref } from '../media';
 import { useMediaPreview } from '../shell/MediaPreviewContext';
 import DeleteMenu from './DeleteMenu';
+import ShareMenu from './ShareMenu';
 import MediaCarousel from './MediaCarousel';
 
 interface PostDetailProps {
@@ -18,11 +19,9 @@ interface PostDetailProps {
   commentsError: boolean;
   draft: string;
   posting: boolean;
-  shared: boolean;
   onLike: () => void;
   onSave: () => void;
   onFollow: () => void;
-  onShare: () => void;
   onDeletePost: () => Promise<void>;
   onDeleteComment: (comment: Comment) => Promise<void>;
   onDraftChange: (value: string) => void;
@@ -39,11 +38,9 @@ export default function PostDetail({
   commentsError,
   draft,
   posting,
-  shared,
   onLike,
   onSave,
   onFollow,
-  onShare,
   onDeletePost,
   onDeleteComment,
   onDraftChange,
@@ -147,10 +144,7 @@ export default function PostDetail({
             {fmtLikes(video.saves_count)}
           </span>
         </button>
-        <button type="button" onClick={onShare} aria-label="Share">
-          <Share2 aria-hidden="true" />
-          <span>{shared ? 'Copied' : 'Share'}</span>
-        </button>
+        <ShareMenu video={video} label="Share" />
         {isOwner && (
           <DeleteMenu
             itemLabel="post"

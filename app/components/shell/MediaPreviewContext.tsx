@@ -61,7 +61,6 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
   const [commentsError, setCommentsError] = useState(false);
   const [draft, setDraft] = useState('');
   const [posting, setPosting] = useState(false);
-  const [sharedId, setSharedId] = useState<number | null>(null);
   const [actionError, setActionError] = useState('');
   const pending = useRef(new Set<string>());
   const commentsCache = useRef(new Map<number, Comment[]>());
@@ -90,7 +89,6 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
     setIndex(at >= 0 ? at : 0);
     setDirection(0);
     setDraft('');
-    setSharedId(null);
     setActionError('');
   }, []);
 
@@ -312,23 +310,6 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
     }
   }
 
-  async function share(target: Video) {
-    const url = `${window.location.origin}/videos/${target.id}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: target.title || target.description || 'Snackd',
-          url,
-        });
-      } else {
-        await navigator.clipboard.writeText(url);
-      }
-      setSharedId(target.id);
-      window.setTimeout(() => setSharedId((id) => (id === target.id ? null : id)), 1600);
-    } catch {
-      /* user cancelled share */
-    }
-  }
 
   async function postComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -409,13 +390,11 @@ export function MediaPreviewProvider({ user, onNeedAuth, children }: MediaPrevie
               commentsError={commentsError}
               draft={draft}
               posting={posting}
-              shared={sharedId === video.id}
               onClose={closePreview}
               onNavigate={go}
               onLike={(item) => void like(item)}
               onSave={(item) => void save(item)}
               onFollow={(item) => void follow(item)}
-              onShare={(item) => void share(item)}
               onDeletePost={deletePost}
               onDeleteComment={deleteComment}
               onDraftChange={setDraft}

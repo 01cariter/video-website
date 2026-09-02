@@ -42,7 +42,6 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
   const [missing, setMissing] = useState(false);
   const [draft, setDraft] = useState('');
   const [posting, setPosting] = useState(false);
-  const [shared, setShared] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
   const [actionError, setActionError] = useState('');
   const pending = useRef(new Set<string>());
@@ -222,25 +221,6 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
     }
   }
 
-  async function share() {
-    if (!video) return;
-    const url = window.location.href;
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: video.title || video.description || 'Snackd',
-          text: video.description || undefined,
-          url,
-        });
-      } else {
-        await navigator.clipboard.writeText(url);
-      }
-      setShared(true);
-      window.setTimeout(() => setShared(false), 1600);
-    } catch {
-      // cancelled
-    }
-  }
 
   async function postComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -338,11 +318,9 @@ export default function VideoPageClient({ user, videoId }: VideoPageClientProps)
         commentsError={commentsError}
         draft={draft}
         posting={posting}
-        shared={shared}
         onLike={() => void like()}
         onSave={() => void save()}
         onFollow={() => void follow()}
-        onShare={() => void share()}
         onDeletePost={deletePost}
         onDeleteComment={deleteComment}
         onDraftChange={setDraft}

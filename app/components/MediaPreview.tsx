@@ -23,6 +23,7 @@ import type { AppUser, Comment, Video, VideoAsset } from '@/lib/types';
 import { postHeadline } from '@/lib/post-text';
 import { avatarStyle, bg, fmtDate, fmtLikes, initials, profileHref } from './media';
 import DeleteMenu from './feed/DeleteMenu';
+import ShareMenu from './feed/ShareMenu';
 
 interface MediaPreviewProps {
   video: Video;
@@ -35,13 +36,11 @@ interface MediaPreviewProps {
   commentsError: boolean;
   draft: string;
   posting: boolean;
-  shared: boolean;
   onClose: () => void;
   onNavigate: (delta: number) => void;
   onLike: (video: Video) => void;
   onSave: (video: Video) => void;
   onFollow: (video: Video) => void;
-  onShare: (video: Video) => void;
   onDeletePost: (video: Video) => Promise<void>;
   onDeleteComment: (comment: Comment) => Promise<void>;
   onDraftChange: (value: string) => void;
@@ -257,13 +256,11 @@ export default function MediaPreview({
   commentsError,
   draft,
   posting,
-  shared,
   onClose,
   onNavigate,
   onLike,
   onSave,
   onFollow,
-  onShare,
   onDeletePost,
   onDeleteComment,
   onDraftChange,
@@ -379,10 +376,7 @@ export default function MediaPreview({
                     {fmtLikes(video.saves_count)}
                   </span>
                 </button>
-                <button type="button" onClick={() => onShare(video)} aria-label="Share">
-                  <Share2 aria-hidden="true" />
-                  <span>{shared ? 'Copied' : 'Share'}</span>
-                </button>
+                <ShareMenu video={video} label="Share" />
                 {user?.id === video.author_id && (
                   <DeleteMenu
                     itemLabel="post"
