@@ -39,6 +39,7 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from '@/app/components/ui/popover';
@@ -320,6 +321,7 @@ function AgentPanel({
   const [canvasQuery, setCanvasQuery] = useState('');
   const [activeCanvasIndex, setActiveCanvasIndex] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
   const shouldAutoScroll = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const reduceMotion = Boolean(useReducedMotion());
@@ -791,85 +793,26 @@ function AgentPanel({
       </div>
 
       <form
+        ref={composerRef}
         className="mx-3 mb-3 flex flex-col gap-1.5 rounded-[14px] bg-[var(--studio-composer)] p-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--line)_82%,transparent)]"
         onSubmit={(event) => {
           event.preventDefault();
           submit();
         }}
       >
-        {canvasPickerOpen ? (
-          <div className="overflow-hidden rounded-[10px] bg-[var(--studio-raised)] shadow-[inset_0_0_0_1px_var(--line)]">
-            <div className="flex items-center justify-between border-b border-border/70 px-2.5 py-2">
-              <span className="flex min-w-0 items-center gap-1.5 text-[10.5px] font-semibold">
-                <AtSign className="size-3.5 text-primary" />
-                Reference canvas
-              </span>
-              <span className="truncate text-[9.5px] text-muted-foreground">
-                {canvasQuery ? `Matching “${canvasQuery}”` : 'Choose an item'}
-              </span>
-            </div>
-            <div
-              id={CANVAS_MENTION_LIST_ID}
-              role="listbox"
-              aria-label="Canvas items"
-              className="max-h-[238px] overflow-y-auto p-1.5"
-            >
-              {visibleCanvasNodes.length ? (
-                visibleCanvasNodes.map((node, index) => {
-                  const previewUrl =
-                    node.type === 'video'
-                      ? node.data.posterSrc
-                      : node.type === 'image'
-                        ? node.data.src
-                        : undefined;
-                  return (
-                    <button
-                      key={node.id}
-                      id={`${CANVAS_MENTION_LIST_ID}-${index}`}
-                      type="button"
-                      role="option"
-                      aria-selected={index === activeCanvasIndex}
-                      className={cn(
-                        'flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent',
-                        index === activeCanvasIndex && 'bg-accent',
-                      )}
-                      onClick={() => selectCanvasNode(node)}
-                      onMouseEnter={() => setActiveCanvasIndex(index)}
-                    >
-                      <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-md bg-muted text-muted-foreground">
-                        {previewUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={previewUrl}
-                            alt=""
-                            className="size-full object-cover"
-                          />
-                        ) : (
-                          attachmentIcon(node.type)
-                        )}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[11px] font-semibold">
-                          {node.data.title || node.type}
-                        </span>
-                        <span className="block truncate text-[9.5px] text-muted-foreground">
-                          {node.type} · {node.data.status}
-                          {node.data.modelId ? ` · ${node.data.modelId}` : ''}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })
-              ) : (
-                <p className="px-2 py-5 text-center text-[11px] text-muted-foreground">
-                  {nodes.length
-                    ? 'No matching unattached canvas items'
-                    : 'The canvas is empty'}
-                </p>
-              )}
-            </div>
-          </div>
-        ) : null}
+        <Popover
+          open={canvasPickerOpen}
+          onOpenChange={(next) => {
+            setCanvasPickerOpen(next);
+            setActiveCanvasIndex(0);
+            if (next) {
+              setSkillPickerOpen(false);
+              setSkillQuery('');
+            } else {
+              setCanvasQuery('');
+            }
+          }}
+        >
         {activeAttachments.length ? (
           <div
             className="flex gap-1.5 overflow-x-auto px-0.5 pt-0.5"
@@ -932,6 +875,7 @@ function AgentPanel({
             ))}
           </div>
         ) : null}
+        <PopoverAnchor>
         <Textarea
           ref={inputRef}
           value={input}
@@ -966,6 +910,92 @@ function AgentPanel({
             }
           }}
         />
+        </PopoverAnchor>
+        <PopoverContent
+          align="start"
+          side="top"
+          sideOffset={10}
+          className="w-(--radix-popover-trigger-width) min-w-[264px] overflow-hidden p-0"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          onCloseAutoFocus={(event) => event.preventDefault()}
+          // Typing keeps filtering the list, so focus and clicks that stay
+          // inside the composer must not dismiss the menu.
+          onInteractOutside={(event) => {
+            if (composerRef.current?.contains(event.target as Node)) {
+              event.preventDefault();
+            }
+          }}
+        >
+          <div className="flex items-center justify-between gap-2 border-b px-2.5 py-2">
+            <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-semibold">
+              <AtSign className="size-3.5 shrink-0 text-primary" />
+              Reference canvas
+            </span>
+            <span className="truncate text-[10px] text-muted-foreground">
+              {canvasQuery ? `Matching “${canvasQuery}”` : 'Type to filter'}
+            </span>
+          </div>
+          <div
+            id={CANVAS_MENTION_LIST_ID}
+            role="listbox"
+            aria-label="Canvas items"
+            className="max-h-[238px] overflow-y-auto p-1.5"
+          >
+            {visibleCanvasNodes.length ? (
+              visibleCanvasNodes.map((node, index) => {
+                const previewUrl =
+                  node.type === 'video'
+                    ? node.data.posterSrc
+                    : node.type === 'image'
+                      ? node.data.src
+                      : undefined;
+                return (
+                  <button
+                    key={node.id}
+                    id={`${CANVAS_MENTION_LIST_ID}-${index}`}
+                    type="button"
+                    role="option"
+                    aria-selected={index === activeCanvasIndex}
+                    className={cn(
+                      'flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent',
+                      index === activeCanvasIndex && 'bg-accent',
+                    )}
+                    onClick={() => selectCanvasNode(node)}
+                    onMouseEnter={() => setActiveCanvasIndex(index)}
+                  >
+                    <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-md bg-muted text-muted-foreground">
+                      {previewUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={previewUrl}
+                          alt=""
+                          className="size-full object-cover"
+                        />
+                      ) : (
+                        attachmentIcon(node.type)
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[11.5px] font-semibold">
+                        {node.data.title || node.type}
+                      </span>
+                      <span className="block truncate text-[10px] text-muted-foreground">
+                        {node.type} · {node.data.status}
+                        {node.data.modelId ? ` · ${node.data.modelId}` : ''}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })
+            ) : (
+              <p className="px-2 py-5 text-center text-[11px] text-muted-foreground">
+                {nodes.length
+                  ? 'No matching unattached canvas items'
+                  : 'The canvas is empty'}
+              </p>
+            )}
+          </div>
+        </PopoverContent>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
             <DropdownMenu>
@@ -1003,11 +1033,15 @@ function AgentPanel({
               aria-label="Reference a canvas item"
               aria-expanded={canvasPickerOpen}
               onClick={() => {
-                setCanvasPickerOpen((current) => !current);
-                setCanvasQuery('');
-                setActiveCanvasIndex(0);
-                setSkillPickerOpen(false);
-                setSkillQuery('');
+                if (canvasPickerOpen) {
+                  setCanvasPickerOpen(false);
+                  setCanvasQuery('');
+                  return;
+                }
+                // Opening from the button seeds the same '@' the keyboard
+                // path uses, so typing keeps filtering the list.
+                setInput(/\s$|^$/.test(input) ? `${input}@` : `${input} @`);
+                window.requestAnimationFrame(() => inputRef.current?.focus());
               }}
             >
               <AtSign />
@@ -1154,6 +1188,7 @@ function AgentPanel({
             </Button>
           )}
         </div>
+        </Popover>
       </form>
     </motion.aside>
   );
