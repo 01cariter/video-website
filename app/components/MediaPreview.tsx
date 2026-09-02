@@ -145,7 +145,7 @@ function PlaybackStage({ video }: PlaybackStageProps) {
 
       {!isVideo && asset?.url && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img className="pv-video" src={asset.url} alt="" />
+        <img className="pv-video" src={asset.url} alt="" decoding="async" />
       )}
 
       {!isVideo && !asset?.url && (

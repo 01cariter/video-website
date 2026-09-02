@@ -104,6 +104,8 @@ export default function MediaCarousel({
             className="mc-slide-media"
             src={cover}
             alt=""
+            loading="lazy"
+            decoding="async"
             crossOrigin="anonymous"
             onLoad={(event) => {
               const tone = sampleAverageColor(event.currentTarget);
